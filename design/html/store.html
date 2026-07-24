@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuildTrack — Store / Inventory UI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  :root{
+    --bg:#EAE7DB; --card:#FBFAF5; --card2:#F3F1E7; --ink:#1D1C18; --mut:#918B7C; --mut2:#B4AE9E; --line:#E7E3D5;
+    --lime:#CDEC63; --sky:#A9D9EF; --lav:#C4A5EC; --pink:#F3C3DD; --coral:#F2A585; --amber:#F4D07A; --mint:#9FE0C8;
+    --track:#ECE9DD; --green:#3d9e6f;
+  }
+  body{font-family:'Inter',system-ui,sans-serif;background:#D7D3C6;color:var(--ink);}
+  .gallery{display:flex;flex-wrap:wrap;gap:40px;padding:40px;}
+  .screen{position:relative;width:390px;height:844px;overflow:hidden;background:var(--bg);border-radius:46px;}
+  .pad{position:relative;z-index:1;padding:58px 20px 112px;height:100%;}
+  .pad.plain{padding-bottom:30px;}
+  .statusbar{position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;font-size:13px;font-weight:600;z-index:9;font-family:'Space Grotesk';}
+  .dots{display:flex;gap:5px;align-items:center;}
+  .bar{width:3px;height:9px;background:var(--ink);border-radius:2px;display:inline-block;}.bar.s2{height:7px}.bar.s3{height:11px}
+  .bat{width:22px;height:11px;border:1.6px solid var(--ink);border-radius:3px;position:relative;display:inline-block;margin-left:3px}
+  .bat:after{content:'';position:absolute;top:2px;left:2px;bottom:2px;width:13px;background:var(--ink);border-radius:1px}
+  .row{display:flex;align-items:center}.between{justify-content:space-between}.mut{color:var(--mut)}
+
+  .disp{font-family:'Space Grotesk';}
+  .eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;}
+  .h1{font-family:'Space Grotesk';font-size:29px;font-weight:500;letter-spacing:-.6px;line-height:1.06;}
+  .hbtn{width:42px;height:42px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;position:relative;}
+  .hbtn svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;border-radius:9px;background:var(--coral);color:#3a1c10;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--bg);}
+  .av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#9FE0C8,#66C6A4);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#0f3a2a;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:20px;box-shadow:0 14px 32px rgba(90,78,45,.07);}
+  .pilltab{display:inline-flex;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut);}
+
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:6px 11px;border-radius:999px;font-family:'Space Grotesk';}
+  .tag .pdot{width:6px;height:6px;border-radius:50%;background:#1d1c18;}
+  .tag.lime{background:var(--lime)}.tag.sky{background:var(--sky)}.tag.coral{background:var(--coral)}.tag.amber{background:var(--amber)}.tag.lav{background:var(--lav)}.tag.mint{background:var(--mint)}.tag.dark{background:var(--ink);color:#fff}.tag.dark .pdot{background:var(--lime)}
+
+  h3.sec{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;margin:20px 6px 12px}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;height:54px;border-radius:16px;font-size:15px;font-weight:600;font-family:'Space Grotesk';}
+  .btn.lime{background:var(--lime);color:#1d1c18;}
+  .btn.ghost{background:var(--card);border:1px solid var(--line);color:var(--ink);}
+  .btn.dark{background:var(--ink);color:#F3F1E7;}
+  .btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;}
+  .field{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 16px;margin-bottom:11px;}
+  .field .fl{font-size:10.5px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.6px;}
+  .field .fv{font-size:15px;font-weight:600;margin-top:4px;color:var(--ink);}
+  .drow{display:flex;gap:11px;} .drow .field{flex:1;}
+
+  .lc{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px 16px;margin-bottom:11px;box-shadow:0 8px 20px rgba(90,78,45,.05);}
+  .lic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lic svg{width:22px;height:22px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .ma{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:14px;flex-shrink:0;}
+
+  .search{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:999px;padding:14px 18px;border:1px solid var(--line);box-shadow:0 8px 22px rgba(90,78,45,.06);margin:14px 0 4px;}
+  .search svg{width:20px;height:20px;stroke:var(--mut);fill:none;stroke-width:2.2;stroke-linecap:round;}
+  .search span{color:var(--mut);font-weight:500;font-size:14px;}
+
+  .check{display:flex;align-items:center;gap:13px;padding:14px 2px;border-bottom:1px solid var(--line);}
+  .check:last-child{border-bottom:none;}
+  .cb{width:26px;height:26px;border-radius:9px;border:2px solid var(--mut2);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .check.done .cb{background:var(--lime);border-color:transparent;}
+  .check.done .cb svg{width:14px;height:14px;stroke:#1d1c18;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .check .ct{font-size:14.5px;font-weight:500;flex:1} .check .cq{font-family:'Space Grotesk';font-weight:600;font-size:13px;color:var(--mut);}
+
+  .capa{border:2px dashed var(--mut2);border-radius:22px;padding:26px 20px;text-align:center;background:var(--card);}
+  .capa .cic{width:60px;height:60px;border-radius:20px;background:var(--card2);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;}
+  .capa .cic svg{width:28px;height:28px;stroke:var(--ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  .capa .ctt{font-size:15px;font-weight:600;font-family:'Space Grotesk';}
+  .capa .cst{font-size:12px;color:var(--mut);margin-top:4px;}
+
+  .kv{display:flex;justify-content:space-between;align-items:center;padding:13px 0;}
+  .kv+.kv{border-top:1px solid var(--line);} .kv .k{font-size:13px;color:var(--mut);} .kv .v{font-size:14px;font-weight:600;font-family:'Space Grotesk';}
+
+  .notif{display:flex;gap:13px;padding:14px 2px;border-bottom:1px solid var(--line);}
+  .nic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .nic svg{width:19px;height:19px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .notif .t{font-size:13.5px;font-weight:500;line-height:1.35;} .notif .tm{font-size:11px;color:var(--mut2);margin-top:3px;}
+  .setrow{display:flex;align-items:center;gap:15px;padding:16px 4px;border-bottom:1px solid var(--line);}
+  .setrow .si{width:40px;height:40px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;}
+  .setrow .si svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .setrow .sl{flex:1;font-size:14.5px;font-weight:600;}
+
+  .tabbar{position:absolute;bottom:0;left:0;right:0;padding:16px 18px 24px;display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,rgba(234,231,219,0),var(--bg) 42%);}
+  .navpill{flex:1;height:64px;background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 14px 30px rgba(90,78,45,.12);display:flex;align-items:center;justify-content:space-between;padding:0 10px;}
+  .ni{display:flex;align-items:center;justify-content:center;gap:8px;height:48px;min-width:48px;border-radius:999px;color:var(--mut);}
+  .ni svg{width:23px;height:23px;stroke:var(--mut);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .ni.on{background:var(--ink);padding:0 16px;color:#fff;} .ni.on svg{stroke:#fff;}
+  .ni.on span{font-size:13px;font-weight:600;font-family:'Space Grotesk';}
+  .fab{width:60px;height:60px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 26px rgba(150,180,60,.5);flex-shrink:0;}
+  .fab svg{width:26px;height:26px;stroke:#1d1c18;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- st1 INBOX -->
+  <div class="screen" id="st1">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between">
+        <div><div class="eyebrow">Store · Inventory</div><div class="h1" style="margin-top:3px">Inbox</div></div>
+        <div class="row" style="gap:10px"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="badge">3</span></div><div class="av">D</div></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;padding:16px">
+        <div class="row between"><div style="text-align:center;flex:1"><div class="disp" style="font-size:26px;font-weight:600">3</div><div class="mut" style="font-size:11px;margin-top:2px">To receive</div></div><div style="width:1px;height:34px;background:var(--line)"></div><div style="text-align:center;flex:1"><div class="disp" style="font-size:26px;font-weight:600;color:#c65f3f">2</div><div class="mut" style="font-size:11px;margin-top:2px">Low stock</div></div><div style="width:1px;height:34px;background:var(--line)"></div><div style="text-align:center;flex:1"><div class="disp" style="font-size:26px;font-weight:600">312</div><div class="mut" style="font-size:11px;margin-top:2px">Items</div></div></div>
+      </div>
+
+      <h3 class="sec">Arriving today</h3>
+      <div class="lc"><div class="row" style="gap:13px"><div class="lic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">PO-2041 · Sharma Traders</div><div class="mut" style="font-size:12px">3 items · AZ-118</div></div></div><div class="btn lime" style="margin-top:12px;height:44px">Receive & verify</div></div>
+
+      <h3 class="sec">Low stock</h3>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--coral)"><svg viewBox="0 0 24 24" style="stroke:#5a2410"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></div><div><div style="font-weight:600;font-size:14px">Wiring cable (2.5mm)</div><div class="mut" style="font-size:11.5px">8 m left · reorder</div></div></div><span class="tag coral"><i class="pdot"></i>Low</span></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg><span>Inbox</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- st2 RECEIVE / GRN -->
+  <div class="screen" id="st2">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><span class="tag amber"><i class="pdot"></i>Verifying</span></div>
+      <div class="h1" style="margin-top:14px">Receive PO-2041</div>
+      <div class="mut" style="font-size:13px;margin-top:4px">Sharma Traders · AZ-118 · 3 items</div>
+
+      <h3 class="sec">Verify items received</h3>
+      <div class="card" style="padding:6px 18px">
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">Samsung 42" TV</span><span class="cq">1 / 1</span></div>
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">LED strip lights</span><span class="cq">12 / 12</span></div>
+        <div class="check"><span class="cb"></span><span class="ct">Inverter 2kW</span><span class="cq">0 / 1</span></div>
+      </div>
+
+      <div class="row" style="gap:11px;margin-top:16px">
+        <div class="btn ghost" style="flex:1"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg> Report issue</div>
+        <div class="btn lime" style="flex:1.3"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Confirm receipt</div>
+      </div>
+      <div class="mut" style="font-size:12px;text-align:center;margin-top:12px">Next: log each item with bill & warranty</div>
+    </div>
+  </div>
+
+  <!-- st3 LOG COMPONENT -->
+  <div class="screen" id="st3">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">Item 1 of 3</div></div>
+      <div class="h1" style="margin-top:14px">Log component</div>
+
+      <div class="capa" style="margin-top:14px;padding:20px">
+        <div class="cic"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+        <div class="ctt">Scan serial</div>
+      </div>
+
+      <div class="drow" style="margin-top:14px">
+        <div class="field" style="flex:1.4"><div class="fl">Item</div><div class="fv">Samsung 42" TV</div></div>
+        <div class="field"><div class="fl">Serial</div><div class="fv">SN-88213</div></div>
+      </div>
+      <div class="drow">
+        <div class="field" style="flex:1"><div class="fl">Assign to build</div><div class="fv">AZ-118</div></div>
+        <div class="field" style="flex:1"><div class="fl">Warranty</div><div class="fv">2 years</div></div>
+      </div>
+      <div class="btn ghost" style="height:50px"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Attach bill / invoice</div>
+      <div class="btn lime" style="margin-top:11px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Save to inventory</div>
+    </div>
+  </div>
+
+  <!-- st4 INVENTORY -->
+  <div class="screen" id="st4">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div class="h1">Inventory</div><div class="hbtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div></div>
+      <div class="row" style="gap:8px;margin:14px 0 2px"><div class="pilltab" style="background:var(--ink);color:#fff;border-color:var(--ink)">All</div><div class="pilltab">Electrical</div><div class="pilltab">Steel</div><div class="pilltab">Low</div></div>
+
+      <div class="lc" style="margin-top:14px"><div class="row between"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d1c18" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></div><div><div style="font-weight:600;font-size:14px">Steel sheets (4×8)</div><div class="mut" style="font-size:11.5px">Fabrication</div></div></div><div style="text-align:right"><div class="disp" style="font-weight:600;font-size:15px">42</div><span class="tag lime" style="font-size:9px;padding:3px 8px"><i class="pdot"></i>OK</span></div></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d1c18" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div><div style="font-weight:600;font-size:14px">Wiring cable (2.5mm)</div><div class="mut" style="font-size:11.5px">Electrical</div></div></div><div style="text-align:right"><div class="disp" style="font-weight:600;font-size:15px;color:#c65f3f">8m</div><span class="tag coral" style="font-size:9px;padding:3px 8px"><i class="pdot"></i>Low</span></div></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d1c18" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></div><div><div style="font-weight:600;font-size:14px">LED spotlights</div><div class="mut" style="font-size:11.5px">Electrical</div></div></div><div style="text-align:right"><div class="disp" style="font-weight:600;font-size:15px">64</div><span class="tag lime" style="font-size:9px;padding:3px 8px"><i class="pdot"></i>OK</span></div></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1d1c18" stroke-width="2"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="M7 8V6a5 5 0 0 1 10 0v2"/></svg></div><div><div style="font-weight:600;font-size:14px">Screws & fittings</div><div class="mut" style="font-size:11.5px">Hardware</div></div></div><div style="text-align:right"><div class="disp" style="font-weight:600;font-size:15px;color:#c78a1f">120</div><span class="tag amber" style="font-size:9px;padding:3px 8px"><i class="pdot"></i>Fair</span></div></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg><span>Stock</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- st5 COMPONENTS SEARCH -->
+  <div class="screen" id="st5">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="h1">Components</div>
+      <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><span>Search serial, model, truck…</span></div>
+      <div class="mut" style="font-size:12px;margin:8px 4px 0">1,284 tracked components across 35 trucks</div>
+
+      <div class="lc" style="margin-top:14px"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#123040"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/></svg></div><div><div style="font-weight:600;font-size:14px">Samsung 42" TV</div><div class="mut" style="font-size:11.5px">SN-88213 · AZ-098</div></div></div><span class="tag lime"><i class="pdot"></i>2 yr</span></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg></div><div><div style="font-weight:600;font-size:14px">Inverter 2kW</div><div class="mut" style="font-size:11.5px">SN-4471 · AZ-118</div></div></div><span class="tag lime"><i class="pdot"></i>1 yr</span></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--lav)"><svg viewBox="0 0 24 24" style="stroke:#31234a"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div><div><div style="font-weight:600;font-size:14px">Kitchen hob</div><div class="mut" style="font-size:11.5px">SN-7782 · AZ-104</div></div></div><span class="tag amber"><i class="pdot"></i>Expiring</span></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg><span>Parts</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- st6 COMPONENT DETAIL -->
+  <div class="screen" id="st6">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">AZ-098</div></div>
+      <div class="h1" style="margin-top:14px">Samsung 42"</div>
+      <div class="mut" style="font-size:13px;margin-top:4px">Installed component · digital record</div>
+
+      <div class="card" style="margin-top:14px;padding:6px 20px">
+        <div class="kv"><span class="k">Model</span><span class="v">UA42-XYZ</span></div>
+        <div class="kv"><span class="k">Serial</span><span class="v">SN-88213-KD</span></div>
+        <div class="kv"><span class="k">Vendor</span><span class="v">Sharma Traders</span></div>
+        <div class="kv"><span class="k">Installed in</span><span class="v">AZ-098 · 12 Aug</span></div>
+      </div>
+
+      <div class="card" style="margin-top:12px;background:var(--lime);border-color:transparent"><div class="row between"><div class="eyebrow" style="color:#3a4a12">Warranty active</div><span class="tag dark"><i class="pdot"></i>Active</span></div><div class="disp" style="font-size:19px;font-weight:600;margin-top:8px">Valid till 11 Aug 2028</div></div>
+
+      <div class="row" style="gap:11px;margin-top:12px">
+        <div class="btn ghost" style="flex:1"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg> Bill</div>
+        <div class="btn dark" style="flex:1.3"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="m21.7 18-9-15a1.9 1.9 0 0 0-3.4 0l-9 15A2 2 0 0 0 3 21h18a2 2 0 0 0 1.7-3z"/></svg> Recall check</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- st7 RECALL CHECK -->
+  <div class="screen" id="st7">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><span class="tag coral"><i class="pdot"></i>Recall</span></div>
+      <div class="h1" style="margin-top:14px">Recall check</div>
+
+      <div class="card" style="margin-top:14px;background:linear-gradient(135deg,#FCEAE2,#FBF6F2);border-color:#F3D8CC">
+        <div class="eyebrow">Affected model</div>
+        <div class="disp" style="font-size:19px;font-weight:600;margin-top:6px">Samsung 42" · UA42-XYZ</div>
+        <div class="row" style="align-items:flex-end;gap:8px;margin-top:12px"><span class="disp" style="font-size:38px;font-weight:600;letter-spacing:-1.5px;line-height:.9">25</span><span class="mut" style="font-size:13px;font-weight:500;padding-bottom:5px">trucks affected</span></div>
+      </div>
+
+      <h3 class="sec">Affected trucks</h3>
+      <div class="lc"><div class="row between"><div><div style="font-weight:600;font-size:14px">AZ-098 · Fresh Juice</div><div class="mut" style="font-size:11.5px">Delivered · in service</div></div><span class="tag coral"><i class="pdot"></i>Notify</span></div></div>
+      <div class="lc"><div class="row between"><div><div style="font-weight:600;font-size:14px">AZ-076 · Burger Bay</div><div class="mut" style="font-size:11.5px">Delivered · in service</div></div><span class="tag coral"><i class="pdot"></i>Notify</span></div></div>
+      <div class="lc"><div class="row between"><div><div style="font-weight:600;font-size:14px">AZ-118 · Chai Point</div><div class="mut" style="font-size:11.5px">In build · replace now</div></div><span class="tag amber"><i class="pdot"></i>In build</span></div></div>
+
+      <div class="btn dark" style="margin-top:6px"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg> Notify all 25</div>
+    </div>
+  </div>
+
+  <!-- st8 NOTIFICATIONS -->
+  <div class="screen" id="st8">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">Mark all read</div></div>
+      <div class="h1" style="margin-top:14px">Notifications</div>
+
+      <h3 class="sec" style="margin-top:16px">Today</h3>
+      <div class="notif"><div class="nic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div><div style="flex:1"><div class="t"><b>PO-2041</b> arrived · 3 items to verify</div><div class="tm">1 hour ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--coral)"><svg viewBox="0 0 24 24" style="stroke:#5a2410"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></div><div style="flex:1"><div class="t">Low stock: <b>Wiring cable</b> (8m left)</div><div class="tm">3 hours ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--lime)"><svg viewBox="0 0 24 24" style="stroke:#3a4a12"><path d="M20 6 9 17l-5-5"/></svg></div><div style="flex:1"><div class="t">14 components logged for AZ-118</div><div class="tm">5 hours ago</div></div></div>
+
+      <h3 class="sec">Earlier</h3>
+      <div class="notif" style="border-bottom:none"><div class="nic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#123040"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg></div><div style="flex:1"><div class="t">Warranty expiring soon: <b>Kitchen hob</b> (AZ-104)</div><div class="tm">Yesterday</div></div></div>
+    </div>
+  </div>
+
+  <!-- st9 PROFILE -->
+  <div class="screen" id="st9">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="h1" style="font-size:20px">Profile</div><div style="width:42px"></div></div>
+
+      <div class="card" style="margin-top:18px;text-align:center;padding:24px">
+        <div class="ma" style="width:74px;height:74px;border-radius:50%;font-size:26px;background:var(--mint);color:#0f3a2a;margin:0 auto 14px">D</div>
+        <div class="disp" style="font-size:20px;font-weight:600">Deepak Rao</div>
+        <div style="margin-top:8px"><span class="tag mint"><i class="pdot"></i>Store · Inventory</span></div>
+        <div class="mut" style="font-size:12.5px;margin-top:10px">312 items · 1,284 components tracked</div>
+      </div>
+
+      <h3 class="sec">Settings</h3>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><div class="sl">Account details</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></div><div class="sl">Low-stock thresholds</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg></div><div class="sl">Notifications</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow" style="border-bottom:none"><div class="si" style="background:#FBE4E0"><svg viewBox="0 0 24 24" style="stroke:#C65F3F"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></div><div class="sl" style="color:#C65F3F">Log out</div><span></span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

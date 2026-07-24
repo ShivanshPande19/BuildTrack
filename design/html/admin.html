@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuildTrack — Admin UI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  :root{
+    --bg:#EAE7DB; --card:#FBFAF5; --card2:#F3F1E7; --ink:#1D1C18; --mut:#918B7C; --mut2:#B4AE9E; --line:#E7E3D5;
+    --lime:#CDEC63; --sky:#A9D9EF; --lav:#C4A5EC; --pink:#F3C3DD; --coral:#F2A585; --amber:#F4D07A;
+    --track:#ECE9DD;
+  }
+  body{font-family:'Inter',system-ui,sans-serif;background:#D7D3C6;color:var(--ink);}
+  .gallery{display:flex;flex-wrap:wrap;gap:40px;padding:40px;}
+  .screen{position:relative;width:390px;height:844px;overflow:hidden;background:var(--bg);border-radius:46px;}
+  .pad{position:relative;z-index:1;padding:58px 20px 112px;height:100%;}
+  .pad.plain{padding-bottom:30px;}
+  .statusbar{position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;font-size:13px;font-weight:600;z-index:9;font-family:'Space Grotesk';}
+  .dots{display:flex;gap:5px;align-items:center;}
+  .bar{width:3px;height:9px;background:var(--ink);border-radius:2px;display:inline-block;}.bar.s2{height:7px}.bar.s3{height:11px}
+  .bat{width:22px;height:11px;border:1.6px solid var(--ink);border-radius:3px;position:relative;display:inline-block;margin-left:3px}
+  .bat:after{content:'';position:absolute;top:2px;left:2px;bottom:2px;width:13px;background:var(--ink);border-radius:1px}
+  .row{display:flex;align-items:center}.between{justify-content:space-between}.mut{color:var(--mut)}
+
+  .disp{font-family:'Space Grotesk';}
+  .eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;}
+  .h1{font-family:'Space Grotesk';font-size:29px;font-weight:500;letter-spacing:-.6px;line-height:1.06;}
+  .hbtn{width:42px;height:42px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;position:relative;}
+  .hbtn svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;border-radius:9px;background:var(--coral);color:#3a1c10;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--bg);}
+  .av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#CFB6EF,#A9D9EF);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#2a2438;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:20px;box-shadow:0 14px 32px rgba(90,78,45,.07);}
+  .pilltab{display:inline-flex;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut);}
+  .code{width:34px;height:34px;border-radius:50%;background:var(--card2);display:flex;align-items:center;justify-content:center;}
+  .code svg{width:15px;height:15px;stroke:var(--mut);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .huge{font-family:'Space Grotesk';font-size:52px;font-weight:500;letter-spacing:-2px;line-height:.9;}
+  .huge .pct{font-size:24px;}
+
+  .brow{margin-top:11px;}
+  .btrack{position:relative;height:44px;border-radius:999px;background:var(--track);display:flex;align-items:center;}
+  .btrack.hatch{background-image:repeating-linear-gradient(115deg,#E1DDCE 0 2px,#ECE9DD 2px 8px);}
+  .btrack.dots{background-image:radial-gradient(#D4CFBE 1.5px,transparent 1.7px);background-size:12px 12px;}
+  .blabel{position:absolute;left:18px;font-size:13px;font-weight:600;color:var(--ink);}
+  .pp{position:absolute;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:7px;padding:6px 12px;border-radius:999px;font-family:'Space Grotesk';font-weight:600;font-size:13px;color:#1d1c18;box-shadow:0 4px 10px rgba(90,78,45,.10);}
+  .pp .pdot{width:6px;height:6px;border-radius:50%;background:#1d1c18;}
+  .pp.lime{background:var(--lime)}.pp.sky{background:var(--sky)}.pp.lav{background:var(--lav)}.pp.pink{background:var(--pink)}.pp.coral{background:var(--coral)}.pp.amber{background:var(--amber)}
+
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:6px 11px;border-radius:999px;font-family:'Space Grotesk';}
+  .tag .pdot{width:6px;height:6px;border-radius:50%;background:#1d1c18;}
+  .tag.lime{background:var(--lime)}.tag.sky{background:var(--sky)}.tag.coral{background:var(--coral)}.tag.pink{background:var(--pink)}.tag.amber{background:var(--amber)}.tag.dark{background:var(--ink);color:#fff}.tag.dark .pdot{background:var(--lime)}
+
+  h3.sec{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;margin:20px 6px 12px}
+
+  /* attention / list card */
+  .att{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:15px 17px;margin-bottom:11px;box-shadow:0 10px 24px rgba(90,78,45,.06);}
+  .att h4{font-size:15px;font-weight:600;} .att p{font-size:12.5px;color:var(--mut);margin-top:3px;line-height:1.4;}
+
+  /* project row */
+  .prj{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px;margin-bottom:11px;box-shadow:0 10px 24px rgba(90,78,45,.06);}
+  .prj .mini{height:7px;border-radius:5px;background:var(--track);overflow:hidden;margin-top:11px;position:relative;}
+  .prj .mini i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,#B7D84E,#CDEC63);}
+
+  /* chips filter */
+  .chips{display:flex;gap:8px;margin:14px 0 2px;}
+  .chip2{font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut);white-space:nowrap;}
+  .chip2.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+
+  /* member row */
+  .member{display:flex;align-items:center;gap:13px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:12px 15px;margin-bottom:11px;box-shadow:0 8px 20px rgba(90,78,45,.05);}
+  .ma{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;flex-shrink:0;}
+
+  /* timeline */
+  .timeline{margin-top:2px}
+  .tl{position:relative;padding:0 0 19px 32px;}
+  .tl:before{content:'';position:absolute;left:10px;top:20px;bottom:-2px;width:2px;background:var(--line);}
+  .tl.last:before{display:none}
+  .tl .b{position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--card2);border:1.5px solid var(--line);}
+  .tl.done .b{background:var(--lime);border-color:transparent}
+  .tl.done .b svg{width:11px;height:11px;stroke:#1d1c18;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round}
+  .tl.now .b{background:var(--ink);border-color:transparent}
+  .tl.now .b:after{content:'';width:7px;height:7px;border-radius:50%;background:var(--lime)}
+  .tl .s{font-size:15px;font-weight:600} .tl.todo .s{color:var(--mut2);font-weight:500}
+  .tl .d{font-size:11.5px;color:var(--mut);margin-top:1px}
+
+  /* buttons + fields */
+  .btn{display:flex;align-items:center;justify-content:center;gap:8px;height:54px;border-radius:16px;font-size:15px;font-weight:600;font-family:'Space Grotesk';}
+  .btn.lime{background:var(--lime);color:#1d1c18;}
+  .btn.dark{background:var(--ink);color:#F3F1E7;}
+  .btn.ghost{background:var(--card);border:1px solid var(--line);color:var(--ink);}
+  .btn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;}
+  .field{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 16px;margin-bottom:11px;}
+  .field .fl{font-size:10.5px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.6px;}
+  .field .fv{font-size:15px;font-weight:600;margin-top:4px;color:var(--ink);}
+  .field .fv.ph{color:var(--mut2);font-weight:500;}
+  .rolewrap{display:flex;flex-wrap:wrap;gap:9px;}
+  .rolechip{display:inline-flex;align-items:center;gap:8px;padding:11px 14px;border-radius:14px;background:var(--card);border:1px solid var(--line);font-size:13px;font-weight:600;color:var(--ink);}
+  .rolechip .rd{width:8px;height:8px;border-radius:50%;background:var(--mut2);}
+  .rolechip.on{background:var(--lime);border-color:transparent;} .rolechip.on .rd{background:#1d1c18;}
+
+  /* notification / settings rows */
+  .notif{display:flex;gap:13px;padding:14px 2px;border-bottom:1px solid var(--line);}
+  .nic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .nic svg{width:19px;height:19px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .notif .t{font-size:13.5px;font-weight:500;line-height:1.35;} .notif .tm{font-size:11px;color:var(--mut2);margin-top:3px;}
+  .setrow{display:flex;align-items:center;gap:15px;padding:16px 4px;border-bottom:1px solid var(--line);}
+  .setrow .si{width:40px;height:40px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;}
+  .setrow .si svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .setrow .sl{flex:1;font-size:14.5px;font-weight:600;}
+
+  /* nav */
+  .tabbar{position:absolute;bottom:0;left:0;right:0;padding:16px 18px 24px;display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,rgba(234,231,219,0),var(--bg) 42%);}
+  .navpill{flex:1;height:64px;background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 14px 30px rgba(90,78,45,.12);display:flex;align-items:center;justify-content:space-between;padding:0 10px;}
+  .ni{display:flex;align-items:center;justify-content:center;gap:8px;height:48px;min-width:48px;border-radius:999px;color:var(--mut);}
+  .ni svg{width:23px;height:23px;stroke:var(--mut);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .ni.on{background:var(--ink);padding:0 17px;color:#fff;} .ni.on svg{stroke:#fff;}
+  .ni.on span{font-size:13.5px;font-weight:600;font-family:'Space Grotesk';}
+  .fab{width:60px;height:60px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 26px rgba(150,180,60,.5);flex-shrink:0;}
+  .fab svg{width:26px;height:26px;stroke:#1d1c18;fill:none;stroke-width:2.3;stroke-linecap:round;stroke-linejoin:round;}
+
+  .logo{width:64px;height:64px;border-radius:20px;background:var(--ink);display:flex;align-items:center;justify-content:center;box-shadow:0 12px 26px rgba(29,28,24,.28);}
+  .logo svg{width:32px;height:32px;stroke:var(--lime);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- a1 LOGIN -->
+  <div class="screen" id="a1">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain" style="display:flex;flex-direction:column;justify-content:center;">
+      <div style="text-align:center;margin-bottom:32px">
+        <div class="logo" style="margin:0 auto 20px"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-6h6v6"/></svg></div>
+        <div class="disp" style="font-size:30px;font-weight:600;letter-spacing:-.6px">BuildTrack</div>
+        <div class="mut" style="font-size:13.5px;margin-top:6px">Sign in to manage your builds</div>
+      </div>
+      <div class="field"><div class="fl">Email</div><div class="fv">shivansh@azimuth.co</div></div>
+      <div class="field"><div class="fl">Password</div><div class="fv">••••••••••</div></div>
+      <div class="btn lime" style="margin-top:6px"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg> Sign in</div>
+      <div class="mut" style="text-align:center;font-size:13px;margin-top:18px;font-weight:500">Forgot password?</div>
+      <div class="mut" style="text-align:center;font-size:11px;margin-top:40px;letter-spacing:.5px">AZIMUTH BUSINESS ON WHEELS</div>
+    </div>
+  </div>
+
+  <!-- a2 DASHBOARD -->
+  <div class="screen" id="a2">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between">
+        <div><div class="eyebrow">Owner · Admin</div><div class="h1" style="margin-top:3px">Fleet Monitor</div></div>
+        <div class="row" style="gap:10px">
+          <div class="hbtn"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="badge">3</span></div>
+          <div class="av">S</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px">
+        <div class="row between"><div class="eyebrow">Build status · this week</div><div class="code"><svg viewBox="0 0 24 24"><path d="m8 6-6 6 6 6"/><path d="m16 6 6 6-6 6"/></svg></div></div>
+        <div style="margin-top:12px"><span class="huge">35</span> <span class="mut" style="font-size:14px;font-weight:500">Active<br>builds</span></div>
+        <div class="brow"><div class="btrack hatch"><span class="blabel">On-track</span><span class="pp lime" style="left:60%"><i class="pdot"></i>63%</span></div></div>
+        <div class="brow"><div class="btrack dots"><span class="blabel">At-risk</span><span class="pp sky" style="left:42%"><i class="pdot"></i>26%</span></div></div>
+        <div class="brow"><div class="btrack"><span class="blabel">Delayed</span><span class="pp coral" style="left:40%"><i class="pdot"></i>11%</span></div></div>
+      </div>
+
+      <h3 class="sec">Needs attention</h3>
+      <div class="att"><div class="row between"><h4>AZ-118 · Chai Point</h4><span class="tag coral"><i class="pdot"></i>Order today</span></div><p>Espresso machine — 45-day lead time.</p></div>
+      <div class="att"><div class="row between"><h4>AZ-104 · Momo Hub</h4><span class="tag amber"><i class="pdot"></i>At-risk</span></div><p>Electrical stage 2 days behind.</p></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg><span>Home</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7" rx="1"/><rect x="12" y="7" width="3" height="11" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></div>
+    </div>
+  </div>
+
+  <!-- a3 PROJECTS -->
+  <div class="screen" id="a3">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div class="h1">Projects</div><div class="hbtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div></div>
+      <div class="chips"><div class="chip2 on">All 35</div><div class="chip2">On-track</div><div class="chip2">At-risk</div><div class="chip2">Delayed</div></div>
+
+      <div class="prj" style="margin-top:14px">
+        <div class="row between"><div style="font-weight:700;font-size:15.5px">AZ-118 · Chai Point</div><span class="tag lime"><i class="pdot"></i>On-track</span></div>
+        <div class="mut" style="font-size:12px;margin-top:3px">Ramesh Traders · Electrical · due 30 Aug</div>
+        <div class="mini"><i style="width:62%"></i></div>
+      </div>
+      <div class="prj">
+        <div class="row between"><div style="font-weight:700;font-size:15.5px">AZ-104 · Momo Hub</div><span class="tag amber"><i class="pdot"></i>At-risk</span></div>
+        <div class="mut" style="font-size:12px;margin-top:3px">Sethi Foods · Electrical · due 24 Aug</div>
+        <div class="mini"><i style="width:40%;background:linear-gradient(90deg,#EBB94A,#F4D07A)"></i></div>
+      </div>
+      <div class="prj">
+        <div class="row between"><div style="font-weight:700;font-size:15.5px">AZ-131 · Coffee Co.</div><span class="tag lime"><i class="pdot"></i>On-track</span></div>
+        <div class="mut" style="font-size:12px;margin-top:3px">Blenders Ltd · Structure · due 12 Sep</div>
+        <div class="mini"><i style="width:28%"></i></div>
+      </div>
+      <div class="prj">
+        <div class="row between"><div style="font-weight:700;font-size:15.5px">AZ-097 · Juice Bar</div><span class="tag coral"><i class="pdot"></i>Delayed</span></div>
+        <div class="mut" style="font-size:12px;margin-top:3px">Fresh Co · Paint · overdue 3 days</div>
+        <div class="mini"><i style="width:88%;background:linear-gradient(90deg,#E88A6A,#F2A585)"></i></div>
+      </div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Projects</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7" rx="1"/><rect x="12" y="7" width="3" height="11" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></div>
+    </div>
+  </div>
+
+  <!-- a4 PROJECT DETAIL -->
+  <div class="screen" id="a4">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between">
+        <div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
+        <div class="pilltab">AZ-118</div>
+      </div>
+      <div class="row between" style="margin-top:14px;align-items:flex-end">
+        <div class="h1">Chai Point<br>Truck</div><span class="tag lime"><i class="pdot"></i>On-track</span>
+      </div>
+
+      <div class="card" style="margin-top:16px;padding:18px">
+        <div class="row between" style="align-items:flex-end">
+          <div><span class="huge">62<span class="pct">%</span></span></div>
+          <div style="text-align:right"><div class="mut" style="font-size:11.5px">Delivery</div><div class="disp" style="font-weight:600;font-size:16px">30 Aug</div></div>
+        </div>
+        <div class="brow" style="margin-top:12px"><div class="btrack hatch"><span class="blabel">Electrical work</span><span class="pp lime" style="left:56%"><i class="pdot"></i>62%</span></div></div>
+      </div>
+
+      <h3 class="sec">Build stages</h3>
+      <div class="timeline">
+        <div class="tl done"><span class="b"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div class="s">Design & Structure</div><div class="d">Completed 11 Aug</div></div>
+        <div class="tl done"><span class="b"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div class="s">Exterior cladding</div><div class="d">Completed 14 Aug</div></div>
+        <div class="tl now"><span class="b"></span><div class="s">Electrical work</div><div class="d">In progress · Amit K.</div></div>
+        <div class="tl todo"><span class="b"></span><div class="s">Interior & Equipment</div><div class="d">Starts 19 Aug</div></div>
+        <div class="tl todo last"><span class="b"></span><div class="s">Paint · Testing · Delivery</div><div class="d">Est. 26–30 Aug</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- a5 ANALYTICS -->
+  <div class="screen" id="a5">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div class="h1">Analytics</div><div class="code" style="width:42px;height:42px;background:var(--card);border:1px solid var(--line)"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg></div></div>
+
+      <div style="margin-top:14px"><div class="mut" style="font-size:12.5px">On-time delivery</div><span class="huge" style="font-size:44px">88<span class="pct">%</span></span></div>
+
+      <div class="card" style="margin-top:12px;padding:16px 12px 10px">
+        <svg width="100%" viewBox="0 0 320 130" preserveAspectRatio="none" style="display:block">
+          <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#B7D84E" stop-opacity="0.35"/><stop offset="1" stop-color="#B7D84E" stop-opacity="0"/></linearGradient></defs>
+          <path d="M0,100 L55,88 L110,92 L165,62 L215,50 L270,36 L320,26 L320,130 L0,130 Z" fill="url(#ar)"/>
+          <path d="M0,100 L55,88 L110,92 L165,62 L215,50 L270,36 L320,26" fill="none" stroke="#9BC02F" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="215" cy="50" r="5.5" fill="#fff" stroke="#9BC02F" stroke-width="3"/>
+        </svg>
+        <div class="row between" style="margin-top:6px;padding:0 4px"><span class="mut" style="font-size:11px">Jun</span><span class="mut" style="font-size:11px">Nov 2026</span></div>
+      </div>
+
+      <div class="row" style="gap:10px;margin-top:12px">
+        <div class="card" style="flex:1;padding:14px;text-align:center"><div class="huge" style="font-size:24px;color:#3d8a2f">22</div><div class="mut" style="font-size:11px;margin-top:3px">On-track</div></div>
+        <div class="card" style="flex:1;padding:14px;text-align:center"><div class="huge" style="font-size:24px;color:#c78a1f">9</div><div class="mut" style="font-size:11px;margin-top:3px">At-risk</div></div>
+        <div class="card" style="flex:1;padding:14px;text-align:center"><div class="huge" style="font-size:24px;color:#c65f3f">4</div><div class="mut" style="font-size:11px;margin-top:3px">Delayed</div></div>
+      </div>
+
+      <h3 class="sec">Top delay reasons</h3>
+      <div class="brow" style="margin-top:0"><div class="btrack dots"><span class="blabel">Procurement</span><span class="pp coral" style="left:64%"><i class="pdot"></i>42%</span></div></div>
+      <div class="brow"><div class="btrack"><span class="blabel">Design approval</span><span class="pp sky" style="left:40%"><i class="pdot"></i>21%</span></div></div>
+      <div class="brow"><div class="btrack hatch"><span class="blabel">Workshop capacity</span><span class="pp lav" style="left:36%"><i class="pdot"></i>18%</span></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7" rx="1"/><rect x="12" y="7" width="3" height="11" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/></svg><span>Insights</span></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></div>
+    </div>
+  </div>
+
+  <!-- a6 TEAM & ROLES -->
+  <div class="screen" id="a6">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div><div class="h1">Team</div><div class="mut" style="font-size:12.5px;margin-top:4px">12 members · 6 roles</div></div><div class="hbtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div></div>
+
+      <div style="margin-top:16px"></div>
+      <div class="member"><div class="ma" style="background:var(--ink);color:var(--lime)">S</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Shivansh Pande</div><div class="mut" style="font-size:12px">shivansh@azimuth.co</div></div><span class="tag dark"><i class="pdot"></i>Admin</span></div>
+      <div class="member"><div class="ma" style="background:var(--sky);color:#1c3a4a">P</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Priya Sharma</div><div class="mut" style="font-size:12px">Project Manager</div></div><span class="tag sky"><i class="pdot"></i>PM</span></div>
+      <div class="member"><div class="ma" style="background:var(--lav);color:#3a2a4a">R</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Rahul Verma</div><div class="mut" style="font-size:12px">Procurement</div></div><span class="tag lav"><i class="pdot"></i>Procure</span></div>
+      <div class="member"><div class="ma" style="background:var(--amber);color:#4a3410">A</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Amit Kumar</div><div class="mut" style="font-size:12px">Workshop Lead</div></div><span class="tag amber"><i class="pdot"></i>Workshop</span></div>
+      <div class="member"><div class="ma" style="background:var(--pink);color:#4a2438">N</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Neha Rao</div><div class="mut" style="font-size:12px">Design</div></div><span class="tag pink"><i class="pdot"></i>Design</span></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg><span>Team</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="7" rx="1"/><rect x="12" y="7" width="3" height="11" rx="1"/><rect x="17" y="4" width="3" height="14" rx="1"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg></div>
+    </div>
+  </div>
+
+  <!-- a7 ADD MEMBER / ASSIGN ROLE -->
+  <div class="screen" id="a7">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">Step 1 of 1</div></div>
+      <div class="h1" style="margin-top:14px">New member</div>
+      <div class="mut" style="font-size:13px;margin-top:5px">Create an ID and assign a role. Their app opens straight to that role's screens.</div>
+
+      <div class="field" style="margin-top:18px"><div class="fl">Full name</div><div class="fv">Karan Mehta</div></div>
+      <div class="field"><div class="fl">Email / Phone</div><div class="fv">karan@azimuth.co</div></div>
+
+      <h3 class="sec" style="margin-top:16px">Assign role</h3>
+      <div class="rolewrap">
+        <div class="rolechip"><span class="rd"></span>Project Manager</div>
+        <div class="rolechip on"><span class="rd"></span>Procurement</div>
+        <div class="rolechip"><span class="rd"></span>Workshop</div>
+        <div class="rolechip"><span class="rd"></span>Design</div>
+        <div class="rolechip"><span class="rd"></span>Store / Inventory</div>
+        <div class="rolechip"><span class="rd"></span>Service</div>
+        <div class="rolechip"><span class="rd"></span>Client</div>
+      </div>
+
+      <div class="btn lime" style="margin-top:22px"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg> Send invite</div>
+    </div>
+  </div>
+
+  <!-- a8 NOTIFICATIONS -->
+  <div class="screen" id="a8">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">Mark all read</div></div>
+      <div class="h1" style="margin-top:14px">Notifications</div>
+
+      <h3 class="sec" style="margin-top:16px">Today</h3>
+      <div class="notif"><div class="nic" style="background:var(--coral)"><svg viewBox="0 0 24 24" style="stroke:#5a2410"><path d="m21.7 18-9-15a1.9 1.9 0 0 0-3.4 0l-9 15A2 2 0 0 0 3 21h18a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div><div style="flex:1"><div class="t">Espresso machine for AZ-118 must be ordered <b>today</b></div><div class="tm">2 hours ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--lime)"><svg viewBox="0 0 24 24" style="stroke:#3a4a12"><path d="M20 6 9 17l-5-5"/></svg></div><div style="flex:1"><div class="t">Priya completed <b>Exterior cladding</b> on AZ-118</div><div class="tm">3 hours ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg></div><div style="flex:1"><div class="t">AZ-104 moved to <b>at-risk</b> — electrical delayed</div><div class="tm">5 hours ago</div></div></div>
+
+      <h3 class="sec">Earlier</h3>
+      <div class="notif"><div class="nic" style="background:var(--lav)"><svg viewBox="0 0 24 24" style="stroke:#3a2a4a"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18"/></svg></div><div style="flex:1"><div class="t">Rahul created a PO for kitchen equipment</div><div class="tm">Yesterday</div></div></div>
+      <div class="notif" style="border-bottom:none"><div class="nic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#1c3a4a"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><div style="flex:1"><div class="t">Client Ramesh approved the design for AZ-118</div><div class="tm">2 days ago</div></div></div>
+    </div>
+  </div>
+
+  <!-- a9 PROFILE / SETTINGS -->
+  <div class="screen" id="a9">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="h1" style="font-size:20px">Profile</div><div style="width:42px"></div></div>
+
+      <div class="card" style="margin-top:18px;text-align:center;padding:24px">
+        <div class="ma" style="width:74px;height:74px;font-size:26px;background:var(--ink);color:var(--lime);margin:0 auto 14px">S</div>
+        <div class="disp" style="font-size:20px;font-weight:600">Shivansh Pande</div>
+        <div style="margin-top:8px"><span class="tag dark"><i class="pdot"></i>Owner · Admin</span></div>
+        <div class="mut" style="font-size:12.5px;margin-top:10px">shivansh@azimuth.co</div>
+      </div>
+
+      <h3 class="sec">Settings</h3>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><div class="sl">Account details</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/></svg></div><div class="sl">Company profile</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v1a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 8v3a7 7 0 0 1-14 0V8"/></svg></div><div class="sl">Roles & permissions</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow" style="border-bottom:none"><div class="si" style="background:#FBE4E0"><svg viewBox="0 0 24 24" style="stroke:#C65F3F"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></div><div class="sl" style="color:#C65F3F">Log out</div><span></span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

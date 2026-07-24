@@ -1,0 +1,22 @@
+name: buildtrack
+description: Azimuth BuildTrack — food-truck build management (all roles).
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.5.6      # auth + db + storage + realtime
+  flutter_riverpod: ^2.5.1      # state management
+  go_router: ^14.2.0            # role-based routing
+  google_fonts: ^6.2.1          # Plus Jakarta Sans + Space Grotesk
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuildTrack — Workshop UI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased;}
+  :root{
+    --bg:#EAE7DB; --card:#FBFAF5; --card2:#F3F1E7; --ink:#1D1C18; --mut:#918B7C; --mut2:#B4AE9E; --line:#E7E3D5;
+    --lime:#CDEC63; --sky:#A9D9EF; --lav:#C4A5EC; --pink:#F3C3DD; --coral:#F2A585; --amber:#F4D07A;
+    --track:#ECE9DD; --green:#3d9e6f;
+  }
+  body{font-family:'Inter',system-ui,sans-serif;background:#D7D3C6;color:var(--ink);}
+  .gallery{display:flex;flex-wrap:wrap;gap:40px;padding:40px;}
+  .screen{position:relative;width:390px;height:844px;overflow:hidden;background:var(--bg);border-radius:46px;}
+  .pad{position:relative;z-index:1;padding:58px 20px 112px;height:100%;}
+  .pad.plain{padding-bottom:30px;}
+  .statusbar{position:absolute;top:0;left:0;right:0;height:52px;display:flex;align-items:flex-end;justify-content:space-between;padding:0 30px 8px;font-size:13px;font-weight:600;z-index:9;font-family:'Space Grotesk';}
+  .dots{display:flex;gap:5px;align-items:center;}
+  .bar{width:3px;height:9px;background:var(--ink);border-radius:2px;display:inline-block;}.bar.s2{height:7px}.bar.s3{height:11px}
+  .bat{width:22px;height:11px;border:1.6px solid var(--ink);border-radius:3px;position:relative;display:inline-block;margin-left:3px}
+  .bat:after{content:'';position:absolute;top:2px;left:2px;bottom:2px;width:13px;background:var(--ink);border-radius:1px}
+  .row{display:flex;align-items:center}.between{justify-content:space-between}.mut{color:var(--mut)}
+
+  .disp{font-family:'Space Grotesk';}
+  .eyebrow{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;}
+  .h1{font-family:'Space Grotesk';font-size:29px;font-weight:500;letter-spacing:-.6px;line-height:1.06;}
+  .hbtn{width:42px;height:42px;border-radius:50%;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;position:relative;}
+  .hbtn svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .badge{position:absolute;top:-3px;right:-3px;min-width:18px;height:18px;border-radius:9px;background:var(--coral);color:#3a1c10;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 4px;border:2px solid var(--bg);}
+  .av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#F4D07A,#E9B84A);display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:15px;color:#4a3410;}
+
+  .card{background:var(--card);border:1px solid var(--line);border-radius:28px;padding:20px;box-shadow:0 14px 32px rgba(90,78,45,.07);}
+  .pilltab{display:inline-flex;font-size:12.5px;font-weight:600;padding:9px 15px;border-radius:999px;background:var(--card);border:1px solid var(--line);color:var(--mut);}
+
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:6px 11px;border-radius:999px;font-family:'Space Grotesk';}
+  .tag .pdot{width:6px;height:6px;border-radius:50%;background:#1d1c18;}
+  .tag.lime{background:var(--lime)}.tag.sky{background:var(--sky)}.tag.coral{background:var(--coral)}.tag.amber{background:var(--amber)}.tag.lav{background:var(--lav)}.tag.dark{background:var(--ink);color:#fff}.tag.dark .pdot{background:var(--lime)}
+
+  h3.sec{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:var(--mut);font-weight:600;margin:20px 6px 12px}
+
+  .btrack{position:relative;height:12px;border-radius:999px;background:var(--track);overflow:hidden;margin-top:12px;}
+  .btrack i{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(90deg,#B7D84E,#CDEC63);}
+
+  .btn{display:flex;align-items:center;justify-content:center;gap:9px;height:56px;border-radius:16px;font-size:15px;font-weight:600;font-family:'Space Grotesk';}
+  .btn.lime{background:var(--lime);color:#1d1c18;}
+  .btn.ghost{background:var(--card);border:1px solid var(--line);color:var(--ink);}
+  .btn.dark{background:var(--ink);color:#F3F1E7;}
+  .btn svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;}
+  .field{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:13px 16px;margin-bottom:11px;}
+  .field .fl{font-size:10.5px;color:var(--mut);font-weight:600;text-transform:uppercase;letter-spacing:.6px;}
+  .field .fv{font-size:15px;font-weight:600;margin-top:4px;color:var(--ink);}
+  .field .fv.ph{color:var(--mut2);font-weight:500;}
+  .drow{display:flex;gap:11px;} .drow .field{flex:1;}
+
+  .lc{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px 16px;margin-bottom:11px;box-shadow:0 8px 20px rgba(90,78,45,.05);}
+  .lic{width:46px;height:46px;border-radius:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .lic svg{width:22px;height:22px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+
+  .offline{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--mut);background:var(--card);border:1px solid var(--line);padding:8px 13px;border-radius:999px;}
+  .offline .od{width:8px;height:8px;border-radius:50%;background:var(--green);}
+
+  /* checklist */
+  .check{display:flex;align-items:center;gap:13px;padding:14px 2px;border-bottom:1px solid var(--line);}
+  .check:last-child{border-bottom:none;}
+  .cb{width:26px;height:26px;border-radius:9px;border:2px solid var(--mut2);flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .check.done .cb{background:var(--lime);border-color:transparent;}
+  .check.done .cb svg{width:14px;height:14px;stroke:#1d1c18;stroke-width:3;fill:none;stroke-linecap:round;stroke-linejoin:round;}
+  .check .ct{font-size:14.5px;font-weight:500;} .check.done .ct{color:var(--mut2);}
+
+  /* capture / scan area */
+  .capa{border:2px dashed var(--mut2);border-radius:22px;padding:30px 20px;text-align:center;background:var(--card);}
+  .capa .cic{width:62px;height:62px;border-radius:20px;background:var(--card2);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;}
+  .capa .cic svg{width:30px;height:30px;stroke:var(--ink);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+  .capa .ctt{font-size:15px;font-weight:600;font-family:'Space Grotesk';}
+  .capa .cst{font-size:12px;color:var(--mut);margin-top:4px;}
+
+  .thumbs{display:flex;gap:10px;margin-top:12px;}
+  .thumb{flex:1;height:76px;border-radius:15px;border:1px solid var(--line);}
+
+  .ma{width:44px;height:44px;border-radius:13px;display:flex;align-items:center;justify-content:center;font-family:'Space Grotesk';font-weight:600;font-size:13px;flex-shrink:0;}
+  .item{display:flex;align-items:center;justify-content:space-between;padding:13px 2px;border-bottom:1px solid var(--line);}
+  .item:last-child{border-bottom:none;}
+
+  .notif{display:flex;gap:13px;padding:14px 2px;border-bottom:1px solid var(--line);}
+  .nic{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .nic svg{width:19px;height:19px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+  .notif .t{font-size:13.5px;font-weight:500;line-height:1.35;} .notif .tm{font-size:11px;color:var(--mut2);margin-top:3px;}
+  .setrow{display:flex;align-items:center;gap:15px;padding:16px 4px;border-bottom:1px solid var(--line);}
+  .setrow .si{width:40px;height:40px;border-radius:12px;background:var(--card2);display:flex;align-items:center;justify-content:center;}
+  .setrow .si svg{width:19px;height:19px;stroke:var(--ink);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .setrow .sl{flex:1;font-size:14.5px;font-weight:600;}
+
+  .tabbar{position:absolute;bottom:0;left:0;right:0;padding:16px 18px 24px;display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,rgba(234,231,219,0),var(--bg) 42%);}
+  .navpill{flex:1;height:64px;background:var(--card);border:1px solid var(--line);border-radius:999px;box-shadow:0 14px 30px rgba(90,78,45,.12);display:flex;align-items:center;justify-content:space-between;padding:0 10px;}
+  .ni{display:flex;align-items:center;justify-content:center;gap:8px;height:48px;min-width:48px;border-radius:999px;color:var(--mut);}
+  .ni svg{width:23px;height:23px;stroke:var(--mut);fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;}
+  .ni.on{background:var(--ink);padding:0 16px;color:#fff;} .ni.on svg{stroke:#fff;}
+  .ni.on span{font-size:13px;font-weight:600;font-family:'Space Grotesk';}
+  .fab{width:60px;height:60px;border-radius:50%;background:var(--lime);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 26px rgba(150,180,60,.5);flex-shrink:0;}
+  .fab svg{width:26px;height:26px;stroke:#1d1c18;fill:none;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- w1 MY TASKS -->
+  <div class="screen" id="w1">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between">
+        <div><div class="eyebrow">Workshop · Bay 3</div><div class="h1" style="margin-top:3px">My Tasks</div></div>
+        <div class="row" style="gap:10px"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span class="badge">2</span></div><div class="av">A</div></div>
+      </div>
+      <div style="margin-top:12px"><span class="offline"><span class="od"></span>Online · all synced</span></div>
+
+      <h3 class="sec">In progress</h3>
+      <div class="card" style="background:linear-gradient(135deg,#FBF4E4,#FBFAF5);border-color:#F0E4C8">
+        <div class="row between"><span class="tag amber"><i class="pdot"></i>In progress</span><span class="mut" style="font-size:12px;font-weight:600">Due 18 Aug</span></div>
+        <div class="disp" style="font-size:21px;font-weight:600;margin-top:12px;letter-spacing:-.3px">Electrical work</div>
+        <div class="mut" style="font-size:12.5px;margin-top:2px">AZ-118 · Chai Point Truck</div>
+        <div class="btrack"><i style="width:62%"></i></div>
+        <div class="row between" style="margin-top:8px"><span class="mut" style="font-size:12px">62% done</span><span style="font-size:12.5px;font-weight:600;font-family:'Space Grotesk'">Open task →</span></div>
+      </div>
+
+      <h3 class="sec">Up next</h3>
+      <div class="lc"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2);color:var(--mut)">19</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Interior & Equipment</div><div class="mut" style="font-size:12px">AZ-118 · starts 19 Aug</div></div><span class="tag sky"><i class="pdot"></i>Queued</span></div></div>
+      <div class="lc"><div class="row" style="gap:13px"><div class="ma" style="background:var(--card2);color:var(--mut)">22</div><div style="flex:1"><div style="font-weight:600;font-size:14.5px">Ext. cladding</div><div class="mut" style="font-size:12px">AZ-131 · starts 22 Aug</div></div><span class="tag sky"><i class="pdot"></i>Queued</span></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>Tasks</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- w2 TASK DETAIL -->
+  <div class="screen" id="w2">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">AZ-118 · Bay 3</div></div>
+      <div class="h1" style="margin-top:14px">Electrical work</div>
+      <div class="mut" style="font-size:13px;margin-top:4px">Chai Point Truck · due 18 Aug</div>
+
+      <div class="card" style="margin-top:14px;padding:16px 18px">
+        <div class="row between"><span class="mut" style="font-size:12.5px;font-weight:600">Progress</span><span class="disp" style="font-weight:600;font-size:15px">62%</span></div>
+        <div class="btrack"><i style="width:62%"></i></div>
+      </div>
+
+      <h3 class="sec">Checklist</h3>
+      <div class="card" style="padding:6px 18px">
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">Wiring harness routed</span></div>
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">Inverter mounted</span></div>
+        <div class="check"><span class="cb"></span><span class="ct">Fit distribution board</span></div>
+        <div class="check"><span class="cb"></span><span class="ct">Test all circuits</span></div>
+      </div>
+
+      <div class="row" style="gap:11px;margin-top:14px">
+        <div class="btn ghost" style="flex:1"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg> Photo</div>
+        <div class="btn lime" style="flex:1"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg> Install part</div>
+      </div>
+      <div class="btn dark" style="margin-top:11px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Mark stage complete</div>
+    </div>
+  </div>
+
+  <!-- w3 ADD PHOTO -->
+  <div class="screen" id="w3">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">AZ-118 · Electrical</div></div>
+      <div class="h1" style="margin-top:14px">Add photo</div>
+
+      <div class="capa" style="margin-top:16px">
+        <div class="cic"><svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg></div>
+        <div class="ctt">Take a photo</div>
+        <div class="cst">or upload from gallery</div>
+      </div>
+
+      <h3 class="sec">Attached · 3</h3>
+      <div class="thumbs">
+        <div class="thumb" style="background:linear-gradient(135deg,#D9D3C0,#C6BFA8)"></div>
+        <div class="thumb" style="background:linear-gradient(135deg,#C9C3B0,#B8B29C)"></div>
+        <div class="thumb" style="background:linear-gradient(135deg,#D2CCBA,#BFB9A5)"></div>
+      </div>
+
+      <div class="field" style="margin-top:16px"><div class="fl">Note (optional)</div><div class="fv ph">Wiring done on left panel…</div></div>
+      <div class="btn lime" style="margin-top:4px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Save photos</div>
+      <div class="row" style="justify-content:center;gap:8px;margin-top:16px;color:var(--mut);font-size:12px;font-weight:600"><span class="offline" style="border:none;padding:0"><span class="od"></span>Saved offline · will sync</span></div>
+    </div>
+  </div>
+
+  <!-- w4 SCAN TO INSTALL -->
+  <div class="screen" id="w4">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">AZ-118 · Electrical</div></div>
+      <div class="h1" style="margin-top:14px">Scan to install</div>
+      <div class="mut" style="font-size:13px;margin-top:4px">Confirm which part goes into this truck</div>
+
+      <div class="capa" style="margin-top:14px;padding:22px 20px">
+        <div class="cic"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+        <div class="ctt">Scan serial / barcode</div>
+        <div class="cst">Matches a component logged by Store</div>
+      </div>
+
+      <h3 class="sec">Matched component</h3>
+      <div class="card" style="padding:15px 16px">
+        <div class="row between"><div class="row" style="gap:12px"><div class="lic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#123040"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/></svg></div><div><div style="font-weight:600;font-size:14px">Samsung 42" TV</div><div class="mut" style="font-size:11.5px">SN-88213 · Sharma Traders</div></div></div><span class="tag lime"><i class="pdot"></i>Bill on file</span></div>
+      </div>
+
+      <div class="drow" style="margin-top:12px">
+        <div class="field"><div class="fl">Install in</div><div class="fv">AZ-118</div></div>
+        <div class="field"><div class="fl">Stage</div><div class="fv">Electrical</div></div>
+      </div>
+      <div class="btn lime" style="margin-top:4px"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Confirm installed</div>
+      <div class="mut" style="font-size:12px;text-align:center;margin-top:12px">Bill &amp; warranty already recorded by Store at intake</div>
+    </div>
+  </div>
+
+  <!-- w5 COMPONENTS -->
+  <div class="screen" id="w5">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div><div class="h1">Components</div><div class="mut" style="font-size:12.5px;margin-top:4px">Installed on AZ-118 · 14 parts</div></div><div class="hbtn"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg></div></div>
+
+      <div style="margin-top:16px"></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#123040"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/></svg></div><div><div style="font-weight:600;font-size:14px">Samsung 42" TV</div><div class="mut" style="font-size:11.5px">SN-88213-KD</div></div></div><span class="tag lime"><i class="pdot"></i>2 yr</span></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3"/></svg></div><div><div style="font-weight:600;font-size:14px">Inverter 2kW</div><div class="mut" style="font-size:11.5px">SN-4471-IN</div></div></div><span class="tag lime"><i class="pdot"></i>1 yr</span></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--lav)"><svg viewBox="0 0 24 24" style="stroke:#31234a"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div><div><div style="font-weight:600;font-size:14px">LED strip lights</div><div class="mut" style="font-size:11.5px">Batch B-2231</div></div></div><span class="tag lime"><i class="pdot"></i>1 yr</span></div></div>
+      <div class="lc"><div class="row between"><div class="row" style="gap:13px"><div class="lic" style="background:var(--coral)"><svg viewBox="0 0 24 24" style="stroke:#5a2410"><path d="M4 7h16M4 12h16M4 17h10"/></svg></div><div><div style="font-weight:600;font-size:14px">Steel frame kit</div><div class="mut" style="font-size:11.5px">SN-STL-0092</div></div></div><span class="tag amber"><i class="pdot"></i>No wty</span></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg><span>Parts</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- w6 MARK COMPLETE -->
+  <div class="screen" id="w6">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">AZ-118</div></div>
+      <div class="h1" style="margin-top:14px">Complete stage</div>
+      <div class="mut" style="font-size:13px;margin-top:4px">Electrical work · submits for PM approval</div>
+
+      <h3 class="sec">All checks done</h3>
+      <div class="card" style="padding:6px 18px">
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">Wiring & inverter</span></div>
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">Distribution board</span></div>
+        <div class="check done"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">All circuits tested</span></div>
+      </div>
+
+      <h3 class="sec">Photos · 3 attached</h3>
+      <div class="thumbs">
+        <div class="thumb" style="background:linear-gradient(135deg,#D9D3C0,#C6BFA8)"></div>
+        <div class="thumb" style="background:linear-gradient(135deg,#C9C3B0,#B8B29C)"></div>
+        <div class="thumb" style="background:linear-gradient(135deg,#D2CCBA,#BFB9A5)"></div>
+      </div>
+
+      <div class="btn lime" style="margin-top:18px"><svg viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="m22 2-7 20-4-9-9-4 20-7z"/></svg> Submit for approval</div>
+    </div>
+  </div>
+
+  <!-- w7 MY WEEK -->
+  <div class="screen" id="w7">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div class="h1">My Week</div><div class="pilltab">Aug 17–23</div></div>
+
+      <div style="margin-top:16px"></div>
+      <div class="lc"><div class="row" style="gap:14px"><div class="ma" style="background:var(--ink);color:var(--lime)">Mon</div><div style="flex:1"><div style="font-weight:600;font-size:14px">AZ-118 · Electrical</div><div class="mut" style="font-size:12px">Bay 3 · continue</div></div><span class="tag amber"><i class="pdot"></i>Now</span></div></div>
+      <div class="lc"><div class="row" style="gap:14px"><div class="ma" style="background:var(--card2);color:var(--mut)">Tue</div><div style="flex:1"><div style="font-weight:600;font-size:14px">AZ-118 · Electrical</div><div class="mut" style="font-size:12px">Bay 3 · finish & test</div></div></div></div>
+      <div class="lc"><div class="row" style="gap:14px"><div class="ma" style="background:var(--card2);color:var(--mut)">Thu</div><div style="flex:1"><div style="font-weight:600;font-size:14px">AZ-118 · Interior starts</div><div class="mut" style="font-size:12px">Bay 3</div></div></div></div>
+      <div class="lc"><div class="row" style="gap:14px"><div class="ma" style="background:var(--card2);color:var(--mut)">Fri</div><div style="flex:1"><div style="font-weight:600;font-size:14px">AZ-131 · Ext. cladding</div><div class="mut" style="font-size:12px">Bay 1</div></div></div></div>
+    </div>
+    <div class="tabbar">
+      <div class="navpill">
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/></svg></div>
+        <div class="ni on"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/><path d="M8 2v4"/><path d="M16 2v4"/></svg><span>Week</span></div>
+        <div class="ni"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div>
+      </div>
+      <div class="fab"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg></div>
+    </div>
+  </div>
+
+  <!-- w8 NOTIFICATIONS -->
+  <div class="screen" id="w8">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad plain">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="pilltab">Mark all read</div></div>
+      <div class="h1" style="margin-top:14px">Notifications</div>
+
+      <h3 class="sec" style="margin-top:16px">Today</h3>
+      <div class="notif"><div class="nic" style="background:var(--lime)"><svg viewBox="0 0 24 24" style="stroke:#3a4a12"><path d="M20 6 9 17l-5-5"/></svg></div><div style="flex:1"><div class="t">PM <b>approved</b> your Exterior cladding on AZ-118</div><div class="tm">1 hour ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--sky)"><svg viewBox="0 0 24 24" style="stroke:#123040"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div><div style="flex:1"><div class="t">New task assigned: <b>Interior & Equipment</b> (AZ-118)</div><div class="tm">3 hours ago</div></div></div>
+      <div class="notif"><div class="nic" style="background:var(--amber)"><svg viewBox="0 0 24 24" style="stroke:#4a3410"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.5 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.5A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.5z"/></svg></div><div style="flex:1"><div class="t">Kitchen equipment delivered to store for AZ-118</div><div class="tm">5 hours ago</div></div></div>
+
+      <h3 class="sec">Earlier</h3>
+      <div class="notif" style="border-bottom:none"><div class="nic" style="background:var(--coral)"><svg viewBox="0 0 24 24" style="stroke:#5a2410"><path d="M18 6 6 18M6 6l12 12"/></svg></div><div style="flex:1"><div class="t">PM requested changes on <b>Structure</b> photos (AZ-131)</div><div class="tm">Yesterday</div></div></div>
+    </div>
+  </div>
+
+  <!-- w9 PROFILE -->
+  <div class="screen" id="w9">
+    <div class="statusbar"><span>9:41</span><span class="dots"><i class="bar s2"></i><i class="bar"></i><i class="bar s3"></i><i class="bat"></i></span></div>
+    <div class="pad">
+      <div class="row between"><div class="hbtn"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div><div class="h1" style="font-size:20px">Profile</div><div style="width:42px"></div></div>
+
+      <div class="card" style="margin-top:18px;text-align:center;padding:24px">
+        <div class="ma" style="width:74px;height:74px;border-radius:50%;font-size:26px;background:var(--amber);color:#4a3410;margin:0 auto 14px">A</div>
+        <div class="disp" style="font-size:20px;font-weight:600">Amit Kumar</div>
+        <div style="margin-top:8px"><span class="tag amber"><i class="pdot"></i>Workshop Lead · Bay 3</span></div>
+        <div class="mut" style="font-size:12.5px;margin-top:10px">2 active tasks · 14 parts logged</div>
+      </div>
+
+      <h3 class="sec">Settings</h3>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg></div><div class="sl">Account details</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.2-8.6"/><path d="M21 3v6h-6"/></svg></div><div class="sl">Offline sync</div><span class="tag lime" style="font-size:10px"><i class="pdot"></i>On</span></div>
+      <div class="setrow"><div class="si"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/></svg></div><div class="sl">Notifications</div><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B4AE9E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>
+      <div class="setrow" style="border-bottom:none"><div class="si" style="background:#FBE4E0"><svg viewBox="0 0 24 24" style="stroke:#C65F3F"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></div><div class="sl" style="color:#C65F3F">Log out</div><span></span></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
