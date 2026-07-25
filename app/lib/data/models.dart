@@ -14,11 +14,17 @@ class Project {
 }
 
 class OrderDue {
-  final String itemName, projectCode;
+  final String id, itemName, projectCode, projectId, itemCatalogId;
+  final int qty, daysLeft;
   final DateTime? orderByDate;
-  final int daysLeft;
-  OrderDue({required this.itemName, required this.projectCode, this.orderByDate, required this.daysLeft});
+  OrderDue({required this.id, required this.itemName, required this.projectCode,
+    required this.projectId, required this.itemCatalogId, required this.qty,
+    this.orderByDate, required this.daysLeft});
   factory OrderDue.fromMap(Map<String, dynamic> m) => OrderDue(
+    id: m['id'] as String,
+    projectId: m['project_id'] as String? ?? '',
+    itemCatalogId: m['item_catalog_id'] as String? ?? '',
+    qty: (m['qty'] as num?)?.toInt() ?? 1,
     itemName: m['item_name'] as String? ?? '',
     projectCode: m['project_code'] as String? ?? '',
     orderByDate: m['order_by_date'] != null ? DateTime.tryParse(m['order_by_date'].toString()) : null,
