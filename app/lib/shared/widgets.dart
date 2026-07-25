@@ -90,7 +90,9 @@ class PillNav extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(icons.length, (i) {
             final on = i == active;
-            return GestureDetector(onTap: () => onTap?.call(i),
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onTap?.call(i),
               child: AnimatedContainer(duration: const Duration(milliseconds: 180),
                 height: 48, padding: EdgeInsets.symmetric(horizontal: on ? 16 : 12),
                 decoration: BoxDecoration(color: on ? BT.ink : Colors.transparent, borderRadius: BorderRadius.circular(BT.radiusPill)),
