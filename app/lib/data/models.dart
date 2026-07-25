@@ -51,6 +51,19 @@ class StageDraft {
   StageDraft(this.name, this.days);
 }
 
+/// A team member (profiles row).
+class Member {
+  final String id, name, email, role, status;
+  Member({required this.id, required this.name, required this.email, required this.role, required this.status});
+  factory Member.fromMap(Map<String, dynamic> m) => Member(
+    id: m['id'] as String,
+    name: m['full_name'] as String? ?? '',
+    email: m['email'] as String? ?? '',
+    role: m['role'] as String? ?? '',
+    status: m['status'] as String? ?? 'active',
+  );
+}
+
 /// Aggregated data for the Admin fleet dashboard.
 class FleetData {
   final List<Project> projects;

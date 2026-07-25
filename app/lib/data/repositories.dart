@@ -85,6 +85,27 @@ class AdminRepo {
     return OptRef(tid, name);
   }
 
+  /// List all team members.
+  Future<List<Member>> members() async {
+    final d = await sb.from('profiles').select('id,full_name,email,role,status').order('full_name');
+    return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Create a member via the admin-create-member Edge Function (server-side, secure).
+  Future<void> createMember({
+    required String fullName, required String email, required String password,
+    String? phone, required String role, String? businessName,
+  }) async {
+    final res = await sb.functions.invoke('admin-create-member', body: {
+      'full_name': fullName, 'email': email, 'password': password,
+      'phone': phone, 'role': role, 'business_name': businessName,
+    });
+    final data = res.data;
+    if (res.status != 200 || (data is Map && data['error'] != null)) {
+      throw Exception(data is Map && data['error'] != null ? data['error'] : 'Failed (${res.status})');
+    }
+  }
+
   /// Create a new client account.
   Future<OptRef> createClient(String businessName, String? phone) async {
     final c = await sb.from('client_accounts')
@@ -107,6 +128,7 @@ class AdminRepo {
 }
 
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
+final membersProvider   = FutureProvider<List<Member>>((ref) => ref.read(adminRepoProvider).members());
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
