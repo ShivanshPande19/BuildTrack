@@ -57,17 +57,17 @@ final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
-  Future<List<Ref>> templates() async {
+  Future<List<OptRef>> templates() async {
     final d = await sb.from('workflow_templates').select('id,name').order('name');
-    return (d as List).map((e) => Ref(e['id'] as String, (e['name'] ?? '') as String)).toList();
+    return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
   }
-  Future<List<Ref>> clients() async {
+  Future<List<OptRef>> clients() async {
     final d = await sb.from('client_accounts').select('id,business_name').order('business_name');
-    return (d as List).map((e) => Ref(e['id'] as String, (e['business_name'] ?? '') as String)).toList();
+    return (d as List).map((e) => OptRef(e['id'] as String, (e['business_name'] ?? '') as String)).toList();
   }
-  Future<List<Ref>> pms() async {
+  Future<List<OptRef>> pms() async {
     final d = await sb.from('profiles').select('id,full_name').eq('role', 'pm').order('full_name');
-    return (d as List).map((e) => Ref(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
+    return (d as List).map((e) => OptRef(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
   }
 
   /// Insert a project then generate its stages + schedule (fn_onboard_project).
@@ -85,6 +85,6 @@ class AdminRepo {
 }
 
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
-final templatesProvider = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).templates());
-final clientsProvider   = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).clients());
-final pmsProvider       = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).pms());
+final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
+final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
+final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());

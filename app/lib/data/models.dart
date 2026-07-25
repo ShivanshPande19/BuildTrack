@@ -33,9 +33,10 @@ class OrderDue {
 }
 
 /// Lightweight id+label option (for dropdowns: templates, clients, PMs).
-class Ref {
+/// Named OptRef to avoid clashing with Riverpod's `Ref`.
+class OptRef {
   final String id, label;
-  Ref(this.id, this.label);
+  OptRef(this.id, this.label);
 }
 
 /// Aggregated data for the Admin fleet dashboard.

@@ -16,7 +16,7 @@ class OnboardProject extends ConsumerStatefulWidget {
 class _OnboardProjectState extends ConsumerState<OnboardProject> {
   final _code = TextEditingController();
   final _name = TextEditingController();
-  Ref? _template, _client, _pm;
+  OptRef? _template, _client, _pm;
   DateTime? _target;
   bool _saving = false;
   String? _error;
@@ -88,7 +88,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
     ),
   );
 
-  Widget _dropdown(String label, AsyncValue<List<Ref>> options, Ref? value, ValueChanged<Ref?> onChanged) => Padding(
+  Widget _dropdown(String label, AsyncValue<List<OptRef>> options, OptRef? value, ValueChanged<OptRef?> onChanged) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Container(
       decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
@@ -96,7 +96,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
       child: options.when(
         loading: () => const Padding(padding: EdgeInsets.all(14), child: Text('Loading…', style: TextStyle(color: BT.mut))),
         error: (e, _) => Padding(padding: const EdgeInsets.all(14), child: Text('Error loading $label', style: const TextStyle(color: BT.coral))),
-        data: (list) => DropdownButtonHideUnderline(child: DropdownButton<Ref>(
+        data: (list) => DropdownButtonHideUnderline(child: DropdownButton<OptRef>(
           isExpanded: true, value: value, hint: Text(label, style: const TextStyle(color: BT.mut, fontSize: 14)),
           items: list.map((r) => DropdownMenuItem(value: r, child: Text(r.label))).toList(),
           onChanged: onChanged)),
