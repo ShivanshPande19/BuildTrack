@@ -79,8 +79,10 @@ Build these as **shared** methods so no role re-implements them:
 | Dashboard | projects, v_order_due | — | projects onboarded |
 | Onboard project | templates, clients, PMs | projects, stages, requirements | master data (templates/items/vendors) |
 | Projects / detail | projects, stages | project fields | — |
-| Team / Add member | profiles | profiles (create+role) | — |
+| Team / Add member | profiles | profiles (create+role); **if role=client → also create client_account** (contact_user_id = new user) | — |
 | Analytics | projects, delay_logs, vendors | — | data over time |
+
+> **Client sourcing rule:** clients are **not** created inline during onboarding. When Admin adds a user with `role='client'`, a `client_account` is created and linked. The onboarding **Client dropdown lists those existing client accounts** only.
 
 ### Procurement
 | Screen | Reads | Writes | Depends on |

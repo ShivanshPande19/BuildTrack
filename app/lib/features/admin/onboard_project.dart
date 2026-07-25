@@ -54,29 +54,6 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
     }
   }
 
-  Future<void> _newClient() async {
-    final ctrl = TextEditingController();
-    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
-      backgroundColor: BT.card,
-      title: const Text('New client'),
-      content: TextField(controller: ctrl, autofocus: true,
-        decoration: const InputDecoration(hintText: 'Business name')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Add')),
-      ],
-    ));
-    if (ok == true && ctrl.text.trim().isNotEmpty) {
-      try {
-        final created = await ref.read(adminRepoProvider).createClient(ctrl.text.trim(), null);
-        ref.invalidate(clientsProvider);
-        if (mounted) setState(() => _client = created);
-      } catch (e) {
-        if (mounted) setState(() => _error = 'Client add failed: $e');
-      }
-    }
-  }
-
   Widget _newBtn(VoidCallback onTap) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: GestureDetector(onTap: onTap, child: Container(
@@ -114,11 +91,10 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
             const SizedBox(width: 8),
             _newBtn(_newTemplate),
           ]),
-          Row(children: [
-            Expanded(child: _dropdown('Client (optional)', clients, _client, (v) => setState(() => _client = v))),
-            const SizedBox(width: 8),
-            _newBtn(_newClient),
-          ]),
+          _dropdown('Client', clients, _client, (v) => setState(() => _client = v)),
+          const Padding(padding: EdgeInsets.only(left: 4, bottom: 12, top: 2),
+            child: Text('Clients appear here once added as users (Team → Add member).',
+              style: TextStyle(color: BT.mut2, fontSize: 11.5))),
           _dropdown('Project manager (optional)', pms, _pm, (v) => setState(() => _pm = v)),
           _dateField(),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8),
