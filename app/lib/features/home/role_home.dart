@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../shared/widgets.dart';
+import '../admin/admin_dashboard.dart';
 
 /// After login the app routes here and renders the shell for the user's role.
 /// The 72 designed screens plug into each role's shell (Phase-1 build).
@@ -32,6 +33,8 @@ class RoleHome extends StatelessWidget {
       builder: (context, snap) {
         if (!snap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator(color: BT.ink)));
         final role = snap.data ?? 'client';
+        // Live, data-backed screens (Phase-1). Others use the role shell for now.
+        if (role == 'admin') return const AdminDashboard();
         final title = _titles[role] ?? 'Home';
         final nav = _navs[role] ?? _navs['client']!;
         return Scaffold(
