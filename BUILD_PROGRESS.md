@@ -17,11 +17,11 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ Dashboard (fleet, live)
 - ✅ **Onboard project** (create → auto stages + order-by) — live via fn_onboard_project
 - ✅ **Create custom template** (name + stages/durations → saved, selectable) + **add new client**
+- ✅ **Team & roles** (members list, role pills) — live via profiles
+- ✅ **Add member (assign role)** — via Edge Function `admin-create-member` (auth user + profile + client_account)
 - ⬜ Projects list
 - ⬜ Project detail
 - ⬜ Analytics
-- ⬜ Team & roles
-- ⬜ Add member (assign role)
 - ⬜ Notifications
 - ⬜ Profile
 
