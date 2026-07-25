@@ -5,11 +5,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 const supabaseUrl = String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://YOUR-PROJECT.supabase.co');
 const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'YOUR-ANON-KEY');
 
+/// Deep link that invite / password-recovery emails redirect back to.
+/// Must be registered in: iOS Info.plist + Android manifest + Supabase
+/// Dashboard → Authentication → URL Configuration → Redirect URLs.
+const inviteRedirectUrl = 'io.supabase.buildtrack://login-callback/';
+
 Future<void> initSupabase() async {
-  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  await Supabase.initialize(
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
+    authOptions: const FlutterAuthClientOptions(authFlowType: AuthFlowType.pkce),
+  );
 }
 
 SupabaseClient get sb => Supabase.instance.client;
+
+/// True when the signed-in user arrived via an invite / recovery link and
+/// still has to choose their own password.
+bool needsPasswordSet() =>
+    sb.auth.currentUser?.userMetadata?['needs_password'] == true;
 
 /// Fetch the signed-in user's role from `profiles`.
 Future<String?> fetchMyRole() async {

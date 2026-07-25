@@ -91,14 +91,16 @@ class AdminRepo {
     return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// Create a member via the admin-create-member Edge Function (server-side, secure).
+  /// Invite a member via the admin-create-member Edge Function (server-side, secure).
+  /// Supabase emails an invite link; the member sets their own password on arrival.
   Future<void> createMember({
-    required String fullName, required String email, required String password,
+    required String fullName, required String email,
     String? phone, required String role, String? businessName,
   }) async {
     final res = await sb.functions.invoke('admin-create-member', body: {
-      'full_name': fullName, 'email': email, 'password': password,
+      'full_name': fullName, 'email': email,
       'phone': phone, 'role': role, 'business_name': businessName,
+      'redirect_to': inviteRedirectUrl,
     });
     final data = res.data;
     if (res.status != 200 || (data is Map && data['error'] != null)) {

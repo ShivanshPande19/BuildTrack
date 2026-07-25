@@ -39,21 +39,24 @@ Deno.serve(async (req) => {
 
     // 2) validate input
     const body = await req.json();
-    const { full_name, email, password, phone, role, business_name } = body ?? {};
-    if (!email || !password || !role) {
-      return json({ error: "email, password and role are required" }, 400);
+    const { full_name, email, phone, role, business_name, redirect_to } = body ?? {};
+    if (!email || !role) {
+      return json({ error: "email and role are required" }, 400);
     }
 
-    // 3) create the user + profile with elevated privileges
+    // 3) invite the user by email (Supabase sends the invite mail) + create profile.
+    //    No password is set here — the member sets their own via the invite link.
     const admin = createClient(url, serviceKey);
-    const { data: created, error: cErr } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true, user_metadata: { full_name },
+    const redirectTo = redirect_to ?? Deno.env.get("INVITE_REDIRECT_URL") ?? undefined;
+    const { data: invited, error: iErr } = await admin.auth.admin.inviteUserByEmail(email, {
+      data: { full_name, role, needs_password: true },
+      redirectTo,
     });
-    if (cErr) return json({ error: cErr.message }, 400);
-    const uid = created.user!.id;
+    if (iErr) return json({ error: iErr.message }, 400);
+    const uid = invited.user!.id;
 
     const { error: pErr } = await admin.from("profiles").insert({
-      id: uid, full_name, email, phone, role, status: "active", created_by: user.id,
+      id: uid, full_name, email, phone, role, status: "invited", created_by: user.id,
     });
     if (pErr) return json({ error: pErr.message }, 400);
 
