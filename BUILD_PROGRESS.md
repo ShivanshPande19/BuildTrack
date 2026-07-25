@@ -15,9 +15,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ## 1. Admin 🔨
 - ✅ Dashboard (fleet, live)
+- ✅ **Onboard project** (create → auto stages + order-by) — live via fn_onboard_project
 - ⬜ Projects list
 - ⬜ Project detail
-- ⬜ **Onboard project** (create → auto stages + order-by)
 - ⬜ Analytics
 - ⬜ Team & roles
 - ⬜ Add member (assign role)

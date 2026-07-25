@@ -54,3 +54,37 @@ final fleetProvider = FutureProvider<FleetData>((ref) async {
 
 final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
     ref.read(procurementRepoProvider).toOrder());
+
+/// Admin actions (onboarding + option lists).
+class AdminRepo {
+  Future<List<Ref>> templates() async {
+    final d = await sb.from('workflow_templates').select('id,name').order('name');
+    return (d as List).map((e) => Ref(e['id'] as String, (e['name'] ?? '') as String)).toList();
+  }
+  Future<List<Ref>> clients() async {
+    final d = await sb.from('client_accounts').select('id,business_name').order('business_name');
+    return (d as List).map((e) => Ref(e['id'] as String, (e['business_name'] ?? '') as String)).toList();
+  }
+  Future<List<Ref>> pms() async {
+    final d = await sb.from('profiles').select('id,full_name').eq('role', 'pm').order('full_name');
+    return (d as List).map((e) => Ref(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
+  }
+
+  /// Insert a project then generate its stages + schedule (fn_onboard_project).
+  Future<void> onboard({
+    required String code, required String name, required String templateId,
+    String? clientId, String? pmId, required DateTime target,
+  }) async {
+    final proj = await sb.from('projects').insert({
+      'code': code, 'name': name, 'template_id': templateId,
+      'client_account_id': clientId, 'pm_id': pmId,
+      'target_delivery_date': target.toIso8601String().split('T').first,
+    }).select('id').single();
+    await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+  }
+}
+
+final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
+final templatesProvider = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).templates());
+final clientsProvider   = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).clients());
+final pmsProvider       = FutureProvider<List<Ref>>((ref) => ref.read(adminRepoProvider).pms());

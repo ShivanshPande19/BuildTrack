@@ -32,6 +32,12 @@ class OrderDue {
   );
 }
 
+/// Lightweight id+label option (for dropdowns: templates, clients, PMs).
+class Ref {
+  final String id, label;
+  Ref(this.id, this.label);
+}
+
 /// Aggregated data for the Admin fleet dashboard.
 class FleetData {
   final List<Project> projects;

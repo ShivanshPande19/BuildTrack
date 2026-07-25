@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import 'onboard_project.dart';
 
 /// Admin — Fleet Monitor. Live data from Supabase (projects + v_order_due).
 class AdminDashboard extends ConsumerWidget {
@@ -48,9 +49,11 @@ class AdminDashboard extends ConsumerWidget {
           ),
         ),
       ),
-      bottomNavigationBar: const PillNav(
-        icons: [Icons.home_rounded, Icons.grid_view_rounded, Icons.people_rounded, Icons.bar_chart_rounded],
-        active: 0, activeLabel: 'Home'),
+      bottomNavigationBar: PillNav(
+        icons: const [Icons.home_rounded, Icons.grid_view_rounded, Icons.people_rounded, Icons.bar_chart_rounded],
+        active: 0, activeLabel: 'Home',
+        onAction: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const OnboardProject()))),
     );
   }
 
