@@ -70,6 +70,28 @@ class AdminRepo {
     return (d as List).map((e) => OptRef(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
   }
 
+  /// Create a custom workflow template + its stages.
+  Future<OptRef> createTemplate(String name, String? truckType, List<StageDraft> stages) async {
+    final t = await sb.from('workflow_templates')
+        .insert({'name': name, 'truck_type': truckType}).select('id,name').single();
+    final tid = t['id'] as String;
+    if (stages.isNotEmpty) {
+      final rows = <Map<String, dynamic>>[];
+      for (var i = 0; i < stages.length; i++) {
+        rows.add({'template_id': tid, 'name': stages[i].name, 'ord': i + 1, 'default_duration_days': stages[i].days});
+      }
+      await sb.from('template_stages').insert(rows);
+    }
+    return OptRef(tid, name);
+  }
+
+  /// Create a new client account.
+  Future<OptRef> createClient(String businessName, String? phone) async {
+    final c = await sb.from('client_accounts')
+        .insert({'business_name': businessName, 'phone': phone}).select('id,business_name').single();
+    return OptRef(c['id'] as String, c['business_name'] as String);
+  }
+
   /// Insert a project then generate its stages + schedule (fn_onboard_project).
   Future<void> onboard({
     required String code, required String name, required String templateId,

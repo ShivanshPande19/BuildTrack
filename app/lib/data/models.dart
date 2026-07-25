@@ -34,9 +34,21 @@ class OrderDue {
 
 /// Lightweight id+label option (for dropdowns: templates, clients, PMs).
 /// Named OptRef to avoid clashing with Riverpod's `Ref`.
+/// Equality by id so a freshly-created option still matches after a list refresh.
 class OptRef {
   final String id, label;
   OptRef(this.id, this.label);
+  @override
+  bool operator ==(Object other) => other is OptRef && other.id == id;
+  @override
+  int get hashCode => id.hashCode;
+}
+
+/// One stage while building a custom workflow template.
+class StageDraft {
+  String name;
+  int days;
+  StageDraft(this.name, this.days);
 }
 
 /// Aggregated data for the Admin fleet dashboard.

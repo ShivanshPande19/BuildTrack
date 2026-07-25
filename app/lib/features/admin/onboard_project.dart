@@ -4,6 +4,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import 'create_template.dart';
 
 /// Admin — Onboard a new project. Creates the project, then generates its
 /// stages + backward-scheduled dates via fn_onboard_project.
@@ -44,6 +45,51 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
     }
   }
 
+  Future<void> _newTemplate() async {
+    final created = await Navigator.push<OptRef>(
+      context, MaterialPageRoute(builder: (_) => const CreateTemplate()));
+    if (created != null && mounted) {
+      ref.invalidate(templatesProvider);
+      setState(() => _template = created);
+    }
+  }
+
+  Future<void> _newClient() async {
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+      backgroundColor: BT.card,
+      title: const Text('New client'),
+      content: TextField(controller: ctrl, autofocus: true,
+        decoration: const InputDecoration(hintText: 'Business name')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Add')),
+      ],
+    ));
+    if (ok == true && ctrl.text.trim().isNotEmpty) {
+      try {
+        final created = await ref.read(adminRepoProvider).createClient(ctrl.text.trim(), null);
+        ref.invalidate(clientsProvider);
+        if (mounted) setState(() => _client = created);
+      } catch (e) {
+        if (mounted) setState(() => _error = 'Client add failed: $e');
+      }
+    }
+  }
+
+  Widget _newBtn(VoidCallback onTap) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: GestureDetector(onTap: onTap, child: Container(
+      height: 52, padding: const EdgeInsets.symmetric(horizontal: 14), alignment: Alignment.center,
+      decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(14)),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.add, size: 16, color: Colors.white),
+        SizedBox(width: 4),
+        Text('New', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+      ]),
+    )),
+  );
+
   @override
   Widget build(BuildContext context) {
     final templates = ref.watch(templatesProvider);
@@ -63,8 +109,16 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
           const SizedBox(height: 20),
           _text('Project code', _code, hint: 'AZ-142'),
           _text('Truck name', _name, hint: 'Juice Express'),
-          _dropdown('Workflow template', templates, _template, (v) => setState(() => _template = v)),
-          _dropdown('Client (optional)', clients, _client, (v) => setState(() => _client = v)),
+          Row(children: [
+            Expanded(child: _dropdown('Workflow template', templates, _template, (v) => setState(() => _template = v))),
+            const SizedBox(width: 8),
+            _newBtn(_newTemplate),
+          ]),
+          Row(children: [
+            Expanded(child: _dropdown('Client (optional)', clients, _client, (v) => setState(() => _client = v))),
+            const SizedBox(width: 8),
+            _newBtn(_newClient),
+          ]),
           _dropdown('Project manager (optional)', pms, _pm, (v) => setState(() => _pm = v)),
           _dateField(),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 8),

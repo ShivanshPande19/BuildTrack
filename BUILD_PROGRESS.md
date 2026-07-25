@@ -16,6 +16,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ## 1. Admin 🔨
 - ✅ Dashboard (fleet, live)
 - ✅ **Onboard project** (create → auto stages + order-by) — live via fn_onboard_project
+- ✅ **Create custom template** (name + stages/durations → saved, selectable) + **add new client**
 - ⬜ Projects list
 - ⬜ Project detail
 - ⬜ Analytics
