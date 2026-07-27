@@ -377,3 +377,22 @@ class RecallRow {
     status: m['status'] as String?,
   );
 }
+
+
+/// A stage assigned to the signed-in workshop member (their task).
+class WorkshopTask {
+  final String stageId, stageName, status, projectId, projectCode, projectName;
+  WorkshopTask({required this.stageId, required this.stageName, required this.status,
+    required this.projectId, required this.projectCode, required this.projectName});
+  factory WorkshopTask.fromMap(Map<String, dynamic> m) {
+    final pr = m['projects'] as Map<String, dynamic>?;
+    return WorkshopTask(
+      stageId: m['id'] as String,
+      stageName: m['name'] as String? ?? '',
+      status: m['status'] as String? ?? 'todo',
+      projectId: m['project_id'] as String? ?? '',
+      projectCode: pr?['code'] as String? ?? '',
+      projectName: pr?['name'] as String? ?? '',
+    );
+  }
+}

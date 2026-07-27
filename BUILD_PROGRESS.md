@@ -53,8 +53,17 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ Notifications · Profile (shared common)
 - ⬜ Receive/GRN link from Procurement (round 2)
 
-## 4. Workshop ⬜  *(Hero #2 — install)*
-- ⬜ My Tasks · Task detail · Add photo · Scan to install · Components · Mark complete · My week · Notifications · Profile
+## 4. Workshop 🔨  *(Hero #2 — install)*
+- ✅ **Tab shell** (Tasks · Parts · Week) + bell/avatar + scan FAB
+- ✅ **My Tasks** (stages assigned to me: in-progress + queued)
+- ✅ **Task detail** (checklist toggle, progress, photo, install, submit)
+- ✅ **Scan to install** (in-stock component → install into truck/stage — Hero #2)
+- ✅ **Add photo** (attach work photo + note to stage)
+- ✅ **Mark complete → Submit for approval** (creates stage_approval → PM Approvals)
+- ✅ **Components** (parts installed on my trucks) · **My Week**
+- ✅ Notifications · Profile (shared common)
+
+**Chain live:** Store logs component (in-stock) → Workshop scan-to-install → assigned to truck/stage → traceable + recall-able. Workshop submits → PM approves → stage done → progress updates.
 
 ## 5. Project Manager 🔨  *(owns build planning)*
 - ✅ **Tab shell** (My Builds · Projects · Schedule · Team) + bell/avatar

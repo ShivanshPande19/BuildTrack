@@ -375,6 +375,77 @@ final stockProvider = FutureProvider<List<StockRow>>((ref) {
 final recallProvider = FutureProvider.family<List<RecallRow>, String>(
     (ref, itemId) => ref.read(storeRepoProvider).recall(itemId));
 
+/// Workshop — stages assigned to me, install parts (Hero #2), submit for approval.
+class WorkshopRepo {
+  String? get _uid => sb.auth.currentUser?.id;
+
+  Future<List<WorkshopTask>> myTasks() async {
+    final uid = _uid;
+    if (uid == null) return [];
+    final d = await sb.from('stages')
+        .select('id,name,status,project_id,projects(code,name)')
+        .eq('assignee_id', uid).order('ord', ascending: true);
+    return (d as List).map((e) => WorkshopTask.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> toggleChecklist(String id, bool done) async {
+    await sb.from('checklist_items').update({'done': done}).eq('id', id);
+  }
+
+  /// Components sitting in store (available to install).
+  Future<List<ComponentRow>> inStock() async {
+    final d = await sb.from('component_instances').select(StoreRepo._compSelect)
+        .eq('status', 'in_stock').order('serial_number', ascending: true);
+    return (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Install a component into a truck+stage (Hero #2 install side).
+  Future<void> installComponent(String componentId, String stageId, String projectId) async {
+    await sb.from('component_instances').update({
+      'status': 'installed', 'installed_in_project_id': projectId, 'installed_stage_id': stageId,
+      'installed_by': _uid, 'install_date': DateTime.now().toIso8601String().split('T').first,
+    }).eq('id', componentId);
+  }
+
+  /// Submit a stage completion for PM approval.
+  Future<void> submitForApproval(String stageId) async {
+    await sb.from('stage_approvals').insert({'stage_id': stageId, 'submitted_by': _uid, 'status': 'pending'});
+  }
+
+  /// Add a stage photo (demo placeholder image + caption).
+  Future<void> addStagePhoto(String stageId, String caption) async {
+    await sb.from('attachments').insert({
+      'owner_type': 'stage', 'owner_id': stageId, 'uploaded_by': _uid,
+      'file_url': 'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/600/400',
+      'caption': caption.isEmpty ? 'Work photo' : caption,
+    });
+  }
+
+  Future<List<ComponentRow>> installedForProjects(List<String> projectIds) async {
+    if (projectIds.isEmpty) return [];
+    final d = await sb.from('component_instances').select(StoreRepo._compSelect)
+        .inFilter('installed_in_project_id', projectIds);
+    return (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+}
+
+final workshopRepoProvider = Provider<WorkshopRepo>((ref) => WorkshopRepo());
+final myTasksProvider = FutureProvider<List<WorkshopTask>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(workshopRepoProvider).myTasks();
+});
+final inStockProvider = FutureProvider<List<ComponentRow>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(workshopRepoProvider).inStock();
+});
+final workshopPartsProvider = FutureProvider<List<ComponentRow>>((ref) async {
+  ref.watch(authStateProvider);
+  final repo = ref.read(workshopRepoProvider);
+  final tasks = await repo.myTasks();
+  final ids = tasks.map((t) => t.projectId).toSet().toList();
+  return repo.installedForProjects(ids);
+});
+
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
   Future<List<OptRef>> templates() async {
