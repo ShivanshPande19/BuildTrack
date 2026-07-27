@@ -241,14 +241,17 @@ final projectsRepoProvider = Provider<ProjectsRepo>((ref) => ProjectsRepo());
 final procurementRepoProvider = Provider<ProcurementRepo>((ref) => ProcurementRepo());
 
 final fleetProvider = FutureProvider<FleetData>((ref) async {
+  ref.watch(authStateProvider);
   final repo = ref.read(projectsRepoProvider);
   final projects = await repo.all();
   final due = await repo.orderDue();
   return FleetData(projects, due);
 });
 
-final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
-    ref.read(procurementRepoProvider).toOrder());
+final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async {
+  ref.watch(authStateProvider);
+  return ref.read(procurementRepoProvider).toOrder();
+});
 
 final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
     (ref) => ref.read(procurementRepoProvider).purchaseOrders());
@@ -274,8 +277,10 @@ final requirementsProvider = FutureProvider.family<List<Requirement>, String>(
     (ref, projectId) => ref.read(projectsRepoProvider).requirements(projectId));
 
 /// Execution staff a PM can assign stages to (workshop/design/store/service).
-final assignableMembersProvider = FutureProvider<List<Member>>(
-    (ref) => ref.read(projectsRepoProvider).assignableMembers());
+final assignableMembersProvider = FutureProvider<List<Member>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(projectsRepoProvider).assignableMembers();
+});
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
@@ -426,18 +431,31 @@ class PmRepo {
 }
 
 final pmRepoProvider = Provider<PmRepo>((ref) => PmRepo());
-final myProjectsProvider = FutureProvider<List<Project>>((ref) => ref.read(pmRepoProvider).myProjects());
+
+// Auth-aware: re-fetch when the signed-in user changes, so data is correct
+// immediately after login (no manual refresh needed).
+final myProjectsProvider = FutureProvider<List<Project>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(pmRepoProvider).myProjects();
+});
 final pmDashboardProvider = FutureProvider<({List<Project> projects, List<ActiveStage> stages})>((ref) async {
+  ref.watch(authStateProvider);
   final repo = ref.read(pmRepoProvider);
   final projects = await repo.myProjects();
   final stages = await repo.activeStages(projects);
   return (projects: projects, stages: stages);
 });
-final baysProvider = FutureProvider<List<BayRow>>((ref) => ref.read(pmRepoProvider).bays());
-final workloadProvider = FutureProvider<Map<String, int>>((ref) => ref.read(pmRepoProvider).workload());
+final baysProvider = FutureProvider<List<BayRow>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(pmRepoProvider).bays();
+});
+final workloadProvider = FutureProvider<Map<String, int>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(pmRepoProvider).workload();
+});
 
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
-final membersProvider   = FutureProvider<List<Member>>((ref) => ref.read(adminRepoProvider).members());
+final membersProvider   = FutureProvider<List<Member>>((ref) { ref.watch(authStateProvider); return ref.read(adminRepoProvider).members(); });
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
