@@ -19,9 +19,9 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Create custom template** (name + stages/durations → saved, selectable) + **add new client**
 - ✅ **Team & roles** (members list, role pills) — live via profiles
 - ✅ **Add member (assign role)** — via Edge Function `admin-create-member` (auth user + profile + client_account)
-- ⬜ Projects list
-- ⬜ Project detail
-- ⬜ Analytics
+- ✅ **Projects list** (tab + status filters, tappable rows)
+- ✅ **Project detail** (progress + delivery + build-stage timeline)
+- ✅ **Analytics / Insights** (on-track %, counts, fleet distribution)
 - ⬜ Notifications
 - ⬜ Profile
 
