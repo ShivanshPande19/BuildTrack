@@ -173,7 +173,7 @@ class RecallCheckScreen extends ConsumerWidget {
                       ])),
                       StatusPill(r.status == 'installed' ? 'Notify' : (r.status ?? ''),
                         color: r.status == 'faulty' ? BT.coral : BT.amber),
-                    ]))),
+                    ])))),
                   const SizedBox(height: 6),
                   PrimaryButton('Notify all ${rows.length}', icon: Icons.notifications_active_rounded,
                     bg: BT.ink, fg: BT.card, onTap: () {
