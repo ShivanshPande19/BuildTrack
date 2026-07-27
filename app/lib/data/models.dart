@@ -285,3 +285,22 @@ class Requirement {
     );
   }
 }
+
+
+/// A workshop bay (Schedule screen) — busy if it holds a current stage.
+class BayRow {
+  final String id, name;
+  final bool busy;
+  BayRow({required this.id, required this.name, required this.busy});
+  factory BayRow.fromMap(Map<String, dynamic> m) => BayRow(
+    id: m['id'] as String,
+    name: m['name'] as String? ?? 'Bay',
+    busy: m['current_stage_id'] != null,
+  );
+}
+
+/// A PM "today" in-progress stage (project code + stage name).
+class ActiveStage {
+  final String id, name, projectCode;
+  ActiveStage({required this.id, required this.name, required this.projectCode});
+}

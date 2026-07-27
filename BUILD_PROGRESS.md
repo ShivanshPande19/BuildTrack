@@ -48,8 +48,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 ## 4. Workshop ⬜  *(Hero #2 — install)*
 - ⬜ My Tasks · Task detail · Add photo · Scan to install · Components · Mark complete · My week · Notifications · Profile
 
-## 5. Project Manager ⬜
-- ⬜ Dashboard · Projects · Project detail · Assign task · Schedule/bays · Team workload · Approvals · Notifications · Profile
+## 5. Project Manager 🔨  *(owns build planning)*
+- ✅ **Tab shell** (My Builds · Projects · Schedule · Team) + bell/avatar
+- ✅ **My Builds** dashboard (assigned counts, needs-you, today's stages) — pm-scoped
+- ✅ **My Projects** (pm_id = me, filters) → project detail with **editable Materials**
+- ✅ **Schedule** (workshop bays: busy/free)
+- ✅ **Team** (workload — in-progress task count per member)
+- ✅ Notifications · Profile (shared common)
+- ⬜ Assign task · Approvals · Edit timeline · Create Template+BOM — PM turn 2
+
+> Note: PM sees projects where `pm_id = me`. Assign a PM in Onboard Project (PM dropdown) or set `projects.pm_id` to test.
 
 ## 6. Client ⬜
 - ⬜ My Trucks · Truck dashboard · Build journey · Photos · Approve design · Documents · Raise request · Support · Notifications · Profile

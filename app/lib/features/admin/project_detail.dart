@@ -12,7 +12,8 @@ import 'project_requirements.dart';
 class ProjectDetailScreen extends ConsumerWidget {
   final String projectId;
   final Project? initial; // for an instant header while stages load
-  const ProjectDetailScreen({super.key, required this.projectId, this.initial});
+  final bool materialsEditable; // PM opens editable; Admin monitors (read-only)
+  const ProjectDetailScreen({super.key, required this.projectId, this.initial, this.materialsEditable = false});
 
   static final _fmt = DateFormat('d MMM');
   String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -106,7 +107,8 @@ class ProjectDetailScreen extends ConsumerWidget {
       GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ProjectRequirementsScreen(projectId: projectId, projectCode: d.project.code))),
+          builder: (_) => ProjectRequirementsScreen(
+            projectId: projectId, projectCode: d.project.code, editable: materialsEditable))),
         child: AppCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           child: Row(children: [

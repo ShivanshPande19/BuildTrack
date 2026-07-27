@@ -351,6 +351,62 @@ final notificationsRepoProvider = Provider<NotificationsRepo>((ref) => Notificat
 final notificationsProvider = FutureProvider<List<AppNotification>>(
     (ref) => ref.read(notificationsRepoProvider).all());
 
+/// Project Manager — builds assigned to the signed-in PM, schedule, workload.
+class PmRepo {
+  String? get _uid => sb.auth.currentUser?.id;
+
+  Future<List<Project>> myProjects() async {
+    final uid = _uid;
+    if (uid == null) return [];
+    final d = await sb.from('projects')
+        .select('id,code,name,status,progress_pct')
+        .eq('pm_id', uid).order('code', ascending: true);
+    return (d as List).map((e) => Project.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// In-progress stages across the PM's projects (dashboard "today").
+  Future<List<ActiveStage>> activeStages(List<Project> projects) async {
+    if (projects.isEmpty) return [];
+    final ids = projects.map((p) => p.id).toList();
+    final codeById = {for (final p in projects) p.id: p.code};
+    final d = await sb.from('stages')
+        .select('id,name,project_id')
+        .eq('status', 'in_progress').inFilter('project_id', ids);
+    return (d as List).map((e) => ActiveStage(
+      id: e['id'] as String,
+      name: e['name'] as String? ?? '',
+      projectCode: codeById[e['project_id']] ?? '',
+    )).toList();
+  }
+
+  Future<List<BayRow>> bays() async {
+    final d = await sb.from('bays').select('id,name,current_stage_id').order('name', ascending: true);
+    return (d as List).map((e) => BayRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// assignee_id → count of in-progress stages (workload).
+  Future<Map<String, int>> workload() async {
+    final d = await sb.from('stages').select('assignee_id').eq('status', 'in_progress');
+    final m = <String, int>{};
+    for (final r in (d as List)) {
+      final a = r['assignee_id'] as String?;
+      if (a != null) m[a] = (m[a] ?? 0) + 1;
+    }
+    return m;
+  }
+}
+
+final pmRepoProvider = Provider<PmRepo>((ref) => PmRepo());
+final myProjectsProvider = FutureProvider<List<Project>>((ref) => ref.read(pmRepoProvider).myProjects());
+final pmDashboardProvider = FutureProvider<({List<Project> projects, List<ActiveStage> stages})>((ref) async {
+  final repo = ref.read(pmRepoProvider);
+  final projects = await repo.myProjects();
+  final stages = await repo.activeStages(projects);
+  return (projects: projects, stages: stages);
+});
+final baysProvider = FutureProvider<List<BayRow>>((ref) => ref.read(pmRepoProvider).bays());
+final workloadProvider = FutureProvider<Map<String, int>>((ref) => ref.read(pmRepoProvider).workload());
+
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
 final membersProvider   = FutureProvider<List<Member>>((ref) => ref.read(adminRepoProvider).members());
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
