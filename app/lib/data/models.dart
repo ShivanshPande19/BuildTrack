@@ -198,3 +198,67 @@ class AppNotification {
     createdAt: parseDate(m['created_at']),
   );
 }
+
+
+/// A purchase order row (list + detail header).
+class PurchaseOrder {
+  final String id, poNumber, status; // status: ordered | dispatched | received | partial
+  final String? vendorName, projectCode;
+  final int itemCount;
+  final DateTime? orderDate, expectedDate;
+  PurchaseOrder({required this.id, required this.poNumber, required this.status,
+    this.vendorName, this.projectCode, this.itemCount = 0, this.orderDate, this.expectedDate});
+  factory PurchaseOrder.fromMap(Map<String, dynamic> m) {
+    final v = m['vendors'] as Map<String, dynamic>?;
+    final p = m['projects'] as Map<String, dynamic>?;
+    final lines = m['po_lines'];
+    return PurchaseOrder(
+      id: m['id'] as String,
+      poNumber: m['po_number'] as String? ?? '',
+      status: m['status'] as String? ?? 'ordered',
+      vendorName: v?['name'] as String?,
+      projectCode: p?['code'] as String?,
+      itemCount: lines is List ? lines.length : 0,
+      orderDate: parseDate(m['order_date']),
+      expectedDate: parseDate(m['expected_date']),
+    );
+  }
+}
+
+/// A single line in a purchase order.
+class PoLineItem {
+  final String name;
+  final int qty, receivedQty;
+  PoLineItem({required this.name, required this.qty, required this.receivedQty});
+  factory PoLineItem.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    return PoLineItem(
+      name: ic?['name'] as String? ?? 'Item',
+      qty: (m['qty'] as num?)?.toInt() ?? 1,
+      receivedQty: (m['received_qty'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+/// PO header + its line items.
+class PoDetail {
+  final PurchaseOrder po;
+  final List<PoLineItem> items;
+  PoDetail(this.po, this.items);
+}
+
+/// A vendor row with reliability + lead time.
+class VendorRow {
+  final String id, name;
+  final String? category;
+  final int avgLead, reliability;
+  VendorRow({required this.id, required this.name, this.category,
+    this.avgLead = 0, this.reliability = 100});
+  factory VendorRow.fromMap(Map<String, dynamic> m) => VendorRow(
+    id: m['id'] as String,
+    name: m['name'] as String? ?? '',
+    category: m['category'] as String?,
+    avgLead: (m['avg_lead_time_days'] as num?)?.toInt() ?? 0,
+    reliability: (m['reliability_score'] as num?)?.toInt() ?? 100,
+  );
+}

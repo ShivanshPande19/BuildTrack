@@ -6,7 +6,7 @@ import '../../core/theme.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../admin/admin_dashboard.dart';
-import '../procurement/to_order.dart';
+import '../procurement/procurement_home.dart';
 
 /// After login the app routes here and renders the shell for the user's role.
 /// The 72 designed screens plug into each role's shell (Phase-1 build).
@@ -42,7 +42,7 @@ class RoleHome extends ConsumerWidget {
         final role = role0 ?? 'client';
         // Live, data-backed screens (Phase-1). Others use the role shell for now.
         if (role == 'admin') return const AdminDashboard();
-        if (role == 'procurement') return const ProcurementToOrder();
+        if (role == 'procurement') return const ProcurementHome();
         final title = _titles[role] ?? 'Home';
         final nav = _navs[role] ?? _navs['client']!;
         return Scaffold(

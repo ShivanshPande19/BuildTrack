@@ -29,12 +29,18 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 **→ ADMIN ROLE COMPLETE (Phase-1)**
 
 ## 2. Procurement 🔨  *(Hero #1)*
-- ✅ To-Order + Create PO (live)
-- ⬜ Purchase Orders list
-- ⬜ PO detail (status stepper)
-- ⬜ Receive / GRN
-- ⬜ Vendors + vendor detail
-- ⬜ Notifications · Profile
+- ✅ **Tab shell** (To Order · Orders · Receive · Vendors) with bell/avatar
+- ✅ **To Order** (hero order-today card + upcoming list + Create PO inline)
+- ✅ **Orders list** (status filters, tappable → detail)
+- ✅ **PO detail** (Ordered→Dispatched→Received stepper + items + Mark received → GRN)
+- ✅ **Receive** (incoming POs, Receive & verify)
+- ✅ **Vendors** (reliability score + lead time)
+- ✅ **Notifications · Profile** (shared `common/` screens, reused)
+- ⬜ Vendor detail (pr7) · manual New PO (pr4) — round 2
+
+## Shared / common
+- ✅ `common/notifications.dart`, `common/profile.dart` — reused across roles
+- ✅ `EmptyState` widget — friendly placeholders everywhere
 
 ## 3. Store ⬜  *(Hero #2 — intake)*
 - ⬜ Inbox · Receive/GRN · Log component · Inventory · Components search · Component detail · Recall · Notifications · Profile

@@ -85,6 +85,46 @@ class ProcurementRepo {
     return (data as List).map((e) => OrderDue.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  static const _poSelect =
+      'id,po_number,status,order_date,expected_date,vendors(name),projects(code),po_lines(id)';
+
+  /// All purchase orders (newest first).
+  Future<List<PurchaseOrder>> purchaseOrders() async {
+    final d = await sb.from('purchase_orders').select(_poSelect).order('po_number', ascending: false);
+    return (d as List).map((e) => PurchaseOrder.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// One PO with its line items.
+  Future<PoDetail> poDetail(String id) async {
+    final po = await sb.from('purchase_orders').select(_poSelect).eq('id', id).single();
+    final lines = await sb.from('po_lines')
+        .select('qty,received_qty,item_catalog(name)').eq('po_id', id);
+    return PoDetail(
+      PurchaseOrder.fromMap(po),
+      (lines as List).map((e) => PoLineItem.fromMap(e as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  /// Mark a PO received: status→received, lines fully received, GRN logged,
+  /// linked requirements closed. (Store then logs individual components at intake.)
+  Future<void> markReceived(String poId) async {
+    await sb.from('purchase_orders').update({'status': 'received'}).eq('id', poId);
+    final lines = await sb.from('po_lines').select('id,qty').eq('po_id', poId);
+    for (final l in (lines as List)) {
+      await sb.from('po_lines').update({'received_qty': l['qty']}).eq('id', l['id']);
+    }
+    await sb.from('goods_receipts').insert({'po_id': poId, 'status': 'complete'});
+    await sb.from('procurement_requirements').update({'status': 'received'}).eq('po_id', poId);
+  }
+
+  /// Vendors with reliability + lead time.
+  Future<List<VendorRow>> vendors() async {
+    final d = await sb.from('vendors')
+        .select('id,name,category,avg_lead_time_days,reliability_score')
+        .order('name', ascending: true);
+    return (d as List).map((e) => VendorRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   /// Create a PO for a due requirement + mark it ordered.
   Future<void> createPO(OrderDue d) async {
     final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
@@ -113,6 +153,13 @@ final fleetProvider = FutureProvider<FleetData>((ref) async {
 
 final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
     ref.read(procurementRepoProvider).toOrder());
+
+final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
+    (ref) => ref.read(procurementRepoProvider).purchaseOrders());
+final poDetailProvider = FutureProvider.family<PoDetail, String>(
+    (ref, id) => ref.read(procurementRepoProvider).poDetail(id));
+final vendorsProvider = FutureProvider<List<VendorRow>>(
+    (ref) => ref.read(procurementRepoProvider).vendors());
 
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(

@@ -8,8 +8,8 @@ import '../../shared/widgets.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
 import 'project_detail.dart';
-import 'notifications.dart';
-import 'profile.dart';
+import '../common/notifications.dart';
+import '../common/profile.dart';
 
 /// Admin shell — one Scaffold, a fixed floating PillNav, and an IndexedStack
 /// body so tapping the nav swaps the *content* in place (no new sheet slides in).
