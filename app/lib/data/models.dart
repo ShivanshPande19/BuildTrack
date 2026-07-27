@@ -78,3 +78,41 @@ class FleetData {
   /// Items whose order-by date is near/overdue — the "needs attention" feed.
   List<OrderDue> get urgent => due.where((d) => d.daysLeft <= 3).toList();
 }
+
+
+/// Safe date parser for nullable Supabase date columns.
+DateTime? parseDate(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+
+/// One build stage (stages row) shown on the project timeline.
+class Stage {
+  final String id, name, status; // status: todo | in_progress | done | rework
+  final int ord;
+  final DateTime? plannedStart, plannedEnd, actualStart, actualEnd;
+  Stage({required this.id, required this.name, required this.status, required this.ord,
+    this.plannedStart, this.plannedEnd, this.actualStart, this.actualEnd});
+  factory Stage.fromMap(Map<String, dynamic> m) => Stage(
+    id: m['id'] as String,
+    name: m['name'] as String? ?? '',
+    status: m['status'] as String? ?? 'todo',
+    ord: (m['ord'] as num?)?.toInt() ?? 0,
+    plannedStart: parseDate(m['planned_start']),
+    plannedEnd: parseDate(m['planned_end']),
+    actualStart: parseDate(m['actual_start']),
+    actualEnd: parseDate(m['actual_end']),
+  );
+}
+
+/// A project plus its stages — powers the Project detail screen.
+class ProjectDetailData {
+  final Project project;
+  final DateTime? targetDelivery;
+  final List<Stage> stages;
+  ProjectDetailData(this.project, this.targetDelivery, this.stages);
+
+  /// The stage to highlight: the one in progress, else the next to-do, else last.
+  Stage? get currentStage {
+    for (final s in stages) { if (s.status == 'in_progress') return s; }
+    for (final s in stages) { if (s.status == 'todo') return s; }
+    return stages.isNotEmpty ? stages.last : null;
+  }
+}

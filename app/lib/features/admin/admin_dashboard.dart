@@ -8,6 +8,7 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
+import 'project_detail.dart';
 
 /// Admin shell — one Scaffold, a fixed floating PillNav, and an IndexedStack
 /// body so tapping the nav swaps the *content* in place (no new sheet slides in).
@@ -352,7 +353,11 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     final s = _statusPill(p.status);
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
-      child: AppCard(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p))),
+        child: AppCard(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -375,6 +380,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
           Text('${p.progressPct}% complete',
             style: const TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600)),
         ]),
+        ),
       ),
     );
   }

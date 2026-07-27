@@ -17,6 +17,21 @@ class ProjectsRepo {
     final data = await sb.from('v_order_due').select();
     return (data as List).map((e) => OrderDue.fromMap(e as Map<String, dynamic>)).toList();
   }
+
+  /// A single project + its ordered build stages (Project detail screen).
+  Future<ProjectDetailData> detail(String id) async {
+    final p = await sb.from('projects')
+        .select('id,code,name,status,progress_pct,target_delivery_date')
+        .eq('id', id).single();
+    final st = await sb.from('stages')
+        .select('id,name,ord,status,planned_start,planned_end,actual_start,actual_end')
+        .eq('project_id', id).order('ord');
+    return ProjectDetailData(
+      Project.fromMap(p),
+      parseDate(p['target_delivery_date']),
+      (st as List).map((e) => Stage.fromMap(e as Map<String, dynamic>)).toList(),
+    );
+  }
 }
 
 /// Procurement actions (Hero #1).
@@ -54,6 +69,10 @@ final fleetProvider = FutureProvider<FleetData>((ref) async {
 
 final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
     ref.read(procurementRepoProvider).toOrder());
+
+/// Project detail (project + stages), keyed by project id.
+final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
+    (ref, id) => ref.read(projectsRepoProvider).detail(id));
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
