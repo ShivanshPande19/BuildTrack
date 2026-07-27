@@ -110,3 +110,52 @@ class PillNav extends StatelessWidget {
     ]),
   );
 }
+
+
+/// Friendly empty-state placeholder: a candy icon badge + title + hint.
+/// Used wherever a section has no data yet (photos, parts, checklist, lists…).
+class EmptyState extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Color tint;     // colour of the icon badge
+  final EdgeInsets padding;
+  const EmptyState({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.tint = BT.card2,
+    this.padding = const EdgeInsets.symmetric(vertical: 30, horizontal: 22),
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: padding,
+    decoration: BoxDecoration(
+      color: BT.card,
+      borderRadius: BorderRadius.circular(BT.radiusCard),
+      border: Border.all(color: BT.line),
+    ),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        width: 58, height: 58, alignment: Alignment.center,
+        decoration: BoxDecoration(color: tint.withOpacity(0.35), shape: BoxShape.circle),
+        child: Container(
+          width: 40, height: 40, alignment: Alignment.center,
+          decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
+          child: Icon(icon, size: 21, color: BT.ink),
+        ),
+      ),
+      const SizedBox(height: 13),
+      Text(title, textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700, color: BT.ink)),
+      if (subtitle != null) ...[
+        const SizedBox(height: 5),
+        Text(subtitle!, textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.4)),
+      ],
+    ]),
+  );
+}

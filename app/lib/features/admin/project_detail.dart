@@ -103,7 +103,10 @@ class ProjectDetailScreen extends ConsumerWidget {
 
       const SectionLabel('Build stages'),
       if (d.stages.isEmpty)
-        const AppCard(child: Text('No stages yet.', style: TextStyle(color: BT.mut, fontSize: 13)))
+        const EmptyState(
+          icon: Icons.timeline_rounded, tint: BT.amber,
+          title: 'No stages yet',
+          subtitle: 'Stages generate from the workflow template when the project is onboarded.')
       else
         ...List.generate(d.stages.length,
           (i) => _timelineTile(context, d.stages[i], i == d.stages.length - 1, d.project.code)),

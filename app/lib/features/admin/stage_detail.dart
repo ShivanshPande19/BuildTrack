@@ -105,7 +105,10 @@ class StageDetailScreen extends ConsumerWidget {
     // photos
     const SectionLabel('Photos'),
     if (b.photos.isEmpty)
-      _emptyNote('No photos uploaded for this stage yet.')
+      const EmptyState(
+        icon: Icons.photo_library_outlined, tint: BT.sky,
+        title: 'No photos yet',
+        subtitle: 'Workshop adds on-site photos as this stage progresses.')
     else
       SizedBox(height: 172, child: ListView.separated(
         scrollDirection: Axis.horizontal,
@@ -117,22 +120,26 @@ class StageDetailScreen extends ConsumerWidget {
     // installed parts
     const SectionLabel('Parts installed'),
     if (b.parts.isEmpty)
-      _emptyNote('No components logged against this stage yet.')
+      const EmptyState(
+        icon: Icons.inventory_2_outlined, tint: BT.lav,
+        title: 'No parts logged',
+        subtitle: 'Parts appear here once Store logs them and Workshop scans them in.')
     else
       ...b.parts.map(_partCard),
 
     // checklist
     const SectionLabel('Checklist'),
     if (b.checklist.isEmpty)
-      _emptyNote('No checklist items.')
+      const EmptyState(
+        icon: Icons.checklist_rounded, tint: BT.lime,
+        title: 'No checklist items',
+        subtitle: 'The workflow template fills a checklist for each stage.')
     else
       AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
         child: Column(children: b.checklist.map(_checkRow).toList()),
       ),
   ]);
-
-  Widget _emptyNote(String t) => AppCard(child: Text(t, style: const TextStyle(color: BT.mut, fontSize: 13)));
 
   Widget _photoCard(StagePhoto p) => ClipRRect(
     borderRadius: BorderRadius.circular(18),

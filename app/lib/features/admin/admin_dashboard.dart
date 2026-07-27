@@ -176,8 +176,10 @@ class _HomeTab extends ConsumerWidget {
       ),
       const SectionLabel('Needs attention'),
       if (f.urgent.isEmpty)
-        const AppCard(child: Text('All order-by dates are on track. 🎉',
-          style: TextStyle(color: BT.mut, fontSize: 13)))
+        const EmptyState(
+          icon: Icons.check_circle_outline_rounded, tint: BT.lime,
+          title: 'All caught up',
+          subtitle: 'Every order-by date is on track — nothing needs attention.')
       else
         ...f.urgent.map((d) => Padding(
           padding: const EdgeInsets.only(bottom: 11),
@@ -317,8 +319,10 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
               ),
               const SizedBox(height: 14),
               if (list.isEmpty)
-                const AppCard(child: Text('No projects in this filter.',
-                  style: TextStyle(color: BT.mut, fontSize: 13)))
+                const EmptyState(
+                  icon: Icons.grid_view_rounded, tint: BT.sky,
+                  title: 'Nothing here',
+                  subtitle: 'No projects match this filter.')
               else
                 ...list.map(_projectRow),
             ],
@@ -423,8 +427,10 @@ class _TeamTab extends ConsumerWidget {
                 style: const TextStyle(color: BT.mut, fontSize: 12.5)),
               const SizedBox(height: 18),
               if (list.isEmpty)
-                const AppCard(child: Text('No members yet. Tap + to add one.',
-                  style: TextStyle(color: BT.mut, fontSize: 13)))
+                const EmptyState(
+                  icon: Icons.people_outline_rounded, tint: BT.lav,
+                  title: 'No members yet',
+                  subtitle: 'Tap + to invite your first team member.')
               else
                 ...list.map(_memberRow),
             ],
