@@ -129,3 +129,25 @@ Build these as **shared** methods so no role re-implements them:
 
 ---
 *Keep this file updated whenever a role's screens or data flows change.*
+
+
+---
+
+## Stage Detail ("View details" per build stage) — data sources
+
+The Admin/PM Stage detail screen aggregates existing tables (no new tables added).
+When the owning role ships, its real data flows in automatically:
+
+| Section on screen | Table / column | Produced by (role) |
+|---|---|---|
+| Photos / images | `attachments` where `owner_type='stage'`, `owner_id=stage.id` | Workshop (uploads on-site photos) |
+| Parts installed (serial, warranty, vendor) | `component_instances` where `installed_stage_id=stage.id` (+ `item_catalog`, `vendors`) | Store logs at intake → Workshop "scan to install" sets `installed_stage_id` |
+| Checklist | `checklist_items` where `stage_id=stage.id` | Workshop ticks items |
+| Delays | `delay_logs` where `stage_id=stage.id` | PM / Workshop |
+| Assignee | `stages.assignee_id → profiles.full_name` | PM assigns |
+
+Project-level (NOT per-stage, shown on project overview instead):
+- `documents` (contract / invoice / warranty_pack / handover_cert) — Store/PM, client-visible when `available`.
+- `design_artifacts` + `design_versions` (layout/interior/exterior/branding) — Design role; surfaced on the design stage.
+
+Demo seed for testing before those roles exist: `supabase/seed_stage_demo.sql`.

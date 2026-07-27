@@ -24,12 +24,44 @@ class ProjectsRepo {
         .select('id,code,name,status,progress_pct,target_delivery_date')
         .eq('id', id).single();
     final st = await sb.from('stages')
-        .select('id,name,ord,status,planned_start,planned_end,actual_start,actual_end')
+        .select('id,name,ord,status,assignee_id,planned_start,planned_end,actual_start,actual_end')
         .eq('project_id', id).order('ord', ascending: true);
     return ProjectDetailData(
       Project.fromMap(p),
       parseDate(p['target_delivery_date']),
       (st as List).map((e) => Stage.fromMap(e as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
+  Future<StageBundle> stageBundle(String stageId) async {
+    final checklist = await sb.from('checklist_items')
+        .select('id,label,done').eq('stage_id', stageId).order('id', ascending: true);
+    final photos = await sb.from('attachments')
+        .select('file_url,caption')
+        .eq('owner_type', 'stage').eq('owner_id', stageId)
+        .order('created_at', ascending: true);
+    final parts = await sb.from('component_instances')
+        .select('serial_number,status,install_date,warranty_end,item_catalog(name,model),vendors(name)')
+        .eq('installed_stage_id', stageId);
+    final delays = await sb.from('delay_logs')
+        .select('reason_code,days_delayed,note').eq('stage_id', stageId);
+
+    // assignee name (best-effort)
+    String? assignee;
+    final srow = await sb.from('stages').select('assignee_id').eq('id', stageId).maybeSingle();
+    final aid = srow?['assignee_id'] as String?;
+    if (aid != null) {
+      final pr = await sb.from('profiles').select('full_name').eq('id', aid).maybeSingle();
+      assignee = pr?['full_name'] as String?;
+    }
+
+    return StageBundle(
+      assignee: assignee,
+      checklist: (checklist as List).map((e) => ChecklistItem.fromMap(e as Map<String, dynamic>)).toList(),
+      photos: (photos as List).map((e) => StagePhoto.fromMap(e as Map<String, dynamic>)).toList(),
+      parts: (parts as List).map((e) => StagePart.fromMap(e as Map<String, dynamic>)).toList(),
+      delays: (delays as List).map((e) => StageDelay.fromMap(e as Map<String, dynamic>)).toList(),
     );
   }
 }
@@ -73,6 +105,10 @@ final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async =>
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
     (ref, id) => ref.read(projectsRepoProvider).detail(id));
+
+/// Stage detail bundle (photos + parts + checklist + delays), keyed by stage id.
+final stageBundleProvider = FutureProvider.family<StageBundle, String>(
+    (ref, stageId) => ref.read(projectsRepoProvider).stageBundle(stageId));
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {

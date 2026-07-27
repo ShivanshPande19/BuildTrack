@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import 'stage_detail.dart';
 
 /// Admin — Project detail (a4): progress, delivery date and the build-stage timeline.
 class ProjectDetailScreen extends ConsumerWidget {
@@ -51,7 +52,7 @@ class ProjectDetailScreen extends ConsumerWidget {
               loading: () => _headerFromInitial(),
               error: (e, _) => AppCard(child: Text('Could not load project.\n$e',
                 style: const TextStyle(color: BT.coral, fontSize: 13))),
-              data: (d) => _content(d),
+              data: (d) => _content(context, d),
             ),
           ],
         ),
@@ -68,7 +69,7 @@ class ProjectDetailScreen extends ConsumerWidget {
     ])),
   );
 
-  Widget _content(ProjectDetailData d) {
+  Widget _content(BuildContext context, ProjectDetailData d) {
     final s = _status(d.project.status);
     final cur = d.currentStage;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -104,7 +105,8 @@ class ProjectDetailScreen extends ConsumerWidget {
       if (d.stages.isEmpty)
         const AppCard(child: Text('No stages yet.', style: TextStyle(color: BT.mut, fontSize: 13)))
       else
-        ...List.generate(d.stages.length, (i) => _timelineTile(d.stages[i], i == d.stages.length - 1)),
+        ...List.generate(d.stages.length,
+          (i) => _timelineTile(context, d.stages[i], i == d.stages.length - 1, d.project.code)),
     ]);
   }
 
@@ -135,7 +137,7 @@ class ProjectDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _timelineTile(Stage s, bool isLast) {
+  Widget _timelineTile(BuildContext context, Stage s, bool isLast, String code) {
     final done = s.status == 'done';
     final now = s.status == 'in_progress';
     final todo = s.status == 'todo';
@@ -176,6 +178,21 @@ class ProjectDetailScreen extends ConsumerWidget {
             color: todo ? BT.mut2 : BT.ink)),
           const SizedBox(height: 2),
           Text(subtitle, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
+          const SizedBox(height: 8),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => StageDetailScreen(stage: s, projectCode: code))),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('View details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: BT.ink)),
+                SizedBox(width: 3),
+                Icon(Icons.chevron_right_rounded, size: 16, color: BT.ink),
+              ]),
+            ),
+          ),
         ]),
       )),
     ]));

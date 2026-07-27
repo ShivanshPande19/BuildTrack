@@ -87,19 +87,82 @@ DateTime? parseDate(dynamic v) => v == null ? null : DateTime.tryParse(v.toStrin
 class Stage {
   final String id, name, status; // status: todo | in_progress | done | rework
   final int ord;
+  final String? assigneeId;
   final DateTime? plannedStart, plannedEnd, actualStart, actualEnd;
   Stage({required this.id, required this.name, required this.status, required this.ord,
-    this.plannedStart, this.plannedEnd, this.actualStart, this.actualEnd});
+    this.assigneeId, this.plannedStart, this.plannedEnd, this.actualStart, this.actualEnd});
   factory Stage.fromMap(Map<String, dynamic> m) => Stage(
     id: m['id'] as String,
     name: m['name'] as String? ?? '',
     status: m['status'] as String? ?? 'todo',
     ord: (m['ord'] as num?)?.toInt() ?? 0,
+    assigneeId: m['assignee_id'] as String?,
     plannedStart: parseDate(m['planned_start']),
     plannedEnd: parseDate(m['planned_end']),
     actualStart: parseDate(m['actual_start']),
     actualEnd: parseDate(m['actual_end']),
   );
+}
+
+/// A checklist row under a stage.
+class ChecklistItem {
+  final String id, label;
+  final bool done;
+  ChecklistItem({required this.id, required this.label, required this.done});
+  factory ChecklistItem.fromMap(Map<String, dynamic> m) => ChecklistItem(
+    id: m['id'] as String, label: m['label'] as String? ?? '', done: m['done'] as bool? ?? false);
+}
+
+/// A photo / image attached to a stage (attachments where owner_type='stage').
+class StagePhoto {
+  final String url;
+  final String? caption;
+  StagePhoto(this.url, this.caption);
+  factory StagePhoto.fromMap(Map<String, dynamic> m) =>
+    StagePhoto(m['file_url'] as String? ?? '', m['caption'] as String?);
+}
+
+/// A component/part installed during a stage (traceability, Hero #2).
+class StagePart {
+  final String name, model, serial, vendor, status;
+  final DateTime? warrantyEnd, installDate;
+  StagePart({required this.name, required this.model, required this.serial,
+    required this.vendor, required this.status, this.warrantyEnd, this.installDate});
+  factory StagePart.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    final vn = m['vendors'] as Map<String, dynamic>?;
+    return StagePart(
+      name: ic?['name'] as String? ?? 'Part',
+      model: ic?['model'] as String? ?? '',
+      serial: m['serial_number'] as String? ?? '—',
+      vendor: vn?['name'] as String? ?? '—',
+      status: m['status'] as String? ?? 'installed',
+      warrantyEnd: parseDate(m['warranty_end']),
+      installDate: parseDate(m['install_date']),
+    );
+  }
+}
+
+/// A logged delay on a stage.
+class StageDelay {
+  final String reason;
+  final int days;
+  final String? note;
+  StageDelay(this.reason, this.days, this.note);
+  factory StageDelay.fromMap(Map<String, dynamic> m) => StageDelay(
+    (m['reason_code'] as String? ?? 'other').replaceAll('_', ' '),
+    (m['days_delayed'] as num?)?.toInt() ?? 0, m['note'] as String?);
+}
+
+/// Everything the Stage detail screen shows for one stage.
+class StageBundle {
+  final String? assignee;
+  final List<ChecklistItem> checklist;
+  final List<StagePhoto> photos;
+  final List<StagePart> parts;
+  final List<StageDelay> delays;
+  StageBundle({this.assignee, required this.checklist, required this.photos,
+    required this.parts, required this.delays});
 }
 
 /// A project plus its stages — powers the Project detail screen.
