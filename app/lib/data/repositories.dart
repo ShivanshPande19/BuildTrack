@@ -8,7 +8,7 @@ class ProjectsRepo {
     final data = await sb
         .from('projects')
         .select('id,code,name,status,progress_pct')
-        .order('code');
+        .order('code', ascending: true);
     return (data as List).map((e) => Project.fromMap(e as Map<String, dynamic>)).toList();
   }
 
@@ -25,7 +25,7 @@ class ProjectsRepo {
         .eq('id', id).single();
     final st = await sb.from('stages')
         .select('id,name,ord,status,planned_start,planned_end,actual_start,actual_end')
-        .eq('project_id', id).order('ord');
+        .eq('project_id', id).order('ord', ascending: true);
     return ProjectDetailData(
       Project.fromMap(p),
       parseDate(p['target_delivery_date']),
@@ -77,15 +77,15 @@ final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
   Future<List<OptRef>> templates() async {
-    final d = await sb.from('workflow_templates').select('id,name').order('name');
+    final d = await sb.from('workflow_templates').select('id,name').order('name', ascending: true);
     return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
   }
   Future<List<OptRef>> clients() async {
-    final d = await sb.from('client_accounts').select('id,business_name').order('business_name');
+    final d = await sb.from('client_accounts').select('id,business_name').order('business_name', ascending: true);
     return (d as List).map((e) => OptRef(e['id'] as String, (e['business_name'] ?? '') as String)).toList();
   }
   Future<List<OptRef>> pms() async {
-    final d = await sb.from('profiles').select('id,full_name').eq('role', 'pm').order('full_name');
+    final d = await sb.from('profiles').select('id,full_name').eq('role', 'pm').order('full_name', ascending: true);
     return (d as List).map((e) => OptRef(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
   }
 
@@ -106,7 +106,7 @@ class AdminRepo {
 
   /// List all team members.
   Future<List<Member>> members() async {
-    final d = await sb.from('profiles').select('id,full_name,email,role,status').order('full_name');
+    final d = await sb.from('profiles').select('id,full_name,email,role,status').order('full_name', ascending: true);
     return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
   }
 
