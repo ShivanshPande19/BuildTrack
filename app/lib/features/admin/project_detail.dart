@@ -77,7 +77,9 @@ class ProjectDetailScreen extends ConsumerWidget {
     final s = _status(d.project.status);
     final cur = d.currentStage;
     // id → name for showing stage assignees
-    final names = {for (final m in (ref.watch(membersProvider).valueOrNull ?? [])) m.id: m.name};
+    final names = <String, String>{
+      for (final m in (ref.watch(membersProvider).valueOrNull ?? <Member>[])) m.id: m.name
+    };
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       // title + status
       Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
