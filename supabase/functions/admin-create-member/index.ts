@@ -39,24 +39,37 @@ Deno.serve(async (req) => {
 
     // 2) validate input
     const body = await req.json();
-    const { full_name, email, phone, role, business_name, redirect_to } = body ?? {};
+    const { full_name, email, password, phone, role, business_name, redirect_to } = body ?? {};
     if (!email || !role) {
       return json({ error: "email and role are required" }, 400);
     }
 
-    // 3) invite the user by email (Supabase sends the invite mail) + create profile.
-    //    No password is set here — the member sets their own via the invite link.
+    // 3) create the user + profile.
+    //    - password given  → create directly with a temp password (NO email/SMTP needed).
+    //    - no password     → invite by email (needs SMTP + allowed redirect URL).
     const admin = createClient(url, serviceKey);
-    const redirectTo = redirect_to ?? Deno.env.get("INVITE_REDIRECT_URL") ?? undefined;
-    const { data: invited, error: iErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { full_name, role, needs_password: true },
-      redirectTo,
-    });
-    if (iErr) return json({ error: iErr.message }, 400);
-    const uid = invited.user!.id;
+    let uid: string;
+    let status = "active";
+
+    if (password) {
+      const { data: created, error: cErr } = await admin.auth.admin.createUser({
+        email, password, email_confirm: true, user_metadata: { full_name, role },
+      });
+      if (cErr) return json({ error: cErr.message }, 400);
+      uid = created.user!.id;
+    } else {
+      const redirectTo = redirect_to ?? Deno.env.get("INVITE_REDIRECT_URL") ?? undefined;
+      const { data: invited, error: iErr } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: { full_name, role, needs_password: true },
+        redirectTo,
+      });
+      if (iErr) return json({ error: iErr.message }, 400);
+      uid = invited.user!.id;
+      status = "invited";
+    }
 
     const { error: pErr } = await admin.from("profiles").insert({
-      id: uid, full_name, email, phone, role, status: "invited", created_by: user.id,
+      id: uid, full_name, email, phone, role, status, created_by: user.id,
     });
     if (pErr) return json({ error: pErr.message }, 400);
 

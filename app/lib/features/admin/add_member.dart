@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
@@ -28,6 +29,12 @@ class _AddMemberState extends ConsumerState<AddMember> {
     ['client', 'Client'], ['admin', 'Admin'],
   ];
 
+  String _genPassword() {
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    final r = Random.secure();
+    return 'Az${List.generate(8, (_) => chars[r.nextInt(chars.length)]).join()}';
+  }
+
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty || _email.text.trim().isEmpty) {
       setState(() => _error = 'Full name and email are required.');
@@ -37,26 +44,58 @@ class _AddMemberState extends ConsumerState<AddMember> {
       setState(() => _error = 'Business name is required for a client.');
       return;
     }
+    final tempPass = _genPassword();
     setState(() { _saving = true; _error = null; });
     try {
       await ref.read(adminRepoProvider).createMember(
         fullName: _name.text.trim(), email: _email.text.trim(),
-        phone: null, role: _role,
+        phone: null, role: _role, password: tempPass,
         businessName: _business.text.trim().isEmpty ? null : _business.text.trim());
       ref.invalidate(membersProvider);
       if (_role == 'client') ref.invalidate(clientsProvider);
       if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: BT.ink,
-        content: Text('Invite emailed to ${_email.text.trim()}. They set their own password.'),
-      ));
+      await _showCredentials(_email.text.trim(), tempPass);
+      if (mounted) Navigator.pop(context);
     } catch (e) {
       setState(() => _error = '$e');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
   }
+
+  Future<void> _showCredentials(String email, String pass) => showDialog(
+    context: context,
+    builder: (_) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('Member created', style: display(19, w: FontWeight.w600)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${_name.text.trim()} can sign in with:', style: const TextStyle(fontSize: 13.5, color: BT.mut)),
+        const SizedBox(height: 12),
+        _cred('EMAIL', email),
+        const SizedBox(height: 8),
+        _cred('TEMP PASSWORD', pass),
+        const SizedBox(height: 12),
+        const Text('Share these securely. They can change the password later.',
+          style: TextStyle(fontSize: 11.5, color: BT.mut2)),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context),
+          child: const Text('Done', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w600))),
+      ],
+    ),
+  );
+
+  Widget _cred(String label, String value) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 10, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 3),
+      SelectableText(value, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: BT.ink)),
+    ]),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +147,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
           _saving
             ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 10),
                 child: CircularProgressIndicator(color: BT.ink)))
-            : PrimaryButton('Send invite', icon: Icons.send_rounded, onTap: _submit),
+            : PrimaryButton('Create member', icon: Icons.check, onTap: _submit),
         ],
       )),
     );
