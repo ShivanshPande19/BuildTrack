@@ -90,16 +90,23 @@ class PillNav extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(icons.length, (i) {
             final on = i == active;
-            return GestureDetector(
+            final item = GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => onTap?.call(i),
               child: AnimatedContainer(duration: const Duration(milliseconds: 180),
-                height: 48, padding: EdgeInsets.symmetric(horizontal: on ? 16 : 12),
+                height: 48, padding: EdgeInsets.symmetric(horizontal: on ? 14 : 12),
                 decoration: BoxDecoration(color: on ? BT.ink : Colors.transparent, borderRadius: BorderRadius.circular(BT.radiusPill)),
-                child: Row(children: [
-                  Icon(icons[i], size: 23, color: on ? Colors.white : BT.mut),
-                  if (on) ...[const SizedBox(width: 8), Text(activeLabel, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13))],
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(icons[i], size: 22, color: on ? Colors.white : BT.mut),
+                  if (on) ...[
+                    const SizedBox(width: 6),
+                    Flexible(child: Text(activeLabel, maxLines: 1, softWrap: false,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13))),
+                  ],
                 ])));
+            // Only the active pill may shrink (loose) if space is tight — never overflows.
+            return on ? Flexible(fit: FlexFit.loose, child: item) : item;
           }))),
       ),
       const SizedBox(width: 12),
