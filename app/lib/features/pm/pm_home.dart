@@ -9,6 +9,7 @@ import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../admin/project_detail.dart';
 import '../admin/onboard_project.dart';
+import 'approvals.dart';
 
 /// Project Manager shell — tabs: My Builds · Projects · Schedule · Team.
 /// PM owns build planning; opens project detail with editable materials.
@@ -135,6 +136,23 @@ class _HomeTab extends ConsumerWidget {
                 ]),
               ),
               const SectionLabel('Needs you today'),
+              Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ApprovalsScreen())),
+                child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+                  Container(width: 40, height: 40, alignment: Alignment.center,
+                    decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.verified_rounded, size: 20, color: BT.ink)),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Approvals', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+                  Consumer(builder: (_, r, __) {
+                    final n = r.watch(pendingApprovalsProvider).valueOrNull?.length ?? 0;
+                    return StatusPill(n == 0 ? 'None' : '$n pending', color: n == 0 ? BT.mut2 : BT.amber);
+                  }),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+                ])),
+              )),
               if (needsYou.isEmpty)
                 const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
                   title: 'All clear', subtitle: 'No at-risk or delayed builds right now.')
@@ -239,7 +257,8 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, materialsEditable: true, canAssign: true))),
+        builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p,
+          materialsEditable: true, canAssign: true, canEditTimeline: true))),
       child: AppCard(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${p.code} · ${p.name}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5))),

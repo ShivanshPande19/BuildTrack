@@ -14,8 +14,9 @@ class ProjectDetailScreen extends ConsumerWidget {
   final Project? initial; // for an instant header while stages load
   final bool materialsEditable; // PM opens editable; Admin monitors (read-only)
   final bool canAssign;         // PM can assign stages to team members
+  final bool canEditTimeline;   // PM can change delivery date (re-schedules)
   const ProjectDetailScreen({super.key, required this.projectId, this.initial,
-    this.materialsEditable = false, this.canAssign = false});
+    this.materialsEditable = false, this.canAssign = false, this.canEditTimeline = false});
 
   static final _fmt = DateFormat('d MMM');
   String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -98,11 +99,32 @@ class ProjectDetailScreen extends ConsumerWidget {
               Text('${d.project.progressPct}', style: display(46, w: FontWeight.w600)),
               Text('%', style: display(22, w: FontWeight.w600, c: BT.mut)),
             ]),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              const Text('Delivery', style: TextStyle(color: BT.mut, fontSize: 11.5)),
-              const SizedBox(height: 2),
-              Text(_d(d.targetDelivery), style: display(16, w: FontWeight.w600)),
-            ]),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: !canEditTimeline ? null : () async {
+                final picked = await showDatePicker(context: context,
+                  initialDate: d.targetDelivery ?? DateTime.now().add(const Duration(days: 30)),
+                  firstDate: DateTime.now().subtract(const Duration(days: 30)),
+                  lastDate: DateTime.now().add(const Duration(days: 730)));
+                if (picked != null) {
+                  await ref.read(projectsRepoProvider).setDeliveryDate(projectId, picked);
+                  ref.invalidate(projectDetailProvider(projectId));
+                  ref.invalidate(myProjectsProvider);
+                  ref.invalidate(fleetProvider);
+                }
+              },
+              child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                const Text('Delivery', style: TextStyle(color: BT.mut, fontSize: 11.5)),
+                const SizedBox(height: 2),
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(_d(d.targetDelivery), style: display(16, w: FontWeight.w600)),
+                  if (canEditTimeline) ...[
+                    const SizedBox(width: 5),
+                    const Icon(Icons.edit_calendar_rounded, size: 15, color: BT.mut),
+                  ],
+                ]),
+              ]),
+            ),
           ]),
           const SizedBox(height: 14),
           _track(cur?.name ?? 'Overall', d.project.progressPct, s.color),

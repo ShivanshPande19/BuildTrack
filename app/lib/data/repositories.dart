@@ -95,6 +95,41 @@ class ProjectsRepo {
     await sb.from('stages').update({'assignee_id': assigneeId}).eq('id', stageId);
   }
 
+  /// Change a project's target delivery date, then re-run backward scheduling.
+  Future<void> setDeliveryDate(String projectId, DateTime date) async {
+    await sb.from('projects')
+        .update({'target_delivery_date': date.toIso8601String().split('T').first}).eq('id', projectId);
+    await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId});
+  }
+
+  // ── PM approvals: stage completions submitted by workshop ──────────
+  Future<List<ApprovalItem>> pendingApprovals() async {
+    final uid = sb.auth.currentUser?.id;
+    final d = await sb.from('stage_approvals')
+        .select('id,stage_id,status,stages(name,projects(code,pm_id))')
+        .eq('status', 'pending');
+    final out = <ApprovalItem>[];
+    for (final r in (d as List)) {
+      final st = r['stages'] as Map<String, dynamic>?;
+      final pr = st?['projects'] as Map<String, dynamic>?;
+      if (pr != null && pr['pm_id'] == uid) {
+        out.add(ApprovalItem(
+          id: r['id'] as String, stageId: r['stage_id'] as String,
+          stageName: st?['name'] as String? ?? 'Stage', projectCode: pr['code'] as String? ?? ''));
+      }
+    }
+    return out;
+  }
+
+  /// Approve → stage done; reject → stage back to rework.
+  Future<void> decideApproval(String approvalId, String stageId, bool approve) async {
+    await sb.from('stage_approvals').update({
+      'status': approve ? 'approved' : 'changes_requested',
+      'decided_at': DateTime.now().toIso8601String(),
+    }).eq('id', approvalId);
+    await sb.from('stages').update({'status': approve ? 'done' : 'rework'}).eq('id', stageId);
+  }
+
   /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
   Future<StageBundle> stageBundle(String stageId) async {
     final checklist = await sb.from('checklist_items')
@@ -282,6 +317,12 @@ final assignableMembersProvider = FutureProvider<List<Member>>((ref) {
   return ref.read(projectsRepoProvider).assignableMembers();
 });
 
+/// Pending stage-completion approvals for the signed-in PM's projects.
+final pendingApprovalsProvider = FutureProvider<List<ApprovalItem>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(projectsRepoProvider).pendingApprovals();
+});
+
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
   Future<List<OptRef>> templates() async {
@@ -297,17 +338,22 @@ class AdminRepo {
     return (d as List).map((e) => OptRef(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
   }
 
-  /// Create a custom workflow template + its stages.
+  /// Create a custom workflow template + its stages + each stage's BOM items.
+  /// The BOM powers auto-generated requirements on onboarding (Hero #1).
   Future<OptRef> createTemplate(String name, String? truckType, List<StageDraft> stages) async {
     final t = await sb.from('workflow_templates')
         .insert({'name': name, 'truck_type': truckType}).select('id,name').single();
     final tid = t['id'] as String;
-    if (stages.isNotEmpty) {
-      final rows = <Map<String, dynamic>>[];
-      for (var i = 0; i < stages.length; i++) {
-        rows.add({'template_id': tid, 'name': stages[i].name, 'ord': i + 1, 'default_duration_days': stages[i].days});
+    for (var i = 0; i < stages.length; i++) {
+      final st = await sb.from('template_stages').insert({
+        'template_id': tid, 'name': stages[i].name, 'ord': i + 1, 'default_duration_days': stages[i].days,
+      }).select('id').single();
+      final sid = st['id'] as String;
+      if (stages[i].items.isNotEmpty) {
+        await sb.from('template_stage_items').insert([
+          for (final it in stages[i].items) {'template_stage_id': sid, 'item_catalog_id': it.itemId, 'qty': it.qty},
+        ]);
       }
-      await sb.from('template_stages').insert(rows);
     }
     return OptRef(tid, name);
   }

@@ -55,8 +55,12 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Schedule** (workshop bays: busy/free)
 - ✅ **Team** (workload — in-progress task count per member; only doer roles)
 - ✅ **Assign / reassign / unassign** stages to team (from project detail)
+- ✅ **Approvals** (approve/reject stage completions → stage done/rework)
+- ✅ **Edit timeline** (change delivery date → re-schedules + order-by)
+- ✅ **Create Template + BOM UI** (items per stage → onboarding auto-generates requirements, no SQL)
 - ✅ Notifications · Profile (shared common)
-- ⬜ Approvals · Edit timeline · Create Template+BOM UI — PM turn 2
+
+**→ PROJECT MANAGER ROLE COMPLETE (Phase-1)**
 
 > Note: PM sees projects where `pm_id = me`. Assign a PM in Onboard Project (PM dropdown).
 > Assignment: Admin→PM (`pm_id`); PM→staff (`stages.assignee_id`). All data providers are auth-aware (correct data right after login).

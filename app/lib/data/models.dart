@@ -44,11 +44,25 @@ class OptRef {
   int get hashCode => id.hashCode;
 }
 
-/// One stage while building a custom workflow template.
+/// One BOM item on a template stage (item + qty).
+class StageItemDraft {
+  final String itemId, label;
+  int qty;
+  StageItemDraft(this.itemId, this.label, this.qty);
+}
+
+/// One stage while building a custom workflow template (+ its BOM items).
 class StageDraft {
   String name;
   int days;
-  StageDraft(this.name, this.days);
+  final List<StageItemDraft> items;
+  StageDraft(this.name, this.days, {List<StageItemDraft>? items}) : items = items ?? [];
+}
+
+/// A pending stage-completion approval (PM approves work submitted by workshop).
+class ApprovalItem {
+  final String id, stageId, stageName, projectCode;
+  ApprovalItem({required this.id, required this.stageId, required this.stageName, required this.projectCode});
 }
 
 /// A team member (profiles row).
