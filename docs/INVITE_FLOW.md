@@ -28,14 +28,45 @@ io.supabase.buildtrack://login-callback/
 io.supabase.buildtrack://login-callback
 ```
 
-### 2. Supabase Dashboard — SMTP (so emails actually send)
-The built-in email sender is rate-limited (~2–4/hour) and meant only for testing.
-For real use, Authentication → **Emails / SMTP Settings** → enable custom SMTP and
-plug in a provider such as **Resend** (free tier) or SendGrid. Then raise the
-email rate limit under Auth → Rate Limits.
+### 2. Supabase Dashboard — SMTP via Resend (so emails actually send)
 
-> For a quick first test you can use the default sender (just don't add many members
-> in one hour, and check spam).
+Supabase's built-in sender is capped at ~2 emails/hour and often lands in spam.
+Resend's free tier gives 100/day (3000/month) from your own name/domain.
+
+**a. Resend account**
+- Sign up at https://resend.com (free, no card).
+
+**b. Sender domain — pick one**
+- *Testing (fastest):* use Resend's built-in `onboarding@resend.dev`. Caveat: it can
+  only deliver to the email address you signed up to Resend with.
+- *Real use:* Resend → Domains → Add Domain → add the DNS records it gives (SPF/DKIM)
+  in your DNS provider → Verify. Then you can send from e.g. `noreply@azimuth.co` to anyone.
+
+**c. API key**
+- Resend → API Keys → Create API Key → copy it (`re_...`, shown once).
+
+**d. Resend SMTP credentials (fixed):**
+
+| Field | Value |
+|---|---|
+| Host | `smtp.resend.com` |
+| Port | `465` |
+| Username | `resend` |
+| Password | your Resend API key (`re_...`) |
+
+**e. Plug into Supabase**
+- Authentication → Emails → SMTP Settings → enable Custom SMTP.
+- Sender email: `onboarding@resend.dev` (test) or `noreply@yourdomain` (real).
+- Sender name: `Azimuth BuildTrack`.
+- Host / Port / Username / Password: as above → Save.
+
+**f. Raise the limit**
+- Authentication → Rate Limits → raise "Rate limit for sending emails"
+  (default 2/hour) to e.g. 30 — keep it within Resend's 100/day free cap.
+
+Refs: Resend guide (resend.com/docs/send-with-supabase-smtp),
+Supabase SMTP (supabase.com/docs/guides/auth/auth-smtp).
+Content was rephrased for compliance with licensing restrictions.
 
 ### 3. iOS — `ios/Runner/Info.plist`
 Add inside the top-level `<dict>`:
