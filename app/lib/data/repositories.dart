@@ -105,6 +105,44 @@ class ProcurementRepo {
     );
   }
 
+  /// Advance a PO to 'dispatched' (Procurement marks this when the vendor ships).
+  Future<void> markDispatched(String poId) async {
+    await sb.from('purchase_orders').update({'status': 'dispatched'}).eq('id', poId);
+  }
+
+  /// Item catalog options (for building a PO manually).
+  Future<List<OptRef>> items() async {
+    final d = await sb.from('item_catalog').select('id,name').order('name', ascending: true);
+    return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
+  }
+
+  /// Create a purchase order manually (project + vendor + line items).
+  Future<void> createManualPo({
+    required String projectId, required String vendorId,
+    required DateTime orderDate, DateTime? expectedDate,
+    required List<({String itemId, int qty})> lines,
+  }) async {
+    final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
+    final po = await sb.from('purchase_orders').insert({
+      'po_number': poNum, 'vendor_id': vendorId, 'project_id': projectId, 'status': 'ordered',
+      'order_date': orderDate.toIso8601String().split('T').first,
+      'expected_date': expectedDate?.toIso8601String().split('T').first,
+    }).select('id').single();
+    final poId = po['id'] as String;
+    if (lines.isNotEmpty) {
+      await sb.from('po_lines').insert([
+        for (final l in lines) {'po_id': poId, 'item_catalog_id': l.itemId, 'qty': l.qty},
+      ]);
+    }
+  }
+
+  /// Add a new vendor.
+  Future<void> addVendor({required String name, String? category, int avgLead = 0}) async {
+    await sb.from('vendors').insert({
+      'name': name, 'category': category, 'avg_lead_time_days': avgLead, 'reliability_score': 100,
+    });
+  }
+
   /// Mark a PO received: status→received, lines fully received, GRN logged,
   /// linked requirements closed. (Store then logs individual components at intake.)
   Future<void> markReceived(String poId) async {
@@ -160,6 +198,10 @@ final poDetailProvider = FutureProvider.family<PoDetail, String>(
     (ref, id) => ref.read(procurementRepoProvider).poDetail(id));
 final vendorsProvider = FutureProvider<List<VendorRow>>(
     (ref) => ref.read(procurementRepoProvider).vendors());
+final allProjectsProvider = FutureProvider<List<Project>>(
+    (ref) => ref.read(projectsRepoProvider).all());
+final itemsProvider = FutureProvider<List<OptRef>>(
+    (ref) => ref.read(procurementRepoProvider).items());
 
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(

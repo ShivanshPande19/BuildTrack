@@ -9,6 +9,8 @@ import '../../shared/widgets.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import 'po_detail.dart';
+import 'new_po.dart';
+import 'add_vendor.dart';
 
 /// Procurement shell — tab-based (To Order · Orders · Receive · Vendors),
 /// one PillNav, in-place content switching (mirrors the Admin shell).
@@ -36,8 +38,8 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
         active: _tab,
         activeLabel: _labels[_tab],
         onTap: (i) => setState(() => _tab = i),
-        onAction: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: BT.ink, content: Text('New PO — create from a due item in To Order (manual PO coming soon).'))),
+        onAction: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => _tab == 3 ? const AddVendorScreen() : const NewPoScreen())),
       ),
     );
   }

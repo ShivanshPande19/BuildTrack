@@ -110,29 +110,40 @@ class PoDetailScreen extends ConsumerWidget {
       ),
 
       const SizedBox(height: 18),
-      if (d.po.status != 'received')
-        PrimaryButton('Mark as received', icon: Icons.local_shipping_rounded,
-          bg: BT.ink, fg: BT.card,
-          onTap: () async {
-            await ref.read(procurementRepoProvider).markReceived(poId);
-            ref.invalidate(poDetailProvider(poId));
-            ref.invalidate(purchaseOrdersProvider);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                backgroundColor: BT.ink, content: Text('Marked received — Store can now log components.')));
-            }
-          })
-      else
-        Container(
-          height: 52, alignment: Alignment.center,
-          decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(16)),
-          child: const Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.check_circle_rounded, color: BT.lime, size: 19),
-            SizedBox(width: 8),
-            Text('Received', style: TextStyle(fontWeight: FontWeight.w600)),
-          ]),
-        ),
+      _actionButton(context, ref, d.po.status),
     ]);
+  }
+
+  Widget _actionButton(BuildContext context, WidgetRef ref, String status) {
+    Future<void> run(Future<void> Function() action, String msg) async {
+      await action();
+      ref.invalidate(poDetailProvider(poId));
+      ref.invalidate(purchaseOrdersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.ink, content: Text(msg)));
+      }
+    }
+    final repo = ref.read(procurementRepoProvider);
+    if (status == 'ordered') {
+      return PrimaryButton('Mark as dispatched', icon: Icons.local_shipping_rounded,
+        bg: BT.ink, fg: BT.card,
+        onTap: () => run(() => repo.markDispatched(poId), 'PO marked dispatched.'));
+    }
+    if (status == 'received') {
+      return Container(
+        height: 52, alignment: Alignment.center,
+        decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(16)),
+        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.check_circle_rounded, color: BT.lime, size: 19),
+          SizedBox(width: 8),
+          Text('Received', style: TextStyle(fontWeight: FontWeight.w600)),
+        ]),
+      );
+    }
+    // dispatched or partial → can be received
+    return PrimaryButton('Mark as received', icon: Icons.inventory_2_rounded,
+      bg: BT.ink, fg: BT.card,
+      onTap: () => run(() => repo.markReceived(poId), 'Marked received — Store can now log components.'));
   }
 
   Widget _step(String label, int index, int current) {
