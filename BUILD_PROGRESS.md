@@ -53,11 +53,13 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **My Builds** dashboard (assigned counts, needs-you, today's stages) — pm-scoped
 - ✅ **My Projects** (pm_id = me, filters) → project detail with **editable Materials**
 - ✅ **Schedule** (workshop bays: busy/free)
-- ✅ **Team** (workload — in-progress task count per member)
+- ✅ **Team** (workload — in-progress task count per member; only doer roles)
+- ✅ **Assign / reassign / unassign** stages to team (from project detail)
 - ✅ Notifications · Profile (shared common)
-- ⬜ Assign task · Approvals · Edit timeline · Create Template+BOM — PM turn 2
+- ⬜ Approvals · Edit timeline · Create Template+BOM UI — PM turn 2
 
-> Note: PM sees projects where `pm_id = me`. Assign a PM in Onboard Project (PM dropdown) or set `projects.pm_id` to test.
+> Note: PM sees projects where `pm_id = me`. Assign a PM in Onboard Project (PM dropdown).
+> Assignment: Admin→PM (`pm_id`); PM→staff (`stages.assignee_id`). All data providers are auth-aware (correct data right after login).
 
 ## 6. Client ⬜
 - ⬜ My Trucks · Truck dashboard · Build journey · Photos · Approve design · Documents · Raise request · Support · Notifications · Profile
