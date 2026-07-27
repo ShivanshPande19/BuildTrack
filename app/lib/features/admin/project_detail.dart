@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'stage_detail.dart';
+import 'project_requirements.dart';
 
 /// Admin — Project detail (a4): progress, delivery date and the build-stage timeline.
 class ProjectDetailScreen extends ConsumerWidget {
@@ -101,6 +102,27 @@ class ProjectDetailScreen extends ConsumerWidget {
         ]),
       ),
 
+      const SizedBox(height: 12),
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ProjectRequirementsScreen(projectId: projectId, projectCode: d.project.code))),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(children: [
+            Container(width: 40, height: 40, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.lav, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.inventory_2_rounded, size: 20, color: BT.ink)),
+            const SizedBox(width: 13),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Materials & order-by', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+              SizedBox(height: 2),
+              Text('Parts this build needs · Hero #1 alerts', style: TextStyle(color: BT.mut, fontSize: 12)),
+            ])),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+          ]),
+        ),
+      ),
       const SectionLabel('Build stages'),
       if (d.stages.isEmpty)
         const EmptyState(

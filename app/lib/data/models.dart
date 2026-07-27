@@ -262,3 +262,26 @@ class VendorRow {
     reliability: (m['reliability_score'] as num?)?.toInt() ?? 100,
   );
 }
+
+
+/// A procurement requirement for a project (drives Hero #1 order-by).
+/// Editable per project: qty, needed_by; order_by is auto-computed by the backend.
+class Requirement {
+  final String id, itemCatalogId, itemName, status; // status: pending | ordered | received
+  final int qty;
+  final DateTime? neededBy, orderBy;
+  Requirement({required this.id, required this.itemCatalogId, required this.itemName,
+    required this.status, required this.qty, this.neededBy, this.orderBy});
+  factory Requirement.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    return Requirement(
+      id: m['id'] as String,
+      itemCatalogId: m['item_catalog_id'] as String? ?? '',
+      itemName: ic?['name'] as String? ?? 'Item',
+      status: m['status'] as String? ?? 'pending',
+      qty: (m['qty'] as num?)?.toInt() ?? 1,
+      neededBy: parseDate(m['needed_by_date']),
+      orderBy: parseDate(m['order_by_date']),
+    );
+  }
+}

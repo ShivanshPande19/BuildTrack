@@ -151,3 +151,18 @@ Project-level (NOT per-stage, shown on project overview instead):
 - `design_artifacts` + `design_versions` (layout/interior/exterior/branding) — Design role; surfaced on the design stage.
 
 Demo seed for testing before those roles exist: `supabase/seed_stage_demo.sql`.
+
+
+---
+
+## Hero #1 — Order-by chain (now end-to-end)
+
+Define once → auto-generate → customize per project → alerts:
+
+1. **Template BOM** (`template_stage_items`): which catalog items each template stage needs (+ qty). *(editing UI: TODO — currently via `seed_bom_demo.sql` or SQL)*
+2. **Onboarding** (`fn_onboard_project`): creates stages → backward-schedules them → **auto-generates `procurement_requirements`** from the BOM with `needed_by = stage.planned_start` → computes `order_by`.
+3. **Customize per project**: Admin → Project detail → **Materials & order-by** screen — add / edit qty / edit needed-by / remove requirements. Any change calls `fn_recompute_schedule` to refresh `order_by`.
+4. **Alerts**: `order_by = needed_by − item.lead_time − item.buffer`. Surfaced via `v_order_due` (`days_left`) in Admin "Needs attention" + Procurement "To Order".
+5. **Act**: Procurement Create PO → requirement `pending → ordered` (drops off the due list).
+
+Editing requirements invalidates `requirementsProvider`, `toOrderProvider`, `fleetProvider`.

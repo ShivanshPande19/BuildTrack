@@ -45,6 +45,41 @@ class ProjectsRepo {
     );
   }
 
+  // ── Hero #1: project requirements (customizable) ──────────────────
+  Future<List<Requirement>> requirements(String projectId) async {
+    final d = await sb.from('procurement_requirements')
+        .select('id,item_catalog_id,qty,needed_by_date,order_by_date,status,item_catalog(name)')
+        .eq('project_id', projectId)
+        .order('order_by_date', ascending: true);
+    return (d as List).map((e) => Requirement.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  String? _dateStr(DateTime? d) => d?.toIso8601String().split('T').first;
+
+  Future<void> addRequirement({
+    required String projectId, required String itemId, required int qty, DateTime? neededBy,
+  }) async {
+    await sb.from('procurement_requirements').insert({
+      'project_id': projectId, 'item_catalog_id': itemId, 'qty': qty,
+      'needed_by_date': _dateStr(neededBy), 'status': 'pending',
+    });
+    await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId}); // fills order_by
+  }
+
+  Future<void> updateRequirement({
+    required String id, required String projectId, int? qty, DateTime? neededBy,
+  }) async {
+    final patch = <String, dynamic>{};
+    if (qty != null) patch['qty'] = qty;
+    if (neededBy != null) patch['needed_by_date'] = _dateStr(neededBy);
+    if (patch.isNotEmpty) await sb.from('procurement_requirements').update(patch).eq('id', id);
+    await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId});
+  }
+
+  Future<void> deleteRequirement(String id) async {
+    await sb.from('procurement_requirements').delete().eq('id', id);
+  }
+
   /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
   Future<StageBundle> stageBundle(String stageId) async {
     final checklist = await sb.from('checklist_items')
@@ -218,6 +253,10 @@ final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
 /// Stage detail bundle (photos + parts + checklist + delays), keyed by stage id.
 final stageBundleProvider = FutureProvider.family<StageBundle, String>(
     (ref, stageId) => ref.read(projectsRepoProvider).stageBundle(stageId));
+
+/// A project's procurement requirements (Hero #1, editable), keyed by project id.
+final requirementsProvider = FutureProvider.family<List<Requirement>, String>(
+    (ref, projectId) => ref.read(projectsRepoProvider).requirements(projectId));
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
