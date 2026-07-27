@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
+import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../admin/admin_dashboard.dart';
 import '../procurement/to_order.dart';
 
 /// After login the app routes here and renders the shell for the user's role.
 /// The 72 designed screens plug into each role's shell (Phase-1 build).
-class RoleHome extends StatelessWidget {
+class RoleHome extends ConsumerWidget {
   const RoleHome({super.key});
 
   static const _titles = {
@@ -28,12 +30,16 @@ class RoleHome extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<String?>(
-      future: fetchMyRole(),
-      builder: (context, snap) {
-        if (!snap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator(color: BT.ink)));
-        final role = snap.data ?? 'client';
+  Widget build(BuildContext context, WidgetRef ref) {
+    final roleAsync = ref.watch(myRoleProvider);
+    return roleAsync.when(
+      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: BT.ink))),
+      error: (e, _) => Scaffold(body: Center(child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Text('Could not load your account.\n$e',
+          textAlign: TextAlign.center, style: const TextStyle(color: BT.coral, fontSize: 13))))),
+      data: (role0) {
+        final role = role0 ?? 'client';
         // Live, data-backed screens (Phase-1). Others use the role shell for now.
         if (role == 'admin') return const AdminDashboard();
         if (role == 'procurement') return const ProcurementToOrder();

@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
+import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 
 /// Profile / Settings (a9): identity card, settings rows and log out.
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
   static const _roleLabel = {
@@ -15,12 +17,13 @@ class ProfileScreen extends StatelessWidget {
   };
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final u = sb.auth.currentUser;
     final name = (u?.userMetadata?['full_name'] as String?)
         ?? u?.email?.split('@').first ?? 'User';
     final email = u?.email ?? '';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
+    final roleAsync = ref.watch(myRoleProvider);
 
     return Scaffold(
       body: SafeArea(child: ListView(
@@ -51,11 +54,11 @@ class ProfileScreen extends StatelessWidget {
               const SizedBox(height: 14),
               Text(name, style: display(20, w: FontWeight.w600)),
               const SizedBox(height: 8),
-              FutureBuilder<String?>(
-                future: fetchMyRole(),
-                builder: (c, snap) => StatusPill(
-                  _roleLabel[snap.data] ?? 'Team member',
-                  color: BT.ink, dark: true),
+              roleAsync.when(
+                data: (r) => StatusPill(_roleLabel[r] ?? 'Team member', color: BT.ink, dark: true),
+                loading: () => Container(width: 116, height: 30,
+                  decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999))),
+                error: (_, __) => const StatusPill('Team member', color: BT.ink, dark: true),
               ),
               if (email.isNotEmpty) ...[
                 const SizedBox(height: 10),

@@ -1,6 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_client.dart';
 import 'models.dart';
+
+/// Emits on every auth change (sign in/out, token refresh, user update).
+final authStateProvider = StreamProvider<AuthState>((ref) => sb.auth.onAuthStateChange);
+
+/// The signed-in user's role, fetched once and cached for the session.
+/// Re-fetches automatically when auth changes (e.g. a different user logs in),
+/// so screens never show a stale or flickering role.
+final myRoleProvider = FutureProvider<String?>((ref) {
+  ref.watch(authStateProvider); // invalidate + refetch on auth change
+  return fetchMyRole();
+});
 
 /// Data access — thin wrappers over Supabase queries.
 class ProjectsRepo {
