@@ -184,6 +184,25 @@ class AdminRepo {
   }
 }
 
+/// Notifications (per-user; RLS restricts rows to the signed-in user).
+class NotificationsRepo {
+  Future<List<AppNotification>> all() async {
+    final d = await sb.from('notifications')
+        .select('id,title,body,type,read,created_at')
+        .order('created_at', ascending: false);
+    return (d as List).map((e) => AppNotification.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Mark every unread notification as read (RLS keeps this to the current user).
+  Future<void> markAllRead() async {
+    await sb.from('notifications').update({'read': true}).eq('read', false);
+  }
+}
+
+final notificationsRepoProvider = Provider<NotificationsRepo>((ref) => NotificationsRepo());
+final notificationsProvider = FutureProvider<List<AppNotification>>(
+    (ref) => ref.read(notificationsRepoProvider).all());
+
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
 final membersProvider   = FutureProvider<List<Member>>((ref) => ref.read(adminRepoProvider).members());
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());

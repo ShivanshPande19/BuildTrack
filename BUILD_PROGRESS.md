@@ -22,8 +22,11 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Projects list** (tab + status filters, tappable rows)
 - ✅ **Project detail** (progress + delivery + build-stage timeline)
 - ✅ **Analytics / Insights** (on-track %, counts, fleet distribution)
-- ⬜ Notifications
-- ⬜ Profile
+- ✅ **Stage detail** (photos + installed parts + checklist + delays, per stage)
+- ✅ **Notifications** (grouped Today/Earlier, mark all read)
+- ✅ **Profile / Settings** (identity + settings + log out)
+
+**→ ADMIN ROLE COMPLETE (Phase-1)**
 
 ## 2. Procurement 🔨  *(Hero #1)*
 - ✅ To-Order + Create PO (live)

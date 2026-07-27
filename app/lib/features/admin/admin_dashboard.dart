@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -9,6 +8,8 @@ import '../../shared/widgets.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
 import 'project_detail.dart';
+import 'notifications.dart';
+import 'profile.dart';
 
 /// Admin shell — one Scaffold, a fixed floating PillNav, and an IndexedStack
 /// body so tapping the nav swaps the *content* in place (no new sheet slides in).
@@ -120,8 +121,8 @@ class _HomeTab extends ConsumerWidget {
   // ── header pieces ─────────────────────────────────────────────
   Widget _bell(BuildContext context, int count) => GestureDetector(
     behavior: HitTestBehavior.opaque,
-    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(backgroundColor: BT.ink, content: Text('Notifications coming soon'))),
+    onTap: () => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const NotificationsScreen())),
     child: Stack(clipBehavior: Clip.none, children: [
       Container(width: 42, height: 42, alignment: Alignment.center,
         decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
@@ -138,7 +139,8 @@ class _HomeTab extends ConsumerWidget {
     final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'A';
     final initial = nm.isNotEmpty ? nm[0].toUpperCase() : 'A';
     return GestureDetector(
-      onTap: () => sb.auth.signOut().then((_) => context.go('/login')),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ProfileScreen())),
       child: Container(width: 42, height: 42, alignment: Alignment.center,
         decoration: const BoxDecoration(shape: BoxShape.circle,
           gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,

@@ -179,3 +179,22 @@ class ProjectDetailData {
     return stages.isNotEmpty ? stages.last : null;
   }
 }
+
+
+/// An in-app notification (notifications row, scoped to the current user by RLS).
+class AppNotification {
+  final String id, title;
+  final String? body, type;
+  final bool read;
+  final DateTime? createdAt;
+  AppNotification({required this.id, required this.title, this.body, this.type,
+    this.read = false, this.createdAt});
+  factory AppNotification.fromMap(Map<String, dynamic> m) => AppNotification(
+    id: m['id'] as String,
+    title: m['title'] as String? ?? '',
+    body: m['body'] as String?,
+    type: m['type'] as String?,
+    read: m['read'] as bool? ?? false,
+    createdAt: parseDate(m['created_at']),
+  );
+}
