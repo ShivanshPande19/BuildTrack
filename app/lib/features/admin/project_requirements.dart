@@ -12,7 +12,9 @@ import '../../shared/widgets.dart';
 class ProjectRequirementsScreen extends ConsumerStatefulWidget {
   final String projectId;
   final String? projectCode;
-  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode});
+  /// Admin opens this read-only (monitor). Owning roles (PM/Procurement) open it editable.
+  final bool editable;
+  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode, this.editable = false});
   @override
   ConsumerState<ProjectRequirementsScreen> createState() => _ProjectRequirementsScreenState();
 }
@@ -63,8 +65,10 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
             const SizedBox(height: 2),
             Text('Materials & order-by', style: display(27, w: FontWeight.w600)),
             const SizedBox(height: 4),
-            const Text('Order-by date auto-updates from needed-by − lead time − buffer.',
-              style: TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)),
+            Text(widget.editable
+              ? 'Order-by date auto-updates from needed-by − lead time − buffer.'
+              : 'Read-only overview. Order-by = needed-by − lead time − buffer.',
+              style: const TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)),
             const SizedBox(height: 16),
             reqs.when(
               loading: () => const Padding(padding: EdgeInsets.only(top: 50),
@@ -72,19 +76,22 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
               error: (e, _) => AppCard(child: Text('Could not load materials.\n$e',
                 style: const TextStyle(color: BT.coral, fontSize: 13))),
               data: (list) => list.isEmpty
-                ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.lav,
+                ? EmptyState(icon: Icons.inventory_2_outlined, tint: BT.lav,
                     title: 'No materials yet',
-                    subtitle: 'Add the parts this build needs — each gets an order-by alert.')
+                    subtitle: widget.editable
+                      ? 'Add the parts this build needs — each gets an order-by alert.'
+                      : 'Materials will appear here once the build plan is set.')
                 : Column(children: list.map(_row).toList()),
             ),
           ],
         ),
       )),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: BT.lime, foregroundColor: BT.ink,
-        onPressed: () => _openSheet(null),
-        icon: const Icon(Icons.add), label: const Text('Add material'),
-      ),
+      floatingActionButton: widget.editable
+        ? FloatingActionButton.extended(
+            backgroundColor: BT.lime, foregroundColor: BT.ink,
+            onPressed: () => _openSheet(null),
+            icon: const Icon(Icons.add), label: const Text('Add material'))
+        : null,
     );
   }
 
@@ -95,7 +102,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
       padding: const EdgeInsets.only(bottom: 11),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: ordered ? null : () => _openSheet(r),
+        onTap: (widget.editable && !ordered) ? () => _openSheet(r) : null,
         child: AppCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(children: [

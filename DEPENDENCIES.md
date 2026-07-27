@@ -161,7 +161,10 @@ Define once → auto-generate → customize per project → alerts:
 
 1. **Template BOM** (`template_stage_items`): which catalog items each template stage needs (+ qty). *(editing UI: TODO — currently via `seed_bom_demo.sql` or SQL)*
 2. **Onboarding** (`fn_onboard_project`): creates stages → backward-schedules them → **auto-generates `procurement_requirements`** from the BOM with `needed_by = stage.planned_start` → computes `order_by`.
-3. **Customize per project**: Admin → Project detail → **Materials & order-by** screen — add / edit qty / edit needed-by / remove requirements. Any change calls `fn_recompute_schedule` to refresh `order_by`.
+3. **View / customize per project** (`ProjectRequirementsScreen`, has `editable` flag):
+   - **Admin = read-only (monitor)** — sees materials + order-by risk, cannot edit. Admin's job is oversight only.
+   - **Editing owner = PM (build planning) / Procurement (buy-list)** — opens it `editable: true` to add / change qty / change needed-by / remove. Any change calls `fn_recompute_schedule` to refresh `order_by`.
+   - *(PM role not built yet — editable entry point comes with PM/Procurement projects view.)*
 4. **Alerts**: `order_by = needed_by − item.lead_time − item.buffer`. Surfaced via `v_order_due` (`days_left`) in Admin "Needs attention" + Procurement "To Order".
 5. **Act**: Procurement Create PO → requirement `pending → ordered` (drops off the due list).
 
