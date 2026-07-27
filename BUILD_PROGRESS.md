@@ -42,8 +42,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ `common/notifications.dart`, `common/profile.dart` — reused across roles
 - ✅ `EmptyState` widget — friendly placeholders everywhere
 
-## 3. Store ⬜  *(Hero #2 — intake)*
-- ⬜ Inbox · Receive/GRN · Log component · Inventory · Components search · Component detail · Recall · Notifications · Profile
+## 3. Store 🔨  *(Hero #2 — traceability + recall)*
+- ✅ **Tab shell** (Inbox · Stock · Parts) + bell/avatar + scan FAB
+- ✅ **Inbox** (stats: tracked/low-stock/lines + low-stock list)
+- ✅ **Stock** (inventory list, All/Low filter, OK/Fair/Low)
+- ✅ **Parts** (component search by serial/model/truck)
+- ✅ **Component detail** (record + warranty banner)
+- ✅ **Recall check** (Hero #2 — every truck with a model installed → Notify all) via `fn_recall`
+- ✅ **Log component** (item + serial + warranty + assign to build → feeds traceability)
+- ✅ Notifications · Profile (shared common)
+- ⬜ Receive/GRN link from Procurement (round 2)
 
 ## 4. Workshop ⬜  *(Hero #2 — install)*
 - ⬜ My Tasks · Task detail · Add photo · Scan to install · Components · Mark complete · My week · Notifications · Profile

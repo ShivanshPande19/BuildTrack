@@ -318,3 +318,62 @@ class ActiveStage {
   final String id, name, projectCode;
   ActiveStage({required this.id, required this.name, required this.projectCode});
 }
+
+
+/// A tracked component instance (Store — traceability, Hero #2).
+class ComponentRow {
+  final String id, itemCatalogId, name, model, serial, status;
+  final String? projectCode, vendorName;
+  final DateTime? warrantyEnd, installDate;
+  ComponentRow({required this.id, required this.itemCatalogId, required this.name, required this.model,
+    required this.serial, required this.status, this.projectCode, this.vendorName, this.warrantyEnd, this.installDate});
+  factory ComponentRow.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    final pr = m['projects'] as Map<String, dynamic>?;
+    final vn = m['vendors'] as Map<String, dynamic>?;
+    return ComponentRow(
+      id: m['id'] as String,
+      itemCatalogId: m['item_catalog_id'] as String? ?? '',
+      name: ic?['name'] as String? ?? 'Component',
+      model: ic?['model'] as String? ?? '',
+      serial: m['serial_number'] as String? ?? '—',
+      status: m['status'] as String? ?? 'in_stock',
+      projectCode: pr?['code'] as String?,
+      vendorName: vn?['name'] as String?,
+      warrantyEnd: parseDate(m['warranty_end']),
+      installDate: parseDate(m['install_date']),
+    );
+  }
+  bool get warrantyActive => warrantyEnd != null && warrantyEnd!.isAfter(DateTime.now());
+}
+
+/// A stock line (Store inventory).
+class StockRow {
+  final String name, unit;
+  final String? category;
+  final num quantity;
+  final int threshold;
+  StockRow({required this.name, required this.unit, this.category, required this.quantity, required this.threshold});
+  factory StockRow.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    return StockRow(
+      name: ic?['name'] as String? ?? 'Item',
+      category: ic?['category'] as String?,
+      unit: m['unit'] as String? ?? 'pcs',
+      quantity: (m['quantity'] as num?) ?? 0,
+      threshold: (ic?['low_stock_threshold'] as num?)?.toInt() ?? 0,
+    );
+  }
+  bool get low => quantity <= threshold;
+}
+
+/// A truck affected by a recall (Hero #2).
+class RecallRow {
+  final String? projectCode, serial, status;
+  RecallRow({this.projectCode, this.serial, this.status});
+  factory RecallRow.fromMap(Map<String, dynamic> m) => RecallRow(
+    projectCode: m['project_code'] as String?,
+    serial: m['serial'] as String?,
+    status: m['status'] as String?,
+  );
+}

@@ -113,7 +113,7 @@ class PillNav extends StatelessWidget {
       GestureDetector(onTap: onAction, child: Container(width: 60, height: 60,
         decoration: BoxDecoration(color: BT.lime, shape: BoxShape.circle,
           boxShadow: const [BoxShadow(color: Color(0x80AAB43C), blurRadius: 26, offset: Offset(0, 14))]),
-        child: const Icon(Icons.add, color: BT.ink, size: 26))),
+        child: Icon(actionIcon, color: BT.ink, size: 26))),
     ]),
   );
 }

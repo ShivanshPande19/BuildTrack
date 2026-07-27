@@ -323,6 +323,58 @@ final pendingApprovalsProvider = FutureProvider<List<ApprovalItem>>((ref) {
   return ref.read(projectsRepoProvider).pendingApprovals();
 });
 
+/// Store / Inventory — component traceability (Hero #2) + stock.
+class StoreRepo {
+  static const _compSelect =
+      'id,serial_number,status,warranty_end,install_date,item_catalog_id,item_catalog(name,model),projects(code),vendors(name)';
+
+  Future<List<ComponentRow>> components() async {
+    final d = await sb.from('component_instances').select(_compSelect).order('serial_number', ascending: true);
+    return (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<StockRow>> stock() async {
+    final d = await sb.from('stock_items').select('quantity,unit,item_catalog(name,category,low_stock_threshold)');
+    return (d as List).map((e) => StockRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Hero #2 — every truck that has a given item model installed.
+  Future<List<RecallRow>> recall(String itemCatalogId) async {
+    final d = await sb.rpc('fn_recall', params: {'p_item': itemCatalogId});
+    return (d as List).map((e) => RecallRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Log a component at intake (serial + warranty + optional assign to a build).
+  Future<void> logComponent({
+    required String itemId, required String serial, String? vendorId,
+    DateTime? warrantyEnd, String? projectId,
+  }) async {
+    final today = DateTime.now().toIso8601String().split('T').first;
+    await sb.from('component_instances').insert({
+      'item_catalog_id': itemId,
+      'serial_number': serial,
+      'vendor_id': vendorId,
+      'warranty_start': today,
+      'warranty_end': warrantyEnd?.toIso8601String().split('T').first,
+      'status': projectId != null ? 'installed' : 'in_stock',
+      'installed_in_project_id': projectId,
+      'install_date': projectId != null ? today : null,
+    });
+  }
+}
+
+final storeRepoProvider = Provider<StoreRepo>((ref) => StoreRepo());
+final componentsProvider = FutureProvider<List<ComponentRow>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(storeRepoProvider).components();
+});
+final stockProvider = FutureProvider<List<StockRow>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(storeRepoProvider).stock();
+});
+final recallProvider = FutureProvider.family<List<RecallRow>, String>(
+    (ref, itemId) => ref.read(storeRepoProvider).recall(itemId));
+
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
   Future<List<OptRef>> templates() async {
