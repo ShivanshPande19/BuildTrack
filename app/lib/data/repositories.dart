@@ -116,6 +116,14 @@ class ProcurementRepo {
     return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
   }
 
+  /// Add a new catalog item inline (from the New PO flow) and return it.
+  Future<OptRef> createItem({required String name, String? category, int leadTimeDays = 0}) async {
+    final d = await sb.from('item_catalog')
+        .insert({'name': name, 'category': category, 'lead_time_days': leadTimeDays})
+        .select('id,name').single();
+    return OptRef(d['id'] as String, d['name'] as String);
+  }
+
   /// Create a purchase order manually (project + vendor + line items).
   Future<void> createManualPo({
     required String projectId, required String vendorId,

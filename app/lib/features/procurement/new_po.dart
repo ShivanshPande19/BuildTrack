@@ -23,9 +23,11 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   final DateTime _orderDate = DateTime.now();
   DateTime? _expected;
   final List<_Line> _lines = [_Line()];
+  final List<OptRef> _extraItems = []; // items created inline this session
   bool _saving = false;
   String? _error;
 
+  static const _addNew = '__add_new__';
   static final _fmt = DateFormat('d MMM');
 
   Future<void> _submit() async {
@@ -58,11 +60,77 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     }
   }
 
+  /// Quick inline "create catalog item" sheet — returns the new item (or null).
+  Future<OptRef?> _addItemSheet() {
+    final nameC = TextEditingController();
+    final catC = TextEditingController();
+    final leadC = TextEditingController();
+    bool busy = false;
+    String? err;
+    return showModalBottomSheet<OptRef>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
+        Widget field(String label, TextEditingController c, {String? hint, bool number = false}) => Container(
+          margin: const EdgeInsets.only(bottom: 11),
+          decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+            TextField(controller: c, keyboardType: number ? TextInputType.number : null,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
+              decoration: InputDecoration(isDense: true, border: InputBorder.none, contentPadding: const EdgeInsets.only(top: 4),
+                hintText: hint, hintStyle: const TextStyle(color: BT.mut2, fontWeight: FontWeight.w500))),
+          ]),
+        );
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+          child: Container(
+            decoration: const BoxDecoration(color: BT.bg,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+              Text('New item', style: display(20, w: FontWeight.w600)),
+              const SizedBox(height: 4),
+              const Text('Adds it to the catalog and selects it here.',
+                style: TextStyle(color: BT.mut, fontSize: 12.5)),
+              const SizedBox(height: 16),
+              field('ITEM NAME', nameC, hint: 'Espresso machine'),
+              field('CATEGORY', catC, hint: 'Equipment / Electrical …'),
+              field('LEAD TIME (DAYS)', leadC, hint: '7', number: true),
+              if (err != null) Padding(padding: const EdgeInsets.only(bottom: 8),
+                child: Text(err!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
+              const SizedBox(height: 4),
+              busy
+                ? const Center(child: CircularProgressIndicator(color: BT.ink))
+                : PrimaryButton('Add item', icon: Icons.check, onTap: () async {
+                    if (nameC.text.trim().isEmpty) { setSheet(() => err = 'Item name is required.'); return; }
+                    setSheet(() { busy = true; err = null; });
+                    try {
+                      final created = await ref.read(procurementRepoProvider).createItem(
+                        name: nameC.text.trim(),
+                        category: catC.text.trim().isEmpty ? null : catC.text.trim(),
+                        leadTimeDays: int.tryParse(leadC.text.trim()) ?? 0);
+                      if (ctx.mounted) Navigator.pop(ctx, created);
+                    } catch (e) {
+                      setSheet(() { busy = false; err = '$e'; });
+                    }
+                  }),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final projects = ref.watch(allProjectsProvider).valueOrNull ?? [];
     final vendors = ref.watch(vendorsProvider).valueOrNull ?? [];
-    final items = ref.watch(itemsProvider).valueOrNull ?? [];
+    final providerItems = ref.watch(itemsProvider).valueOrNull ?? [];
+    // Merge catalog + inline-created items, de-duplicated by id.
+    final items = {for (final o in [...providerItems, ..._extraItems]) o.id: o}.values.toList();
 
     return Scaffold(
       body: SafeArea(child: ListView(
@@ -153,8 +221,22 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
       child: Row(children: [
         Expanded(child: _dropdown<String>(
           value: l.itemId, hint: 'Select item',
-          items: [for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis))],
-          onChanged: (v) => setState(() => l.itemId = v),
+          items: [
+            for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
+            const DropdownMenuItem(value: _addNew, child: Row(children: [
+              Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
+              Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
+            ])),
+          ],
+          onChanged: (v) async {
+            if (v == _addNew) {
+              final created = await _addItemSheet();
+              if (created != null) setState(() { _extraItems.add(created); l.itemId = created.id; });
+              ref.invalidate(itemsProvider);
+            } else {
+              setState(() => l.itemId = v);
+            }
+          },
         )),
         const SizedBox(width: 10),
         // qty stepper
