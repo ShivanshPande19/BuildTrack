@@ -239,7 +239,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, materialsEditable: true))),
+        builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, materialsEditable: true, canAssign: true))),
       child: AppCard(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${p.code} · ${p.name}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5))),
@@ -314,10 +314,12 @@ class _TeamTab extends ConsumerWidget {
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
           error: (e, _) => AppCard(child: Text('Could not load team.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
-            final team = list.where((m) => m.role != 'client' && m.role != 'admin').toList();
+            // PM's team = execution staff they assign build tasks to (not admins/PMs/clients/procurement).
+            const doerRoles = {'workshop', 'design', 'store', 'service'};
+            final team = list.where((m) => doerRoles.contains(m.role)).toList();
             if (team.isEmpty) {
               return const EmptyState(icon: Icons.people_outline_rounded, tint: BT.lav,
-                title: 'No team members', subtitle: 'Workshop, design and other staff will show here.');
+                title: 'No team members', subtitle: 'Workshop, design, store & service staff will show here.');
             }
             return Column(children: team.map((m) {
               final count = workload[m.id] ?? 0;

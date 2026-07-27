@@ -80,6 +80,21 @@ class ProjectsRepo {
     await sb.from('procurement_requirements').delete().eq('id', id);
   }
 
+  // ── PM assigns build tasks (stages) to execution staff ─────────────
+  /// Members a PM can assign build stages to (the doers).
+  Future<List<Member>> assignableMembers() async {
+    final d = await sb.from('profiles')
+        .select('id,full_name,email,role,status')
+        .inFilter('role', ['workshop', 'design', 'store', 'service'])
+        .order('full_name', ascending: true);
+    return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Assign (assigneeId) or unassign (null) a stage.
+  Future<void> assignStage(String stageId, String? assigneeId) async {
+    await sb.from('stages').update({'assignee_id': assigneeId}).eq('id', stageId);
+  }
+
   /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
   Future<StageBundle> stageBundle(String stageId) async {
     final checklist = await sb.from('checklist_items')
@@ -257,6 +272,10 @@ final stageBundleProvider = FutureProvider.family<StageBundle, String>(
 /// A project's procurement requirements (Hero #1, editable), keyed by project id.
 final requirementsProvider = FutureProvider.family<List<Requirement>, String>(
     (ref, projectId) => ref.read(projectsRepoProvider).requirements(projectId));
+
+/// Execution staff a PM can assign stages to (workshop/design/store/service).
+final assignableMembersProvider = FutureProvider<List<Member>>(
+    (ref) => ref.read(projectsRepoProvider).assignableMembers());
 
 /// Admin actions (onboarding + option lists).
 class AdminRepo {

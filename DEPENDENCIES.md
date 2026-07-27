@@ -189,3 +189,18 @@ operational data entry.
 > These planning features currently sit under Admin only because PM isn't built yet.
 > When the PM role is built, Create-Template(+BOM) and the editable Materials screen
 > move/attach there; Admin keeps them **read-only**.
+
+
+---
+
+## Assignment architecture (two levels)
+
+1. **Admin → assigns PM to a project** — `projects.pm_id`. Set at **Onboard Project** (PM dropdown).
+   PM then sees only projects where `pm_id = me` (`myProjectsProvider`).
+2. **PM → assigns build tasks (stages) to execution staff** — `stages.assignee_id`.
+   - Assignable staff = roles **workshop / design / store / service** (`assignableMembersProvider`).
+     NOT admin / pm / procurement / client. (PM's Team tab shows only these — PM never sees themselves.)
+   - From PM's Project detail → each stage → **Assign / Reassign / Unassign** (`assignStage(stageId, uid|null)`).
+   - Workload (`workloadProvider`) = count of in-progress stages per `assignee_id`; refreshed on assign.
+
+`canAssign` flag on `ProjectDetailScreen`: PM opens it `true`; Admin `false` (monitor only).
