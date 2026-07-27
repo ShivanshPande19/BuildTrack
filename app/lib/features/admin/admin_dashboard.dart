@@ -434,7 +434,7 @@ class _TeamTab extends ConsumerWidget {
                   title: 'No members yet',
                   subtitle: 'Tap + to invite your first team member.')
               else
-                ...list.map(_memberRow),
+                ...list.map((m) => _memberRow(context, ref, m)),
             ],
           );
         },
@@ -442,39 +442,87 @@ class _TeamTab extends ConsumerWidget {
     );
   }
 
-  Widget _memberRow(Member m) {
+  Widget _memberRow(BuildContext context, WidgetRef ref, Member m) {
     final rc = roleColor(m.role);
     final isAdmin = m.role == 'admin';
+    final isSelf = sb.auth.currentUser?.id == m.id;
+
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      decoration: BoxDecoration(
+        color: BT.card,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: BT.line),
+        boxShadow: const [BoxShadow(color: Color(0x0D695228), blurRadius: 20, offset: Offset(0, 8))],
+      ),
+      child: Row(children: [
+        Container(
+          width: 44, height: 44,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(color: rc, shape: BoxShape.circle),
+          child: Text(m.name.isNotEmpty ? m.name[0].toUpperCase() : '?',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16,
+              color: isAdmin ? BT.lime : BT.ink)),
+        ),
+        const SizedBox(width: 13),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(m.name.isEmpty ? '(no name)' : m.name,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+          const SizedBox(height: 2),
+          Text(_roleDesc[m.role] ?? m.email,
+            style: const TextStyle(color: BT.mut, fontSize: 12)),
+        ])),
+        const SizedBox(width: 8),
+        StatusPill(_roleLabel[m.role] ?? m.role, color: rc, dark: isAdmin),
+      ]),
+    );
+
+    // Admin can't remove themselves; everyone else is swipe-to-delete.
+    if (isSelf) return Padding(padding: const EdgeInsets.only(bottom: 11), child: card);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-        decoration: BoxDecoration(
-          color: BT.card,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: BT.line),
-          boxShadow: const [BoxShadow(color: Color(0x0D695228), blurRadius: 20, offset: Offset(0, 8))],
+      child: Dismissible(
+        key: ValueKey(m.id),
+        direction: DismissDirection.endToStart,
+        background: Container(
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 22),
+          decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(20)),
+          child: const Icon(Icons.delete_outline_rounded, color: BT.coral),
         ),
-        child: Row(children: [
-          Container(
-            width: 44, height: 44,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(color: rc, shape: BoxShape.circle),
-            child: Text(m.name.isNotEmpty ? m.name[0].toUpperCase() : '?',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16,
-                color: isAdmin ? BT.lime : BT.ink)),
-          ),
-          const SizedBox(width: 13),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(m.name.isEmpty ? '(no name)' : m.name,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-            const SizedBox(height: 2),
-            Text(_roleDesc[m.role] ?? m.email,
-              style: const TextStyle(color: BT.mut, fontSize: 12)),
-          ])),
-          const SizedBox(width: 8),
-          StatusPill(_roleLabel[m.role] ?? m.role, color: rc, dark: isAdmin),
-        ]),
+        confirmDismiss: (_) async {
+          final ok = await showDialog<bool>(context: context, builder: (dctx) => AlertDialog(
+            backgroundColor: BT.card,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: Text('Remove member?', style: display(18, w: FontWeight.w600)),
+            content: Text('${m.name.isEmpty ? m.email : m.name} will lose access immediately. This cannot be undone.',
+              style: const TextStyle(fontSize: 13.5, color: BT.mut)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dctx, false),
+                child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+              TextButton(onPressed: () => Navigator.pop(dctx, true),
+                child: const Text('Remove', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700))),
+            ],
+          ));
+          if (ok != true) return false;
+          try {
+            await ref.read(adminRepoProvider).deleteMember(m.id);
+            ref.invalidate(membersProvider);
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                backgroundColor: BT.ink, content: Text('${m.name.isEmpty ? m.email : m.name} removed')));
+            }
+            return true;
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                backgroundColor: BT.coral, content: Text('Could not remove: $e')));
+            }
+            return false;
+          }
+        },
+        child: card,
       ),
     );
   }

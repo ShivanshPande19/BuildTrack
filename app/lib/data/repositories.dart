@@ -312,6 +312,15 @@ class AdminRepo {
     }
   }
 
+  /// Delete a member (auth user + profile) via the admin-delete-member Edge Function.
+  Future<void> deleteMember(String userId) async {
+    final res = await sb.functions.invoke('admin-delete-member', body: {'target_user_id': userId});
+    final data = res.data;
+    if (res.status != 200 || (data is Map && data['error'] != null)) {
+      throw Exception(data is Map && data['error'] != null ? data['error'] : 'Failed (${res.status})');
+    }
+  }
+
   /// Create a new client account.
   Future<OptRef> createClient(String businessName, String? phone) async {
     final c = await sb.from('client_accounts')
