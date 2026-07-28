@@ -470,6 +470,15 @@ class ClientRepo {
     return (d as List).map((e) => ClientDoc.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  /// Photos uploaded against a single stage (client sees these per stage).
+  Future<List<StagePhoto>> stagePhotos(String stageId) async {
+    final d = await sb.from('attachments')
+        .select('file_url,caption,created_at')
+        .eq('owner_type', 'stage').eq('owner_id', stageId)
+        .order('created_at', ascending: false);
+    return (d as List).map((e) => StagePhoto.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   Future<List<DesignRow>> designs(String projectId) async {
     final d = await sb.from('design_artifacts').select('id,type,status').eq('project_id', projectId);
     return (d as List).map((e) => DesignRow.fromMap(e as Map<String, dynamic>)).toList();
@@ -502,6 +511,8 @@ final myTrucksProvider = FutureProvider<List<Project>>((ref) {
 });
 final truckPhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
     (ref, id) => ref.read(clientRepoProvider).photos(id));
+final stagePhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
+    (ref, stageId) => ref.read(clientRepoProvider).stagePhotos(stageId));
 final truckDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
     (ref, id) => ref.read(clientRepoProvider).documents(id));
 final truckDesignsProvider = FutureProvider.family<List<DesignRow>, String>(

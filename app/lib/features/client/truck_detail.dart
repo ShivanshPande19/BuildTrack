@@ -7,9 +7,10 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'raise_request.dart';
 import 'approve_design.dart';
+import 'client_stage.dart';
 
-/// Client — everything about ONE truck in a single screen:
-/// progress + current stage + build journey + photos + documents + raise request.
+/// Client — one truck: progress + current stage + build journey (tap a stage for
+/// its photos) + documents. Everything about the truck in one clean screen.
 class ClientTruckDetail extends ConsumerWidget {
   final Project project;
   const ClientTruckDetail({super.key, required this.project});
@@ -31,7 +32,6 @@ class ClientTruckDetail extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(projectDetailProvider(project.id));
-    final photos = ref.watch(truckPhotosProvider(project.id)).valueOrNull ?? [];
     final docs = ref.watch(truckDocsProvider(project.id)).valueOrNull ?? [];
     final designs = ref.watch(truckDesignsProvider(project.id)).valueOrNull ?? [];
     final pending = designs.where((d) => d.status == 'pending_approval').toList();
@@ -40,13 +40,11 @@ class ClientTruckDetail extends ConsumerWidget {
     return Scaffold(
       body: SafeArea(child: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(truckPhotosProvider(project.id));
           ref.invalidate(truckDocsProvider(project.id));
           ref.invalidate(truckDesignsProvider(project.id));
           return ref.refresh(projectDetailProvider(project.id).future);
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 30), children: [
-          // header
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -58,8 +56,7 @@ class ClientTruckDetail extends ConsumerWidget {
             StatusPill(s.label, color: s.color, dark: project.status == 'delivered'),
           ]),
           const SizedBox(height: 14),
-          Text(project.name, style: display(27, w: FontWeight.w600)),
-          const SizedBox(height: 2),
+          Text(project.name, style: display(26, w: FontWeight.w600)),
           Text(project.code, style: const TextStyle(color: BT.mut, fontSize: 12.5)),
           const SizedBox(height: 16),
 
@@ -69,23 +66,30 @@ class ClientTruckDetail extends ConsumerWidget {
             data: (d) {
               final cur = d.currentStage;
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                // progress ring
-                AppCard(padding: const EdgeInsets.all(20), child: Column(children: [
-                  SizedBox(width: 148, height: 148, child: Stack(alignment: Alignment.center, children: [
-                    SizedBox(width: 130, height: 130, child: CircularProgressIndicator(
-                      value: d.project.progressPct.clamp(0, 100) / 100, strokeWidth: 12, backgroundColor: BT.track, valueColor: const AlwaysStoppedAnimation(BT.lime))),
-                    Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('${d.project.progressPct}%', style: display(30, w: FontWeight.w600)),
-                      const Text('BUILT', style: TextStyle(fontSize: 10, letterSpacing: 1.5, color: BT.mut, fontWeight: FontWeight.w600)),
+                // compact progress card (ring + info, no empty sides)
+                AppCard(padding: const EdgeInsets.all(18), child: Row(children: [
+                  SizedBox(width: 88, height: 88, child: Stack(alignment: Alignment.center, children: [
+                    SizedBox(width: 88, height: 88, child: CircularProgressIndicator(
+                      value: d.project.progressPct.clamp(0, 100) / 100, strokeWidth: 9,
+                      backgroundColor: BT.track, valueColor: const AlwaysStoppedAnimation(BT.lime))),
+                    Text('${d.project.progressPct}%', style: display(20, w: FontWeight.w600)),
+                  ])),
+                  const SizedBox(width: 18),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    const Text('CURRENTLY', style: TextStyle(fontSize: 10.5, letterSpacing: 1.2, color: BT.mut, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text(cur?.name ?? 'Getting started', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      const Icon(Icons.event_rounded, size: 15, color: BT.mut),
+                      const SizedBox(width: 6),
+                      Text('Delivery ${d.targetDelivery == null ? '—' : _fmt.format(d.targetDelivery!)}',
+                        style: const TextStyle(fontSize: 12.5, color: BT.mut, fontWeight: FontWeight.w600)),
                     ]),
                   ])),
-                  const SizedBox(height: 8),
-                  Text('Currently: ${cur?.name ?? '—'}', style: const TextStyle(color: BT.mut, fontSize: 13)),
-                  const SizedBox(height: 10),
-                  StatusPill('Delivery ${d.targetDelivery == null ? '—' : _fmt.format(d.targetDelivery!)}', color: BT.lime),
                 ])),
 
-                // design approval
+                // design approval CTA
                 if (pending.isNotEmpty) ...[
                   const SizedBox(height: 12),
                   ...pending.map((dz) => Padding(padding: const EdgeInsets.only(bottom: 10), child: GestureDetector(
@@ -95,8 +99,8 @@ class ClientTruckDetail extends ConsumerWidget {
                       decoration: BoxDecoration(gradient: const LinearGradient(colors: [Color(0xFFFBE9F1), Color(0xFFFBFAF5)]),
                         borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFF2D3E1))),
                       child: Row(children: [
-                        Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: BT.pink, borderRadius: BorderRadius.circular(13)),
-                          child: const Icon(Icons.edit_rounded, size: 20, color: Color(0xFF4A2438))),
+                        Container(width: 42, height: 42, alignment: Alignment.center, decoration: BoxDecoration(color: BT.pink, borderRadius: BorderRadius.circular(13)),
+                          child: const Icon(Icons.edit_rounded, size: 19, color: Color(0xFF4A2438))),
                         const SizedBox(width: 13),
                         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                           Text('Approve ${dz.type} design', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
@@ -108,45 +112,24 @@ class ClientTruckDetail extends ConsumerWidget {
                   ))),
                 ],
 
-                // build journey
                 const SectionLabel('Build journey'),
+                const Padding(padding: EdgeInsets.only(left: 2, bottom: 10),
+                  child: Text('Tap a stage to see its photos', style: TextStyle(color: BT.mut, fontSize: 12))),
                 if (d.stages.isEmpty)
                   const EmptyState(icon: Icons.timeline_rounded, tint: BT.sky, title: 'Not started', subtitle: 'Your build stages will appear here.')
                 else
-                  ...List.generate(d.stages.length, (i) => _tl(d.stages[i], i == d.stages.length - 1)),
+                  ...List.generate(d.stages.length, (i) => _stageTile(context, d.stages[i], i == d.stages.length - 1)),
               ]);
             },
           ),
 
-          // photos
-          const SectionLabel('Photos'),
-          if (photos.isEmpty)
-            const EmptyState(icon: Icons.photo_library_outlined, tint: BT.sky, title: 'No photos yet', subtitle: 'The workshop posts progress photos as your build moves along.')
-          else
-            SizedBox(height: 150, child: ListView.separated(
-              scrollDirection: Axis.horizontal, itemCount: photos.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 12),
-              itemBuilder: (_, i) => ClipRRect(borderRadius: BorderRadius.circular(16), child: SizedBox(width: 200, child: Stack(fit: StackFit.expand, children: [
-                Container(color: BT.card2),
-                Image.network(photos[i].url, fit: BoxFit.cover,
-                  loadingBuilder: (c, w, prog) => prog == null ? w : const Center(child: CircularProgressIndicator(color: BT.mut2, strokeWidth: 2)),
-                  errorBuilder: (c, e, st) => const Center(child: Icon(Icons.image_not_supported_outlined, color: BT.mut2))),
-                if (photos[i].caption != null) Positioned(left: 0, right: 0, bottom: 0, child: Container(
-                  padding: const EdgeInsets.fromLTRB(10, 16, 10, 8),
-                  decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Color(0xCC000000)])),
-                  child: Text(photos[i].caption!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w600)))),
-              ]))),
-            )),
-
-          // documents
-          const SectionLabel('Documents'),
-          if (docs.isEmpty)
-            const EmptyState(icon: Icons.description_outlined, tint: BT.lav, title: 'No documents yet', subtitle: 'Contract, invoices and warranty pack will show here.')
-          else
+          // documents — only when there are any (no empty card / dead space)
+          if (docs.isNotEmpty) ...[
+            const SectionLabel('Documents'),
             ...docs.map((doc) => Padding(padding: const EdgeInsets.only(bottom: 11),
               child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
-                Container(width: 46, height: 46, alignment: Alignment.center, decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
-                  child: const Icon(Icons.description_rounded, size: 21, color: BT.ink)),
+                Container(width: 44, height: 44, alignment: Alignment.center, decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+                  child: const Icon(Icons.description_rounded, size: 20, color: BT.ink)),
                 const SizedBox(width: 13),
                 Expanded(child: Text(_docLabel[doc.type] ?? doc.type, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
                 doc.available
@@ -156,6 +139,7 @@ class ClientTruckDetail extends ConsumerWidget {
                   : const StatusPill('Soon', color: BT.amber),
               ]))),
             ),
+          ],
 
           const SizedBox(height: 18),
           PrimaryButton('Raise a request', icon: Icons.headset_mic_rounded, bg: BT.ink, fg: BT.card,
@@ -165,7 +149,7 @@ class ClientTruckDetail extends ConsumerWidget {
     );
   }
 
-  Widget _tl(Stage s, bool isLast) {
+  Widget _stageTile(BuildContext context, Stage s, bool isLast) {
     final done = s.status == 'done';
     final now = s.status == 'in_progress';
     final sub = switch (s.status) {
@@ -175,20 +159,37 @@ class ClientTruckDetail extends ConsumerWidget {
     };
     Widget dot;
     if (done) {
-      dot = Container(width: 22, height: 22, alignment: Alignment.center, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle), child: const Icon(Icons.check_rounded, size: 13, color: BT.ink));
+      dot = Container(width: 24, height: 24, alignment: Alignment.center, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle), child: const Icon(Icons.check_rounded, size: 14, color: BT.ink));
     } else if (now) {
-      dot = Container(width: 22, height: 22, alignment: Alignment.center, decoration: const BoxDecoration(color: BT.ink, shape: BoxShape.circle), child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle)));
+      dot = Container(width: 24, height: 24, alignment: Alignment.center, decoration: const BoxDecoration(color: BT.ink, shape: BoxShape.circle), child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle)));
     } else {
-      dot = Container(width: 22, height: 22, decoration: BoxDecoration(color: BT.card2, shape: BoxShape.circle, border: Border.all(color: BT.line, width: 1.5)));
+      dot = Container(width: 24, height: 24, decoration: BoxDecoration(color: BT.card2, shape: BoxShape.circle, border: Border.all(color: BT.line, width: 1.5)));
     }
     return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Column(children: [dot, if (!isLast) Expanded(child: Container(width: 2, color: BT.line, margin: const EdgeInsets.symmetric(vertical: 2)))]),
-      const SizedBox(width: 14),
-      Expanded(child: Padding(padding: EdgeInsets.only(bottom: isLast ? 0 : 20, top: 1), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(s.name, style: TextStyle(fontSize: 15, fontWeight: (done || now) ? FontWeight.w600 : FontWeight.w500, color: (done || now) ? BT.ink : BT.mut2)),
-        const SizedBox(height: 2),
-        Text(sub, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
-      ]))),
+      Column(children: [dot, if (!isLast) Expanded(child: Container(width: 2, color: BT.line, margin: const EdgeInsets.symmetric(vertical: 3)))]),
+      const SizedBox(width: 13),
+      Expanded(child: Padding(padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientStageDetail(stage: s))),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+            child: Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(s.name, style: TextStyle(fontSize: 14.5, fontWeight: (done || now) ? FontWeight.w600 : FontWeight.w500, color: (done || now) ? BT.ink : BT.mut)),
+                const SizedBox(height: 2),
+                Text(sub, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
+              ])),
+              Row(mainAxisSize: MainAxisSize.min, children: const [
+                Icon(Icons.photo_library_outlined, size: 16, color: BT.mut2),
+                SizedBox(width: 4),
+                Icon(Icons.chevron_right_rounded, size: 18, color: BT.mut2),
+              ]),
+            ]),
+          ),
+        ),
+      )),
     ]));
   }
 }
