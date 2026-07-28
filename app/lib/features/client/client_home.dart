@@ -8,6 +8,7 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../common/notifications.dart';
 import 'raise_request.dart';
+import 'truck_3d.dart';
 import 'truck_detail.dart';
 
 /// Client shell — global navbar: My Trucks · Support · Profile.
@@ -120,6 +121,11 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientTruckDetail(project: p))),
       child: AppCard(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // 3D design preview — prototype shows a demo truck on every card.
+        // In production this renders only once the design is approved, using
+        // the approved design version's .glb URL.
+        Truck3DPreview(glbUrl: kDemoTruckGlb, label: p.name, height: 190),
+        const SizedBox(height: 14),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),
           const SizedBox(width: 8),
