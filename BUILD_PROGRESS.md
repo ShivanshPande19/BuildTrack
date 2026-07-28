@@ -99,7 +99,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Studio** (stat tiles: drafts/awaiting/changes/approved + "needs your attention")
 - ✅ **Designs** (full library, status filter chips)
 - ✅ **Approvals** (submitted designs + client outcome + feedback surfaced)
-- ✅ **New design** (pick project + type · attach .glb model + 2D preview + note · save draft / submit)
+- ✅ **New design** (pick project + type · **upload .glb + preview image from device → Supabase Storage** · note · save draft / submit)
 - ✅ **New version** (re-upload after a change request → resubmits, clears feedback)
 - ✅ **Design detail** (interactive 3D/2D preview · client feedback · status banners · version history)
 - ✅ Notifications · Profile (shared common)
@@ -117,4 +117,4 @@ approved design's `.glb` flows to the **3D showcase**.
 
 ---
 *Phase 2: Design role ✅ done. Next: Service role (connects to Client raise-request / tickets).*
-*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model. Edge functions: admin-create-member, admin-delete-member.*
+*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage (public 'designs' bucket). Edge functions: admin-create-member, admin-delete-member.*

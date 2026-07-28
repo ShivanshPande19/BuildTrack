@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_client.dart';
@@ -804,6 +805,17 @@ class DesignRepo {
 
   Future<void> submitForApproval(String artifactId) async {
     await sb.from('design_artifacts').update({'status': 'pending_approval'}).eq('id', artifactId);
+  }
+
+  /// Upload a design file (.glb model or preview image) to the public 'designs'
+  /// bucket and return its public URL. Path is namespaced by the uploader.
+  Future<String> uploadFile(Uint8List bytes, {required String filename, required String contentType}) async {
+    final safe = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+    final uid = sb.auth.currentUser?.id ?? 'anon';
+    final path = '$uid/${DateTime.now().millisecondsSinceEpoch}_$safe';
+    await sb.storage.from('designs').uploadBinary(
+      path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: true));
+    return sb.storage.from('designs').getPublicUrl(path);
   }
 
   /// The .glb of an approved design for this project (drives the 3D showcase).

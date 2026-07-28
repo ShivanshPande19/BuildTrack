@@ -583,3 +583,27 @@ values
 -- compute schedule + order-by dates + progress
 select public.fn_recompute_schedule('55555555-0000-0000-0000-000000000001');
 select public.fn_recompute_progress('55555555-0000-0000-0000-000000000001');
+
+
+-- ========== DESIGN STORAGE (self-serve uploads) ==========
+insert into storage.buckets (id, name, public)
+values ('designs', 'designs', true)
+on conflict (id) do nothing;
+
+drop policy if exists "designs public read" on storage.objects;
+create policy "designs public read" on storage.objects
+  for select using (bucket_id = 'designs');
+
+drop policy if exists "designs staff insert" on storage.objects;
+create policy "designs staff insert" on storage.objects
+  for insert to authenticated with check (bucket_id = 'designs' and public.is_staff());
+
+drop policy if exists "designs staff update" on storage.objects;
+create policy "designs staff update" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'designs' and public.is_staff())
+  with check (bucket_id = 'designs' and public.is_staff());
+
+drop policy if exists "designs staff delete" on storage.objects;
+create policy "designs staff delete" on storage.objects
+  for delete to authenticated using (bucket_id = 'designs' and public.is_staff());
