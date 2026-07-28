@@ -7,6 +7,7 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'stage_detail.dart';
 import 'project_requirements.dart';
+import '../client/truck_3d.dart';
 
 /// Admin — Project detail (a4): progress, delivery date and the build-stage timeline.
 class ProjectDetailScreen extends ConsumerWidget {
@@ -88,6 +89,11 @@ class ProjectDetailScreen extends ConsumerWidget {
         const SizedBox(width: 10),
         StatusPill(s.label, color: s.color),
       ]),
+      const SizedBox(height: 16),
+
+      // 3D design preview — shared by Admin + PM. Prototype shows a demo truck;
+      // in production this renders only when an approved design (.glb) exists.
+      Truck3DPreview(glbUrl: kDemoTruckGlb, label: d.project.name, height: 200),
       const SizedBox(height: 16),
 
       // progress + delivery card
