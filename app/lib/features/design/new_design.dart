@@ -215,7 +215,7 @@ class _NewDesignState extends ConsumerState<NewDesign> {
     child: Text(t, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)));
 
   Widget _textField(TextEditingController c, String hint, {TextInputType? keyboard, int lines = 1}) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: lines > 1 ? 8 : 0),
+    padding: EdgeInsets.symmetric(horizontal: 16, vertical: lines > 1 ? 8 : 0),
     constraints: BoxConstraints(minHeight: lines > 1 ? 0 : 52),
     alignment: lines > 1 ? null : Alignment.center,
     decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
