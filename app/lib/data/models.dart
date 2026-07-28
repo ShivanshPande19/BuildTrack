@@ -396,3 +396,46 @@ class WorkshopTask {
     );
   }
 }
+
+
+/// A client-visible document (contract/invoice/warranty/handover).
+class ClientDoc {
+  final String id, type;
+  final String? fileUrl;
+  final bool available;
+  ClientDoc({required this.id, required this.type, this.fileUrl, this.available = false});
+  factory ClientDoc.fromMap(Map<String, dynamic> m) => ClientDoc(
+    id: m['id'] as String,
+    type: m['type'] as String? ?? 'document',
+    fileUrl: m['file_url'] as String?,
+    available: m['available'] as bool? ?? false,
+  );
+}
+
+/// A support request / ticket raised by the client.
+class TicketRow {
+  final String id, number, category, status;
+  final String? description;
+  final DateTime? createdAt;
+  TicketRow({required this.id, required this.number, required this.category,
+    required this.status, this.description, this.createdAt});
+  factory TicketRow.fromMap(Map<String, dynamic> m) => TicketRow(
+    id: m['id'] as String,
+    number: m['ticket_number'] as String? ?? '',
+    category: m['category'] as String? ?? 'other',
+    status: m['status'] as String? ?? 'open',
+    description: m['description'] as String?,
+    createdAt: parseDate(m['created_at']),
+  );
+}
+
+/// A design artifact the client can view / approve.
+class DesignRow {
+  final String id, type, status;
+  DesignRow({required this.id, required this.type, required this.status});
+  factory DesignRow.fromMap(Map<String, dynamic> m) => DesignRow(
+    id: m['id'] as String,
+    type: m['type'] as String? ?? 'layout',
+    status: m['status'] as String? ?? 'draft',
+  );
+}

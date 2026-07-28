@@ -446,6 +446,71 @@ final workshopPartsProvider = FutureProvider<List<ComponentRow>>((ref) async {
   return repo.installedForProjects(ids);
 });
 
+/// Client — read-only build views of their own trucks (RLS scopes to their account).
+class ClientRepo {
+  Future<List<Project>> myTrucks() async {
+    final d = await sb.from('projects')
+        .select('id,code,name,status,progress_pct').order('code', ascending: true);
+    return (d as List).map((e) => Project.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<StagePhoto>> photos(String projectId) async {
+    final stages = await sb.from('stages').select('id').eq('project_id', projectId);
+    final ids = (stages as List).map((e) => e['id'] as String).toList();
+    if (ids.isEmpty) return [];
+    final d = await sb.from('attachments')
+        .select('file_url,caption,created_at')
+        .eq('owner_type', 'stage').inFilter('owner_id', ids)
+        .order('created_at', ascending: false);
+    return (d as List).map((e) => StagePhoto.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<ClientDoc>> documents(String projectId) async {
+    final d = await sb.from('documents').select('id,type,file_url,available').eq('project_id', projectId);
+    return (d as List).map((e) => ClientDoc.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<DesignRow>> designs(String projectId) async {
+    final d = await sb.from('design_artifacts').select('id,type,status').eq('project_id', projectId);
+    return (d as List).map((e) => DesignRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> decideDesign(String artifactId, bool approve) async {
+    await sb.from('design_artifacts').update({'status': approve ? 'approved' : 'revision'}).eq('id', artifactId);
+  }
+
+  Future<List<TicketRow>> myTickets() async {
+    final d = await sb.from('tickets')
+        .select('id,ticket_number,category,description,status,created_at')
+        .order('created_at', ascending: false);
+    return (d as List).map((e) => TicketRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<void> raiseTicket({required String projectId, required String category, required String description}) async {
+    final num = 'R-${DateTime.now().millisecondsSinceEpoch % 100000}';
+    await sb.from('tickets').insert({
+      'ticket_number': num, 'project_id': projectId, 'raised_by': sb.auth.currentUser?.id,
+      'category': category, 'description': description, 'status': 'open',
+    });
+  }
+}
+
+final clientRepoProvider = Provider<ClientRepo>((ref) => ClientRepo());
+final myTrucksProvider = FutureProvider<List<Project>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(clientRepoProvider).myTrucks();
+});
+final truckPhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
+    (ref, id) => ref.read(clientRepoProvider).photos(id));
+final truckDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
+    (ref, id) => ref.read(clientRepoProvider).documents(id));
+final truckDesignsProvider = FutureProvider.family<List<DesignRow>, String>(
+    (ref, id) => ref.read(clientRepoProvider).designs(id));
+final myTicketsProvider = FutureProvider<List<TicketRow>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(clientRepoProvider).myTickets();
+});
+
 /// Admin actions (onboarding + option lists).
 class AdminRepo {
   Future<List<OptRef>> templates() async {

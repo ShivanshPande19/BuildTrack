@@ -82,8 +82,17 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 > Note: PM sees projects where `pm_id = me`. Assign a PM in Onboard Project (PM dropdown).
 > Assignment: Admin→PM (`pm_id`); PM→staff (`stages.assignee_id`). All data providers are auth-aware (correct data right after login).
 
-## 6. Client ⬜
-- ⬜ My Trucks · Truck dashboard · Build journey · Photos · Approve design · Documents · Raise request · Support · Notifications · Profile
+## 6. Client ✅
+- ✅ **My Trucks** (multi-project entry, progress + status)
+- ✅ **Truck view** — tabbed (Progress · Photos · Docs · Support)
+- ✅ **Progress** (build % ring + current stage + build-journey timeline)
+- ✅ **Photos** (build photos — needs migration 0006 for client read)
+- ✅ **Documents** (available client docs)
+- ✅ **Approve design** (approve / request changes) — feeds Design role later
+- ✅ **Raise request** (creates ticket) + **Support** (my requests)
+- ✅ Notifications · Profile (shared common)
+
+**→ CLIENT ROLE COMPLETE (Phase-1) · 6/6 core roles done**
 
 ## 7. Design ⬜ *(Phase 2)*
 ## 8. Service ⬜ *(Phase 2)*
