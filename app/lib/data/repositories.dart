@@ -480,12 +480,41 @@ class ClientRepo {
   }
 
   Future<List<DesignRow>> designs(String projectId) async {
-    final d = await sb.from('design_artifacts').select('id,type,status').eq('project_id', projectId);
-    return (d as List).map((e) => DesignRow.fromMap(e as Map<String, dynamic>)).toList();
+    final rows = await sb.from('design_artifacts')
+        .select('id,type,status,current_version_id,client_feedback')
+        .eq('project_id', projectId);
+    final list = (rows as List).cast<Map<String, dynamic>>();
+    final verIds = <String>[
+      for (final r in list) if (r['current_version_id'] != null) r['current_version_id'] as String
+    ];
+    final vmap = <String, Map<String, dynamic>>{};
+    if (verIds.isNotEmpty) {
+      final vs = await sb.from('design_versions')
+          .select('id,model_url,file_url,change_note').inFilter('id', verIds);
+      for (final v in (vs as List)) {
+        vmap[v['id'] as String] = v as Map<String, dynamic>;
+      }
+    }
+    return list.map((r) {
+      final v = r['current_version_id'] != null ? vmap[r['current_version_id']] : null;
+      return DesignRow(
+        id: r['id'] as String,
+        type: r['type'] as String? ?? 'layout',
+        status: r['status'] as String? ?? 'draft',
+        modelUrl: v?['model_url'] as String?,
+        imageUrl: v?['file_url'] as String?,
+        changeNote: v?['change_note'] as String?,
+        clientFeedback: r['client_feedback'] as String?,
+      );
+    }).toList();
   }
 
-  Future<void> decideDesign(String artifactId, bool approve) async {
-    await sb.from('design_artifacts').update({'status': approve ? 'approved' : 'revision'}).eq('id', artifactId);
+  Future<void> decideDesign(String artifactId, bool approve, {String? feedback}) async {
+    final data = <String, dynamic>{'status': approve ? 'approved' : 'revision'};
+    if (!approve && feedback != null && feedback.trim().isNotEmpty) {
+      data['client_feedback'] = feedback.trim();
+    }
+    await sb.from('design_artifacts').update(data).eq('id', artifactId);
   }
 
   Future<List<TicketRow>> myTickets() async {
@@ -704,3 +733,138 @@ final membersProvider   = FutureProvider<List<Member>>((ref) { ref.watch(authSta
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
+
+
+/// Designer — create designs, upload versions (2D image + .glb model),
+/// submit for client approval, and track the outcome / feedback loop.
+class DesignRepo {
+  /// Every design artifact + its project context + current version details.
+  Future<List<DesignItem>> myDesigns() async {
+    final rows = await sb.from('design_artifacts')
+        .select('id,type,status,project_id,current_version_id,client_feedback, projects(code,name)');
+    final list = (rows as List).cast<Map<String, dynamic>>();
+    final vmap = await _versionsById(
+      [for (final r in list) if (r['current_version_id'] != null) r['current_version_id'] as String],
+    );
+    return list.map((r) => _itemFrom(r, vmap[r['current_version_id']])).toList();
+  }
+
+  Future<DesignDetailData> detail(String artifactId) async {
+    final r = await sb.from('design_artifacts')
+        .select('id,type,status,project_id,current_version_id,client_feedback, projects(code,name)')
+        .eq('id', artifactId).single();
+    final vs = await sb.from('design_versions')
+        .select('id,model_url,file_url,version_no,change_note,created_at')
+        .eq('artifact_id', artifactId).order('version_no', ascending: false);
+    final versions = (vs as List).map((e) => DesignVersionRow.fromMap(e as Map<String, dynamic>)).toList();
+    Map<String, dynamic>? cur;
+    for (final e in (vs)) {
+      if ((e as Map<String, dynamic>)['id'] == r['current_version_id']) { cur = e; break; }
+    }
+    return DesignDetailData(_itemFrom(r as Map<String, dynamic>, cur), versions);
+  }
+
+  /// Create a brand-new design artifact with its first version.
+  Future<void> create({
+    required String projectId, required String type,
+    String? modelUrl, String? imageUrl, String? changeNote, required bool submit,
+  }) async {
+    final a = await sb.from('design_artifacts').insert({
+      'project_id': projectId, 'type': type,
+      'status': submit ? 'pending_approval' : 'draft',
+      'created_by': sb.auth.currentUser?.id,
+    }).select('id').single();
+    final aid = a['id'] as String;
+    final v = await sb.from('design_versions').insert({
+      'artifact_id': aid, 'version_no': 1,
+      'file_url': _clean(imageUrl), 'model_url': _clean(modelUrl), 'change_note': _clean(changeNote),
+    }).select('id').single();
+    await sb.from('design_artifacts').update({'current_version_id': v['id']}).eq('id', aid);
+  }
+
+  /// Add a new version to an existing artifact (e.g. after a change request).
+  Future<void> addVersion({
+    required String artifactId,
+    String? modelUrl, String? imageUrl, String? changeNote, required bool submit,
+  }) async {
+    final existing = await sb.from('design_versions')
+        .select('version_no').eq('artifact_id', artifactId)
+        .order('version_no', ascending: false).limit(1);
+    final nextNo = (existing as List).isEmpty ? 1 : ((existing.first['version_no'] as num).toInt() + 1);
+    final v = await sb.from('design_versions').insert({
+      'artifact_id': artifactId, 'version_no': nextNo,
+      'file_url': _clean(imageUrl), 'model_url': _clean(modelUrl), 'change_note': _clean(changeNote),
+    }).select('id').single();
+    await sb.from('design_artifacts').update({
+      'current_version_id': v['id'],
+      'status': submit ? 'pending_approval' : 'draft',
+      'client_feedback': null,
+    }).eq('id', artifactId);
+  }
+
+  Future<void> submitForApproval(String artifactId) async {
+    await sb.from('design_artifacts').update({'status': 'pending_approval'}).eq('id', artifactId);
+  }
+
+  /// The .glb of an approved design for this project (drives the 3D showcase).
+  Future<String?> approvedModelUrl(String projectId) async {
+    final rows = await sb.from('design_artifacts')
+        .select('current_version_id').eq('project_id', projectId).eq('status', 'approved');
+    final ids = <String>[
+      for (final r in (rows as List)) if (r['current_version_id'] != null) r['current_version_id'] as String
+    ];
+    if (ids.isEmpty) return null;
+    final vs = await sb.from('design_versions').select('model_url').inFilter('id', ids);
+    for (final v in (vs as List)) {
+      final m = v['model_url'] as String?;
+      if (m != null && m.trim().isNotEmpty) return m;
+    }
+    return null;
+  }
+
+  // ── helpers ──────────────────────────────────────────────
+  String? _clean(String? s) => (s == null || s.trim().isEmpty) ? null : s.trim();
+
+  Future<Map<String, Map<String, dynamic>>> _versionsById(List<String> ids) async {
+    final map = <String, Map<String, dynamic>>{};
+    if (ids.isEmpty) return map;
+    final vs = await sb.from('design_versions')
+        .select('id,model_url,file_url,version_no,change_note').inFilter('id', ids);
+    for (final v in (vs as List)) {
+      map[v['id'] as String] = v as Map<String, dynamic>;
+    }
+    return map;
+  }
+
+  DesignItem _itemFrom(Map<String, dynamic> r, Map<String, dynamic>? v) {
+    final pj = r['projects'] as Map<String, dynamic>?;
+    return DesignItem(
+      id: r['id'] as String,
+      type: r['type'] as String? ?? 'layout',
+      status: r['status'] as String? ?? 'draft',
+      projectId: r['project_id'] as String? ?? '',
+      projectCode: pj?['code'] as String?,
+      projectName: pj?['name'] as String?,
+      modelUrl: v?['model_url'] as String?,
+      imageUrl: v?['file_url'] as String?,
+      changeNote: v?['change_note'] as String?,
+      clientFeedback: r['client_feedback'] as String?,
+      versionNo: (v?['version_no'] as num?)?.toInt() ?? 1,
+    );
+  }
+}
+
+final designRepoProvider = Provider<DesignRepo>((ref) => DesignRepo());
+final myDesignsProvider = FutureProvider<List<DesignItem>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(designRepoProvider).myDesigns();
+});
+final designDetailProvider = FutureProvider.family<DesignDetailData, String>(
+    (ref, artifactId) => ref.read(designRepoProvider).detail(artifactId));
+
+/// The approved .glb for a project (null = none yet). Powers the 3D showcase
+/// on the client My Trucks card and the admin/PM project detail screen.
+final truckModelUrlProvider = FutureProvider.family<String?, String>((ref, projectId) {
+  ref.watch(authStateProvider);
+  return ref.read(designRepoProvider).approvedModelUrl(projectId);
+});

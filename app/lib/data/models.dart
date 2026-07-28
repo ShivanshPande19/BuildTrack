@@ -430,12 +430,52 @@ class TicketRow {
 }
 
 /// A design artifact the client can view / approve.
+/// modelUrl/imageUrl/changeNote come from the artifact's current version.
 class DesignRow {
   final String id, type, status;
-  DesignRow({required this.id, required this.type, required this.status});
+  final String? modelUrl, imageUrl, changeNote, clientFeedback;
+  DesignRow({required this.id, required this.type, required this.status,
+    this.modelUrl, this.imageUrl, this.changeNote, this.clientFeedback});
   factory DesignRow.fromMap(Map<String, dynamic> m) => DesignRow(
     id: m['id'] as String,
     type: m['type'] as String? ?? 'layout',
     status: m['status'] as String? ?? 'draft',
+    clientFeedback: m['client_feedback'] as String?,
   );
+}
+
+/// A design artifact from the Designer's perspective (adds project context +
+/// the current version's model/image/note + version number).
+class DesignItem {
+  final String id, type, status, projectId;
+  final String? projectCode, projectName, modelUrl, imageUrl, changeNote, clientFeedback;
+  final int versionNo;
+  DesignItem({required this.id, required this.type, required this.status, required this.projectId,
+    this.projectCode, this.projectName, this.modelUrl, this.imageUrl, this.changeNote,
+    this.clientFeedback, this.versionNo = 1});
+}
+
+/// One version of a design (history on the design detail screen).
+class DesignVersionRow {
+  final String id;
+  final int versionNo;
+  final String? modelUrl, imageUrl, changeNote;
+  final DateTime? createdAt;
+  DesignVersionRow({required this.id, required this.versionNo,
+    this.modelUrl, this.imageUrl, this.changeNote, this.createdAt});
+  factory DesignVersionRow.fromMap(Map<String, dynamic> m) => DesignVersionRow(
+    id: m['id'] as String,
+    versionNo: (m['version_no'] as num?)?.toInt() ?? 1,
+    modelUrl: m['model_url'] as String?,
+    imageUrl: m['file_url'] as String?,
+    changeNote: m['change_note'] as String?,
+    createdAt: parseDate(m['created_at']),
+  );
+}
+
+/// A design artifact + its full version history (Designer detail screen).
+class DesignDetailData {
+  final DesignItem design;
+  final List<DesignVersionRow> versions;
+  DesignDetailData(this.design, this.versions);
 }

@@ -91,9 +91,11 @@ class ProjectDetailScreen extends ConsumerWidget {
       ]),
       const SizedBox(height: 16),
 
-      // 3D design preview — shared by Admin + PM. Prototype shows a demo truck;
-      // in production this renders only when an approved design (.glb) exists.
-      Truck3DPreview(glbUrl: kDemoTruckGlb, label: d.project.name, height: 200),
+      // 3D design preview — shared by Admin + PM. Real approved model when
+      // available, else the demo model.
+      Truck3DPreview(
+        glbUrl: ref.watch(truckModelUrlProvider(projectId)).valueOrNull ?? kDemoTruckGlb,
+        label: d.project.name, height: 200),
       const SizedBox(height: 16),
 
       // progress + delivery card

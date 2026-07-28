@@ -117,14 +117,14 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
 
   Widget _truckCard(Project p) {
     final s = _status(p.status);
+    // Approved design's .glb if one exists; else the demo model (prototype).
+    final modelUrl = ref.watch(truckModelUrlProvider(p.id)).valueOrNull;
     return Padding(padding: const EdgeInsets.only(bottom: 12), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ClientTruckDetail(project: p))),
       child: AppCard(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // 3D design preview — prototype shows a demo truck on every card.
-        // In production this renders only once the design is approved, using
-        // the approved design version's .glb URL.
-        Truck3DPreview(glbUrl: kDemoTruckGlb, label: p.name, height: 190),
+        // 3D design preview — real approved model when available, else demo.
+        Truck3DPreview(glbUrl: modelUrl ?? kDemoTruckGlb, label: p.name, height: 190),
         const SizedBox(height: 14),
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Expanded(child: Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16))),

@@ -94,8 +94,27 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 **→ CLIENT ROLE COMPLETE (Phase-1) · 6/6 core roles done**
 
-## 7. Design ⬜ *(Phase 2)*
-## 8. Service ⬜ *(Phase 2)*
+## 7. Design ✅ *(Phase 2)*
+- ✅ **Tab shell** (Studio · Designs · Approvals · Profile) + bell + New-design FAB
+- ✅ **Studio** (stat tiles: drafts/awaiting/changes/approved + "needs your attention")
+- ✅ **Designs** (full library, status filter chips)
+- ✅ **Approvals** (submitted designs + client outcome + feedback surfaced)
+- ✅ **New design** (pick project + type · attach .glb model + 2D preview + note · save draft / submit)
+- ✅ **New version** (re-upload after a change request → resubmits, clears feedback)
+- ✅ **Design detail** (interactive 3D/2D preview · client feedback · status banners · version history)
+- ✅ Notifications · Profile (shared common)
+
+**Client loop live:** Designer submits → Client **Approve / Request changes (with feedback)** →
+approved design's `.glb` flows to the **3D showcase**.
+
+## 🧊 3D showcase (Blender `.glb` → app)
+- ✅ `Truck3DPreview` (model_viewer_plus: rotate/zoom/AR + full-screen) — `features/client/truck_3d.dart`
+- ✅ **Client** My Trucks card · **Admin/PM** project detail — show approved model, demo fallback
+- ✅ `truckModelUrlProvider(projectId)` → approved design's `model_url`
+- Backend: `design_versions.model_url` + `design_artifacts.client_feedback` (migration **0007**)
+
+## 8. Service ⬜ *(Phase 2 — next)*
 
 ---
-*Next up: complete the Admin role.*
+*Phase 2: Design role ✅ done. Next: Service role (connects to Client raise-request / tickets).*
+*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model. Edge functions: admin-create-member, admin-delete-member.*

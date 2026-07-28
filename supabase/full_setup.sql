@@ -213,6 +213,7 @@ create table design_artifacts (
   type               design_type not null,
   status             design_status not null default 'draft',
   current_version_id uuid,
+  client_feedback    text,
   created_by         uuid references profiles(id)
 );
 
@@ -221,6 +222,7 @@ create table design_versions (
   artifact_id uuid not null references design_artifacts(id) on delete cascade,
   version_no  int not null default 1,
   file_url    text,
+  model_url   text,
   change_note text,
   created_at  timestamptz not null default now()
 );
