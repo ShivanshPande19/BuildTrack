@@ -61,9 +61,11 @@ class PrimaryButton extends StatelessWidget {
     color: bg, borderRadius: BorderRadius.circular(16),
     child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16),
       child: Container(height: 54, alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           if (icon != null) ...[Icon(icon, size: 19, color: fg), const SizedBox(width: 8)],
-          Text(label, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg)),
+          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg))),
         ]))),
   );
 }
