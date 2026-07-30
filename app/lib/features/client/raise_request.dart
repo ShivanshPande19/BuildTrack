@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/photo_picker.dart';
 
 /// Client — raise a support request (creates a ticket).
 class RaiseRequest extends ConsumerStatefulWidget {
@@ -15,6 +16,7 @@ class RaiseRequest extends ConsumerStatefulWidget {
 class _RaiseRequestState extends ConsumerState<RaiseRequest> {
   final _desc = TextEditingController();
   String _category = 'equipment';
+  PickedPhoto? _photo;
   bool _saving = false;
   String? _error;
 
@@ -30,16 +32,33 @@ class _RaiseRequestState extends ConsumerState<RaiseRequest> {
     }
     setState(() { _saving = true; _error = null; });
     try {
-      await ref.read(clientRepoProvider).raiseTicket(
+      final repo = ref.read(clientRepoProvider);
+      final ticketId = await repo.raiseTicket(
         projectId: widget.projectId, category: _category, description: _desc.text.trim());
+
+      // The photo needs the ticket's id, so it goes up after the ticket exists.
+      // A failed photo must not lose the request itself.
+      var photoFailed = false;
+      if (_photo != null) {
+        try {
+          await repo.attachTicketPhoto(ticketId, _photo!.bytes,
+            filename: _photo!.filename, contentType: _photo!.contentType);
+        } catch (_) {
+          photoFailed = true;
+        }
+      }
+
       ref.invalidate(myTicketsProvider);
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: BT.ink, content: Text('Request submitted — we\'ll get back to you.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: photoFailed ? BT.coral : BT.ink,
+          content: Text(photoFailed
+            ? 'Request sent, but the photo did not upload. You can mention it in a reply.'
+            : 'Request submitted — we\'ll get back to you.')));
       }
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -94,16 +113,24 @@ class _RaiseRequestState extends ConsumerState<RaiseRequest> {
             ]),
           ),
           const SizedBox(height: 12),
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Photo attach — coming soon'))),
-            child: Container(height: 50, alignment: Alignment.center,
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.photo_camera_outlined, size: 18, color: BT.ink), SizedBox(width: 8),
-                Text('Add a photo', style: TextStyle(fontWeight: FontWeight.w600)),
-              ])),
-          ),
+          // A photo usually explains the problem faster than the description.
+          if (_photo != null)
+            PhotoPreview(photo: _photo!, onRemove: () => setState(() => _photo = null))
+          else
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                final p = await pickPhoto(context);
+                if (p != null && mounted) setState(() => _photo = p);
+              },
+              child: Container(height: 50, alignment: Alignment.center,
+                decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: BT.line)),
+                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  Icon(Icons.photo_camera_outlined, size: 18, color: BT.ink), SizedBox(width: 8),
+                  Text('Add a photo', style: TextStyle(fontWeight: FontWeight.w600)),
+                ])),
+            ),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 14),
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
           const SizedBox(height: 20),

@@ -4,8 +4,10 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/barcode_scanner.dart';
 
-/// Workshop — scan to install (w4): pick an in-stock component → install into a truck/stage.
+/// Workshop — scan to install (w4): scan a part's label (or pick from in-stock)
+/// → install it into a truck/stage. This is the install half of Hero #2.
 class ScanInstall extends ConsumerStatefulWidget {
   final WorkshopTask? task;
   const ScanInstall({super.key, this.task});
@@ -15,11 +17,54 @@ class ScanInstall extends ConsumerStatefulWidget {
 
 class _ScanInstallState extends ConsumerState<ScanInstall> {
   WorkshopTask? _target;
+  bool _scanning = false;
 
   @override
   void initState() {
     super.initState();
     _target = widget.task;
+  }
+
+  /// Scan a label, resolve it to a part, then run the same install confirmation
+  /// as tapping the part in the list.
+  Future<void> _scan() async {
+    if (_target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: BT.coral, content: Text('Pick a task to install into first.')));
+      return;
+    }
+    final code = await Navigator.of(context).push<String>(
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen()));
+    if (code == null || !mounted) return;
+
+    setState(() => _scanning = true);
+    try {
+      final c = await ref.read(workshopRepoProvider).findBySerial(code);
+      if (!mounted) return;
+      if (c == null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral,
+          content: Text('No part found for "$code". Ask Store to log it first.')));
+        return;
+      }
+      // Only in-stock parts can be fitted; the DB enforces this too, but saying
+      // it here is clearer than letting the install fail.
+      if (c.status != 'in_stock') {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral,
+          content: Text('${c.serial} is marked "${c.status}"'
+                        '${c.projectCode != null ? ' on ${c.projectCode}' : ''} — not in stock.')));
+        return;
+      }
+      await _install(c);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _scanning = false);
+    }
   }
 
   Future<void> _install(ComponentRow c) async {
@@ -52,7 +97,7 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: BT.coral, content: Text('Failed: $e')));
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
     }
   }
 
@@ -80,20 +125,26 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
           const Text('Confirm which part goes into this truck.', style: TextStyle(color: BT.mut, fontSize: 13)),
           const SizedBox(height: 16),
 
-          // scan placeholder
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
-            decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: BT.mut2, width: 2, style: BorderStyle.solid)),
-            child: Column(children: [
-              Container(width: 60, height: 60, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(18)),
-                child: const Icon(Icons.qr_code_scanner_rounded, size: 28, color: BT.ink)),
-              const SizedBox(height: 12),
-              const Text('Scan serial / barcode', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-              const SizedBox(height: 4),
-              const Text('or pick from in-stock below', style: TextStyle(color: BT.mut, fontSize: 12)),
-            ]),
+          // real camera scan — the fast path on a workshop floor
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _scan,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 26, horizontal: 20),
+              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: BT.ink, width: 2)),
+              child: Column(children: [
+                Container(width: 60, height: 60, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(18)),
+                  child: const Icon(Icons.qr_code_scanner_rounded, size: 28, color: BT.ink)),
+                const SizedBox(height: 12),
+                const Text('Scan serial / barcode',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                const SizedBox(height: 4),
+                Text(_scanning ? 'Looking up…' : 'or pick from in-stock below',
+                  style: const TextStyle(color: BT.mut, fontSize: 12)),
+              ]),
+            ),
           ),
 
           // target task

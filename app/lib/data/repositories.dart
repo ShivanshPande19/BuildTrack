@@ -49,6 +49,21 @@ String friendlyError(Object e) {
   return e.toString().replaceFirst('Exception: ', '');
 }
 
+/// Upload bytes to the public `builds` bucket and return the public URL.
+///
+/// Shared by workshop site photos (`stages/<stageId>/…`) and client ticket
+/// photos (`tickets/<ticketId>/…`) — the storage policy in 0011 only lets a
+/// client write under `tickets/`.
+Future<String> uploadToBuilds(Uint8List bytes, {
+  required String filename, required String contentType, required String folder,
+}) async {
+  final safe = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+  final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$safe';
+  await sb.storage.from('builds').uploadBinary(
+    path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: true));
+  return sb.storage.from('builds').getPublicUrl(path);
+}
+
 /// Data access — thin wrappers over Supabase queries.
 class ProjectsRepo {
   /// pm_id comes along so Admin can spot builds with no project manager —
@@ -637,13 +652,37 @@ class WorkshopRepo {
     await sb.rpc('fn_submit_stage', params: {'p_stage': stageId});
   }
 
-  /// Add a stage photo (demo placeholder image + caption).
-  Future<void> addStagePhoto(String stageId, String caption) async {
+  /// Attach a real site photo to a stage.
+  ///
+  /// This used to insert a random `picsum.photos` URL — the client's build
+  /// gallery was showing stock photography. Now the bytes go to the public
+  /// `builds` bucket (0011) and the attachment points at them.
+  Future<void> addStagePhoto(String stageId, Uint8List bytes, {
+    required String filename, required String contentType, String? caption,
+  }) async {
+    final url = await uploadToBuilds(bytes,
+      filename: filename, contentType: contentType, folder: 'stages/$stageId');
     await sb.from('attachments').insert({
       'owner_type': 'stage', 'owner_id': stageId, 'uploaded_by': _uid,
-      'file_url': 'https://picsum.photos/seed/${DateTime.now().millisecondsSinceEpoch}/600/400',
-      'caption': caption.isEmpty ? 'Work photo' : caption,
+      'file_url': url,
+      'caption': (caption == null || caption.trim().isEmpty) ? 'Work photo' : caption.trim(),
     });
+  }
+
+  /// Find a part by the serial the camera just read.
+  ///
+  /// Case-insensitive and whitespace-tolerant, because a scan can pick up
+  /// padding and labels aren't consistent about case.
+  Future<ComponentRow?> findBySerial(String serial) async {
+    final q = serial.trim();
+    if (q.isEmpty) return null;
+    final d = await sb.from('component_instances')
+        .select(StoreRepo._compSelect)
+        .ilike('serial_number', q)
+        .limit(1);
+    final list = (d as List);
+    if (list.isEmpty) return null;
+    return ComponentRow.fromMap(list.first as Map<String, dynamic>);
   }
 
   Future<List<ComponentRow>> installedForProjects(List<String> projectIds) async {
@@ -762,16 +801,34 @@ class ClientRepo {
   /// The ticket number and the SLA deadline are set by the database
   /// (trg_ticket_defaults), and every service member is notified — previously
   /// a client request went nowhere because nothing consumed it.
-  Future<void> raiseTicket({
+  /// Returns the new ticket's id so a photo can be attached to it.
+  Future<String> raiseTicket({
     required String projectId, required String category, required String description,
     String priority = 'medium',
   }) async {
-    await sb.from('tickets').insert({
+    final d = await sb.from('tickets').insert({
       'project_id': projectId,
       'category': category,
       'description': description,
       'priority': priority,
       'status': 'open',
+    }).select('id').single();
+    return d['id'] as String;
+  }
+
+  /// Attach a photo of the problem to a request you raised.
+  ///
+  /// A picture is usually worth more than the description here — the service
+  /// team can often tell what's wrong before anyone drives out.
+  Future<void> attachTicketPhoto(String ticketId, Uint8List bytes, {
+    required String filename, required String contentType, String? caption,
+  }) async {
+    final url = await uploadToBuilds(bytes,
+      filename: filename, contentType: contentType, folder: 'tickets/$ticketId');
+    await sb.from('attachments').insert({
+      'owner_type': 'ticket', 'owner_id': ticketId, 'uploaded_by': sb.auth.currentUser?.id,
+      'file_url': url,
+      'caption': (caption == null || caption.trim().isEmpty) ? null : caption.trim(),
     });
   }
 
@@ -1293,6 +1350,16 @@ class ServiceRepo {
     );
   }
 
+  /// Photos the client attached to the request — often the fastest way to see
+  /// what's actually wrong.
+  Future<List<StagePhoto>> ticketPhotos(String ticketId) async {
+    final d = await sb.from('attachments')
+        .select('file_url,caption,created_at')
+        .eq('owner_type', 'ticket').eq('owner_id', ticketId)
+        .order('created_at', ascending: true);
+    return (d as List).map((e) => StagePhoto.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   Future<List<ServiceVisitRow>> visits(String ticketId) async {
     final d = await sb.from('service_visits')
         .select('id,ticket_id,technician_id,scheduled_date,status,note')
@@ -1431,6 +1498,8 @@ final serviceTicketProvider = FutureProvider.family<ServiceTicket, String>(
     (ref, id) => ref.read(serviceRepoProvider).ticket(id));
 final ticketVisitsProvider = FutureProvider.family<List<ServiceVisitRow>, String>(
     (ref, ticketId) => ref.read(serviceRepoProvider).visits(ticketId));
+final ticketPhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
+    (ref, ticketId) => ref.read(serviceRepoProvider).ticketPhotos(ticketId));
 final ticketComponentProvider = FutureProvider.family<WarrantyRow?, String>(
     (ref, componentId) => ref.read(serviceRepoProvider).linkedComponent(componentId));
 final techniciansProvider = FutureProvider<List<Member>>((ref) {

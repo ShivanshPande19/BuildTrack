@@ -29,6 +29,7 @@ class TicketDetailScreen extends ConsumerWidget {
   Future<void> _refresh(WidgetRef ref) async {
     ref.invalidate(serviceTicketProvider(ticketId));
     ref.invalidate(ticketVisitsProvider(ticketId));
+    ref.invalidate(ticketPhotosProvider(ticketId));
     ref.invalidate(serviceTicketsProvider);
   }
 
@@ -117,6 +118,9 @@ class TicketDetailScreen extends ConsumerWidget {
               style: const TextStyle(fontSize: 14, height: 1.45))),
           ])),
       ],
+
+      // …and their photos, which usually say more than the description
+      _photos(context, ref),
 
       // who's on it
       const SectionLabel('Assigned to'),
@@ -222,6 +226,47 @@ class TicketDetailScreen extends ConsumerWidget {
         ]),
       ),
     );
+  }
+
+  /// Photos the client attached when raising the request. Tap to view full-size.
+  Widget _photos(BuildContext context, WidgetRef ref) {
+    final photos = ref.watch(ticketPhotosProvider(ticketId)).valueOrNull
+        ?? const <StagePhoto>[];
+    if (photos.isEmpty) return const SizedBox.shrink();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SectionLabel('Photos from the client'),
+      SizedBox(height: 118, child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: photos.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) {
+          final p = photos[i];
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => showDialog<void>(context: context, builder: (dctx) => Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.all(16),
+              child: GestureDetector(
+                onTap: () => Navigator.pop(dctx),
+                child: ClipRRect(borderRadius: BorderRadius.circular(20),
+                  child: Image.network(p.url, fit: BoxFit.contain)),
+              ),
+            )),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(p.url, width: 150, height: 118, fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(width: 150, height: 118,
+                  alignment: Alignment.center, color: BT.card2,
+                  child: const Icon(Icons.broken_image_outlined, color: BT.mut2)),
+                loadingBuilder: (_, child, prog) => prog == null ? child
+                  : Container(width: 150, height: 118, alignment: Alignment.center,
+                      color: BT.card2,
+                      child: const CircularProgressIndicator(strokeWidth: 2, color: BT.mut2))),
+            ),
+          );
+        },
+      )),
+    ]);
   }
 
   Widget _visits(BuildContext context, WidgetRef ref, ServiceTicket t,

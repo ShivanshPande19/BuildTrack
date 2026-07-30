@@ -12,9 +12,9 @@ Last updated: **30 Jul 2026**
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0010` |
-| **Roughly complete** | **~85%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
-| **Not usable yet** | Real photo upload, real QR scanning, documents, delay/bay tracking, template checklists |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0011` |
+| **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
+| **Not usable yet** | Documents, delay/bay tracking, template checklists |
 | **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
 
 ### The operating chain — works end to end ✅
@@ -59,10 +59,10 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 | 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · **mark delivered** (hands the truck to after-sales) · team workload · bay list *(read-only, see gaps)* |
 | 🛒 **Procurement** | 4 | ✅ usable | To-Order (order-by alerts) · create PO from an alert or manually · PO list + detail · mark dispatched / received (closes requirements, writes GRN) · vendors + add vendor · add catalog items inline |
 | 📦 **Store** | 3 | ✅ usable | Inbox/receive · log component (serial + warranty + vendor, optionally assign to a build) · inventory + low-stock · component list + digital record · **recall check + working "Notify all"** |
-| 🔧 **Workshop** | 3 | ✅ usable | My tasks (with due dates, overdue flags, **rework reason from the PM**, "awaiting approval") · **Start work** · checklist toggle · scan-to-install a part *(manual pick, not camera)* · add photo *(placeholder image)* · submit for approval |
+| 🔧 **Workshop** | 3 | ✅ usable | My tasks (with due dates, overdue flags, **rework reason from the PM**, "awaiting approval") · **Start work** · checklist toggle · **scan a part's QR/barcode to install it** (with manual-serial fallback) · **take a real site photo** (camera or gallery, uploaded to the `builds` bucket) · submit for approval |
 | 🎨 **Design** | 3 | ✅ usable | **Scoped to assigned builds only** · studio stats · design library + filters · new design (upload `.glb` + preview to Storage) · new version after a change request · design detail with interactive 3D · client approval loop + feedback |
-| 🙋 **Client** | 6 | ✅ usable | My trucks + progress + **3D showcase of the approved design** · stage timeline + per-stage photos · **approve / request changes on designs (now actually works)** · raise a request (ticket) · my requests **with the resolution and a "still not fixed" reopen** · documents tab *(always empty — nothing creates documents)* |
-| 🛠️ **Service** | 5 | ✅ usable | Ticket queue sorted by **SLA countdown** (open / overdue / fixed-today) · ticket detail with the linked part's **warranty state** · triage to a technician · **schedule a visit** (tech + date + time + note) · **resolve** (warranty replace / repair / remote guide) with a note the client reads · close · **delivered trucks** list with open-ticket / warranty health · **truck history** (parts tracked, warranty position, every past request) · **warranty lookup** by serial / model / truck · log a phoned-in ticket |
+| 🙋 **Client** | 6 | ✅ usable | My trucks + progress + **3D showcase of the approved design** · stage timeline + per-stage photos · **approve / request changes on designs (now actually works)** · raise a request (ticket) **with a photo of the problem** · my requests **with the resolution and a "still not fixed" reopen** · documents tab *(always empty — nothing creates documents)* |
+| 🛠️ **Service** | 5 | ✅ usable | Ticket queue sorted by **SLA countdown** (open / overdue / fixed-today) · ticket detail with the linked part's **warranty state** · triage to a technician · **schedule a visit** (tech + date + time + note) · **resolve** (warranty replace / repair / remote guide) with a note the client reads · close · **delivered trucks** list with open-ticket / warranty health · **truck history** (parts tracked, warranty position, every past request) · **warranty lookup** by serial / model / truck · **sees the client's photos** on a ticket · log a phoned-in ticket |
 
 **Shared:** login · set-password (invite flow) · notifications feed · profile · role-based routing.
 
@@ -70,42 +70,39 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 
 ## 3. What's pending
 
-### Blocking a complete product
-1. **Real build-photo upload.** `addStagePhoto()` attaches a random `picsum.photos` URL. Needs an
-   `image_picker` + a `builds` Storage bucket + policies (mirror `0008` for `designs`).
-2. **Real QR/barcode scanning.** "Scan to install" is a manual dropdown pick. Needs `mobile_scanner`.
-
 ### Features that exist in the schema but nothing writes to them
-3. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
+1. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
    define checks. Needs a `template_stage_checks` table + UI in Create Template.
-4. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
+2. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
    "tag reason & reschedule" card has no action behind it.
-5. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
-6. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
+3. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
+4. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
    Documents tab is permanently empty.
 
 ### Smaller
-7. Profile "My details" is a coming-soon snackbar.
-8. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
+5. Profile "My details" is a coming-soon snackbar.
+6. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
    a PM can override per stage).
-9. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
-10. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
+7. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
+8. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
    would make them configurable.
-11. Ticket photo attachment is a coming-soon snackbar on the client's raise-request screen.
 
 ---
 
 ## 4. Deploy / environment facts
 
-- **Supabase:** migrations `0001`–`0010` applied. Storage bucket `designs` (public) from `0008`.
+- **Supabase:** migrations `0001`–`0011` applied. Storage buckets `designs` (from `0008`) and
+  `builds` (from `0011`), both public read.
 - **Edge Functions:** `admin-create-member`, `admin-delete-member` — both deployed.
   Service-role key is injected by Supabase automatically.
 - **App config:** `--dart-define=SUPABASE_URL=… --dart-define=SUPABASE_ANON_KEY=…`
   (defaults in `core/supabase_client.dart` are placeholders).
 - **Platform folders** (`android/`, `ios/`, `web/`) exist locally but are **not tracked in git**.
-  Regenerating them with `flutter create .` wipes the deep-link edits in
-  `AndroidManifest.xml` / `Info.plist` — re-apply from `INVITE_FLOW.md` §3–4.
-  (`flutter create .` does *not* touch `lib/` or `pubspec.yaml` — verified.)
+  Regenerating them with `flutter create .` wipes the native edits — re-apply the camera/photo
+  permissions from [`NATIVE_SETUP.md`](NATIVE_SETUP.md) and the deep links from
+  `INVITE_FLOW.md` §3–4. (`flutter create .` does *not* touch `lib/` or `pubspec.yaml` — verified.)
+- **Native requirements:** Android `minSdk` 23 + `CAMERA` + `INTERNET`; iOS 13 + camera/photo usage
+  strings. Camera on web needs HTTPS.
 - **Adding members:** the "set a password now" path needs no SMTP. Email invites need Resend SMTP
   + redirect URLs + the deep-link edits (`INVITE_FLOW.md`).
 - **Recommended cron:** `select public.fn_refresh_all_statuses();` daily — otherwise at-risk/delayed
@@ -147,6 +144,31 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 30 Jul 2026 — Real photos and real barcode scanning (migration `0011`)
+
+Two placeholders that shipped in every role became real.
+
+- **Build photos were stock photography.** `addStagePhoto()` inserted a random `picsum.photos` URL,
+  so the gallery the *client* watches their truck through was showing pictures of strangers' things.
+  Now: `image_picker` (camera or gallery) → downscaled to 1600px / q82 on the device → uploaded to a
+  new public **`builds`** bucket → the attachment points at the real file.
+- **"Scan to install" never used the camera** — it was a dropdown of in-stock parts. Now a real
+  `mobile_scanner` viewfinder with a torch toggle; the scanned serial is looked up
+  (case-insensitive), checked to be genuinely in stock, then installed through the same confirmation.
+  **Manual serial entry** is kept for damaged labels, and a denied camera permission shows a clear
+  state instead of a black screen.
+- **The client can attach a photo to a support request** (it was a coming-soon snackbar), and
+  Service sees it under *Photos from the client* on the ticket — usually faster than reading the
+  description. A failed photo upload no longer loses the request itself.
+
+New deps: `image_picker`, `mobile_scanner`. Storage policy (`0011`) lets staff write anywhere in
+`builds` but a client only under `tickets/`.
+
+**Watch out when deploying:** run `0011`, then apply the native permission edits in
+[`NATIVE_SETUP.md`](NATIVE_SETUP.md) — Android needs `CAMERA` (and `INTERNET` for release builds),
+iOS needs `NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription`, `minSdk` 23, iOS 13.
+Without them the camera silently fails to open.
 
 ### 30 Jul 2026 — Service role built, after-sales loop closed (migration `0010`)
 

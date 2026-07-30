@@ -181,9 +181,22 @@ The roles were all built, but the **chain between them** was not. Full audit in
 - ✅ `full_setup.sql` is **generated** (`build_full_setup.sh`) — it had drifted and was missing 0005/0006
 - ✅ `supabase/tests/run.sh` — Docker-only backend verification, ~40 assertions as real users
 
+## 9. Real photos + barcode scanning ✅ *(migration 0011)*
+- ✅ **Workshop site photos** — camera / gallery via `image_picker`, downscaled on device, uploaded
+  to the new public **`builds`** bucket. Previously a random `picsum.photos` URL, so the client's
+  build gallery showed stock photography.
+- ✅ **Scan to install** — real `mobile_scanner` viewfinder + torch; the scanned serial is resolved
+  (case-insensitive), checked to be in stock, then installed. **Manual serial entry** for damaged
+  labels; a denied camera permission shows a clear state, not a black screen.
+- ✅ **Client ticket photos** — attach a photo of the problem when raising a request; Service sees it
+  on the ticket. A failed upload no longer loses the request.
+- ✅ `0011_builds_storage.sql` — `builds` bucket + policies (staff anywhere, client only under
+  `tickets/`) + ticket-attachment RLS for the client.
+- 📄 Native permissions documented in `docs/NATIVE_SETUP.md`.
+
 ---
-*Next: real build-photo upload (`builds` bucket) + real QR scanning, delay logging + bay allocation,
-template checklists, handover documents.*
+*Next: delay logging + bay allocation, template checklists, handover documents,
+Admin/PM visibility of client tickets.*
 *Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage
 (public 'designs' bucket), **0009_workflow**. Edge functions: admin-create-member (re-deploy — it now
 returns `client_account_id`), admin-delete-member.*
