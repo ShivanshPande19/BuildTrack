@@ -34,9 +34,22 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
 
   static String typeLabel(String t) => t.isEmpty ? 'Design' : '${t[0].toUpperCase()}${t.substring(1)}';
 
+  /// A designer can only work on builds a PM actually put them on, so there is
+  /// nothing to create against until that happens.
   void _newDesign() {
+    final assigned = ref.read(assignedProjectsProvider).valueOrNull;
+    if (assigned != null && assigned.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: BT.coral,
+        content: Text('No builds assigned to you yet — a project manager has to '
+                      'assign you a design stage first.')));
+      return;
+    }
     Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewDesign()))
-      .then((_) => ref.invalidate(myDesignsProvider));
+      .then((_) {
+        ref.invalidate(myDesignsProvider);
+        ref.invalidate(assignedProjectsProvider);
+      });
   }
 
   @override
@@ -75,11 +88,50 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   // ── STUDIO (home) ─────────────────────────────────────────
   Widget _studioTab() {
     final designs = ref.watch(myDesignsProvider);
+    final assigned = ref.watch(assignedProjectsProvider);
     return RefreshIndicator(
-      onRefresh: () async => ref.refresh(myDesignsProvider.future),
+      onRefresh: () async {
+        ref.invalidate(assignedProjectsProvider);
+        return ref.refresh(myDesignsProvider.future);
+      },
       child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
         _header('DESIGN STUDIO', 'My work'),
         const SizedBox(height: 18),
+
+        // The builds a PM has put me on. This is the whole scope of my work —
+        // designers used to see (and could edit) every truck in the company.
+        ...assigned.when(
+          loading: () => const <Widget>[],
+          error: (e, _) => <Widget>[
+            AppCard(child: Text('Could not load your builds.\n${friendlyError(e)}',
+              style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ],
+          data: (builds) => builds.isEmpty
+            ? const <Widget>[
+                EmptyState(icon: Icons.assignment_ind_outlined, tint: BT.pink,
+                  title: 'No builds assigned yet',
+                  subtitle: 'Once a project manager assigns you a design stage, that '
+                            'truck shows up here and you can start uploading.'),
+              ]
+            : <Widget>[
+                const SectionLabel('Assigned to me'),
+                ...builds.map((p) => Padding(padding: const EdgeInsets.only(bottom: 11),
+                  child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                    child: Row(children: [
+                      Container(width: 40, height: 40, alignment: Alignment.center,
+                        decoration: BoxDecoration(color: BT.pink.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.local_shipping_rounded, size: 19, color: Color(0xFF4A2438))),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('${p.code} · ${p.name}',
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                      Text('${p.progressPct}%',
+                        style: const TextStyle(color: BT.mut, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ]))),
+                ),
+              ],
+        ),
         designs.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator(color: BT.ink))),
           error: (e, _) => AppCard(child: Text('Could not load designs.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
@@ -148,8 +200,11 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
           data: (list) {
             final shown = _filter == 'all' ? list : list.where((d) => d.status == _filter).toList();
             if (shown.isEmpty) {
-              return const EmptyState(icon: Icons.palette_outlined, tint: BT.pink,
-                title: 'No designs here', subtitle: 'Tap + to start a new design for a truck.');
+              return EmptyState(icon: Icons.palette_outlined, tint: BT.pink,
+                title: 'No designs here',
+                subtitle: list.isEmpty
+                  ? 'Designs appear once a PM assigns you a design stage on a build.'
+                  : 'Nothing matches this filter. Tap + to start a new design.');
             }
             return Column(children: shown.map(_designCard).toList());
           },

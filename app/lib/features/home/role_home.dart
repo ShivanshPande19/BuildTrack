@@ -44,7 +44,11 @@ class RoleHome extends ConsumerWidget {
         child: Text('Could not load your account.\n$e',
           textAlign: TextAlign.center, style: const TextStyle(color: BT.coral, fontSize: 13))))),
       data: (role0) {
-        final role = role0 ?? 'client';
+        // A signed-in user with no profile row has no role. Falling back to the
+        // client experience (the old behaviour) silently showed them a customer
+        // app instead of telling anyone something was wrong.
+        if (role0 == null || role0.isEmpty) return const _NoRoleScreen();
+        final role = role0;
         // Live, data-backed screens (Phase-1). Others use the role shell for now.
         if (role == 'admin') return const AdminDashboard();
         if (role == 'procurement') return const ProcurementHome();
@@ -85,4 +89,34 @@ class RoleHome extends ConsumerWidget {
       },
     );
   }
+}
+
+
+/// Signed in, but the account has no role assigned (no profiles row).
+/// Shown instead of silently dropping the user into the client app.
+class _NoRoleScreen extends StatelessWidget {
+  const _NoRoleScreen();
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        const EmptyState(
+          icon: Icons.badge_outlined, tint: BT.amber,
+          title: 'No role assigned yet',
+          subtitle: 'Your account exists but has not been given a role, so there is '
+                    'nothing to show. Ask an admin to add you under Team → Add member '
+                    'with the same email.'),
+        const SizedBox(height: 16),
+        Text(sb.auth.currentUser?.email ?? '',
+          style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+        const SizedBox(height: 16),
+        PrimaryButton('Sign out', icon: Icons.logout_rounded, bg: BT.card2,
+          onTap: () => sb.auth.signOut().then((_) {
+            if (context.mounted) context.go('/login');
+          })),
+      ]),
+    )),
+  );
 }

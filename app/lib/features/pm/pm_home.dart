@@ -8,8 +8,8 @@ import '../../shared/widgets.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../admin/project_detail.dart';
-import '../admin/onboard_project.dart';
 import 'approvals.dart';
+import 'assign_work.dart';
 
 /// Project Manager shell — tabs: My Builds · Projects · Schedule · Team.
 /// PM owns build planning; opens project detail with editable materials.
@@ -36,8 +36,13 @@ class _PMHomeState extends ConsumerState<PMHome> {
         ],
         active: _tab,
         activeLabel: _labels[_tab],
+        actionIcon: Icons.person_add_alt_1_rounded,
         onTap: (i) => setState(() => _tab = i),
-        onAction: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnboardProject())),
+        // A PM's key action is handing work out, not creating builds — onboarding
+        // a project (and creating client logins) is Admin-only, and the database
+        // now enforces that too.
+        onAction: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AssignWorkScreen())),
       ),
     );
   }
@@ -99,7 +104,11 @@ class _HomeTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dash = ref.watch(pmDashboardProvider);
     return RefreshIndicator(
-      onRefresh: () async => ref.refresh(pmDashboardProvider.future),
+      onRefresh: () async {
+        ref.invalidate(stagesToAssignProvider);
+        ref.invalidate(pendingApprovalsProvider);
+        return ref.refresh(pmDashboardProvider.future);
+      },
       child: ListView(padding: _pad, children: [
         _pmHeader(context, 'My Builds'),
         const SizedBox(height: 20),
@@ -113,6 +122,9 @@ class _HomeTab extends ConsumerWidget {
             final onTrack = projects.where((p) => p.status == 'on_track').length;
             final atRisk = projects.where((p) => p.status == 'at_risk').length;
             final delayed = projects.where((p) => p.status == 'delayed').length;
+            final delivered = projects.where((p) => p.status == 'delivered').length;
+            // "Active" should not count trucks that have already gone out.
+            final active = projects.length - delivered;
             final needsYou = projects.where((p) => p.status == 'at_risk' || p.status == 'delayed').toList();
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               AppCard(
@@ -122,7 +134,7 @@ class _HomeTab extends ConsumerWidget {
                     style: TextStyle(fontSize: 11, letterSpacing: 1.4, color: BT.mut, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('${projects.length}', style: display(50, w: FontWeight.w600)),
+                    Text('$active', style: display(50, w: FontWeight.w600)),
                     const SizedBox(width: 8),
                     const Padding(padding: EdgeInsets.only(bottom: 8),
                       child: Text('active\nbuilds', style: TextStyle(color: BT.mut, fontSize: 13, height: 1.15))),
@@ -132,10 +144,31 @@ class _HomeTab extends ConsumerWidget {
                     StatusPill('$onTrack on-track', color: BT.lime),
                     StatusPill('$atRisk at-risk', color: BT.amber),
                     StatusPill('$delayed delayed', color: BT.coral),
+                    if (delivered > 0) StatusPill('$delivered delivered', color: BT.mint),
                   ]),
                 ]),
               ),
               const SectionLabel('Needs you today'),
+              // Unassigned work blocks the whole build, so it sits above approvals.
+              Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const AssignWorkScreen())),
+                child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+                  Container(width: 40, height: 40, alignment: Alignment.center,
+                    decoration: BoxDecoration(color: BT.lav, borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.person_add_alt_1_rounded, size: 20, color: BT.ink)),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('Assign work', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+                  Consumer(builder: (_, r, __) {
+                    final n = r.watch(stagesToAssignProvider).valueOrNull?.length ?? 0;
+                    return StatusPill(n == 0 ? 'All done' : '$n waiting',
+                      color: n == 0 ? BT.mut2 : BT.lav);
+                  }),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+                ])),
+              )),
               Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ApprovalsScreen())),

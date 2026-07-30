@@ -3,14 +3,21 @@
 class Project {
   final String id, code, name, status;
   final int progressPct;
-  Project({required this.id, required this.code, required this.name, required this.status, required this.progressPct});
+  /// The project manager who owns this build. Null = nobody can work on it yet:
+  /// no PM sees it and its stages cannot be assigned, so Admin must fix that.
+  final String? pmId;
+  Project({required this.id, required this.code, required this.name, required this.status,
+    required this.progressPct, this.pmId});
   factory Project.fromMap(Map<String, dynamic> m) => Project(
     id: m['id'] as String,
     code: m['code'] as String? ?? '',
     name: m['name'] as String? ?? '',
     status: m['status'] as String? ?? 'on_track',
     progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
+    pmId: m['pm_id'] as String?,
   );
+
+  bool get hasPm => pmId != null;
 }
 
 class OrderDue {
@@ -62,7 +69,10 @@ class StageDraft {
 /// A pending stage-completion approval (PM approves work submitted by workshop).
 class ApprovalItem {
   final String id, stageId, stageName, projectCode;
-  ApprovalItem({required this.id, required this.stageId, required this.stageName, required this.projectCode});
+  final String? submittedBy;
+  final DateTime? submittedAt;
+  ApprovalItem({required this.id, required this.stageId, required this.stageName,
+    required this.projectCode, this.submittedBy, this.submittedAt});
 }
 
 /// A team member (profiles row).
@@ -102,20 +112,44 @@ class Stage {
   final String id, name, status; // status: todo | in_progress | done | rework
   final int ord;
   final String? assigneeId;
+  /// Which role is meant to do this stage (workshop | design | store | service).
+  /// Set from the workflow template, so the PM's assign sheet can recommend the
+  /// right people instead of offering every staff member.
+  final String? discipline;
   final DateTime? plannedStart, plannedEnd, actualStart, actualEnd;
+  /// Dates the PM set when assigning this stage (separate from the backward-
+  /// scheduled planned_* dates).
+  final DateTime? assignedStart, assignedDue;
   Stage({required this.id, required this.name, required this.status, required this.ord,
-    this.assigneeId, this.plannedStart, this.plannedEnd, this.actualStart, this.actualEnd});
+    this.assigneeId, this.discipline, this.plannedStart, this.plannedEnd,
+    this.actualStart, this.actualEnd, this.assignedStart, this.assignedDue});
   factory Stage.fromMap(Map<String, dynamic> m) => Stage(
     id: m['id'] as String,
     name: m['name'] as String? ?? '',
     status: m['status'] as String? ?? 'todo',
     ord: (m['ord'] as num?)?.toInt() ?? 0,
     assigneeId: m['assignee_id'] as String?,
+    discipline: m['discipline'] as String?,
     plannedStart: parseDate(m['planned_start']),
     plannedEnd: parseDate(m['planned_end']),
     actualStart: parseDate(m['actual_start']),
     actualEnd: parseDate(m['actual_end']),
+    assignedStart: parseDate(m['assigned_start']),
+    assignedDue: parseDate(m['assigned_due']),
   );
+
+  bool get isAssigned => assigneeId != null;
+  /// Work the PM still has to hand out on this build.
+  bool get needsAssigning => assigneeId == null && status != 'done';
+}
+
+/// A stage the PM still has to hand out, with its build context — powers the
+/// "Assign work" screen.
+class AssignableStage {
+  final Stage stage;
+  final String projectId, projectCode, projectName;
+  AssignableStage({required this.stage, required this.projectId,
+    required this.projectCode, required this.projectName});
 }
 
 /// A checklist row under a stage.
@@ -382,8 +416,15 @@ class RecallRow {
 /// A stage assigned to the signed-in workshop member (their task).
 class WorkshopTask {
   final String stageId, stageName, status, projectId, projectCode, projectName;
+  /// What the PM asked for when handing this over.
+  final DateTime? assignedDue;
+  /// True while a submission of this stage is sitting with the PM.
+  final bool awaitingApproval;
+  /// Why the PM sent it back (set when status == 'rework').
+  final String? reworkNote;
   WorkshopTask({required this.stageId, required this.stageName, required this.status,
-    required this.projectId, required this.projectCode, required this.projectName});
+    required this.projectId, required this.projectCode, required this.projectName,
+    this.assignedDue, this.awaitingApproval = false, this.reworkNote});
   factory WorkshopTask.fromMap(Map<String, dynamic> m) {
     final pr = m['projects'] as Map<String, dynamic>?;
     return WorkshopTask(
@@ -393,8 +434,21 @@ class WorkshopTask {
       projectId: m['project_id'] as String? ?? '',
       projectCode: pr?['code'] as String? ?? '',
       projectName: pr?['name'] as String? ?? '',
+      assignedDue: parseDate(m['assigned_due']),
     );
   }
+
+  WorkshopTask copyWith({bool? awaitingApproval, String? reworkNote}) => WorkshopTask(
+    stageId: stageId, stageName: stageName, status: status, projectId: projectId,
+    projectCode: projectCode, projectName: projectName, assignedDue: assignedDue,
+    awaitingApproval: awaitingApproval ?? this.awaitingApproval,
+    reworkNote: reworkNote ?? this.reworkNote,
+  );
+
+  /// Nothing has started yet and it is not waiting on the PM.
+  bool get canStart => status == 'todo' || status == 'rework';
+  bool get isOverdue =>
+      assignedDue != null && status != 'done' && assignedDue!.isBefore(DateTime.now());
 }
 
 

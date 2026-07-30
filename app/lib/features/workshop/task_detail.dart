@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
@@ -10,6 +11,9 @@ import 'scan_install.dart';
 class TaskDetailScreen extends ConsumerWidget {
   final WorkshopTask task;
   const TaskDetailScreen({super.key, required this.task});
+
+  static final _fmt = DateFormat('d MMM');
+  String _shortDate(DateTime d) => _fmt.format(d);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -56,6 +60,42 @@ class TaskDetailScreen extends ConsumerWidget {
     final allDone = total > 0 && done == total;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      // what the PM asked for when handing this over
+      if (task.status == 'rework') ...[
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
+            borderRadius: BorderRadius.circular(BT.radiusCard)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.replay_rounded, size: 19, color: BT.coral),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Sent back for rework',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              const SizedBox(height: 3),
+              Text(task.reworkNote ?? 'Your PM asked for changes on this stage.',
+                style: const TextStyle(fontSize: 12.5, color: BT.ink, height: 1.35)),
+            ])),
+          ]),
+        ),
+        const SizedBox(height: 12),
+      ] else if (task.assignedDue != null) ...[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+          decoration: BoxDecoration(color: task.isOverdue ? const Color(0xFFFBE4E0) : BT.card2,
+            borderRadius: BorderRadius.circular(BT.radiusCard)),
+          child: Row(children: [
+            Icon(Icons.flag_rounded, size: 17, color: task.isOverdue ? BT.coral : BT.mut),
+            const SizedBox(width: 9),
+            Text(task.isOverdue ? 'Overdue — was due ${_shortDate(task.assignedDue!)}'
+                               : 'Due ${_shortDate(task.assignedDue!)}',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13,
+                color: task.isOverdue ? BT.coral : BT.ink)),
+          ]),
+        ),
+        const SizedBox(height: 12),
+      ],
+
       // progress
       AppCard(padding: const EdgeInsets.fromLTRB(18, 16, 18, 18), child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -85,10 +125,31 @@ class TaskDetailScreen extends ConsumerWidget {
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
       ]),
       const SizedBox(height: 11),
-      _btn(allDone ? 'Submit for approval' : 'Mark stage complete', Icons.check_rounded, true, () => _submit(context, ref)),
-      if (!allDone && total > 0) Padding(padding: const EdgeInsets.only(top: 10),
-        child: Text('$done of $total checks done — finish all before final approval.',
-          textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12))),
+      if (task.awaitingApproval)
+        // Nothing to do until the PM decides — offering Submit again would just
+        // bounce off the duplicate-submission guard.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(color: BT.amber.withOpacity(0.35),
+            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+          child: Row(children: [
+            const Icon(Icons.hourglass_top_rounded, size: 19, color: BT.ink),
+            const SizedBox(width: 10),
+            const Expanded(child: Text('Waiting for your PM to approve this stage.',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.3))),
+          ]),
+        )
+      else if (task.canStart)
+        // The transition nothing used to make: until a stage is started it stays
+        // 'todo', which kept it out of the PM's day view and the workload numbers.
+        _btn('Start work', Icons.play_arrow_rounded, true, () => _start(context, ref))
+      else
+        _btn(allDone || total == 0 ? 'Submit for approval' : 'Mark stage complete',
+          Icons.check_rounded, true, () => _submit(context, ref)),
+      if (!task.awaitingApproval && !task.canStart && !allDone && total > 0)
+        Padding(padding: const EdgeInsets.only(top: 10),
+          child: Text('$done of $total checks done — finish all before final approval.',
+            textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12))),
 
       // installed parts on this stage
       if (b.parts.isNotEmpty) ...[
@@ -154,10 +215,27 @@ class TaskDetailScreen extends ConsumerWidget {
     }
   }
 
+  Future<void> _start(BuildContext context, WidgetRef ref) async {
+    try {
+      await ref.read(workshopRepoProvider).startTask(task.stageId);
+      ref.invalidate(myTasksProvider);
+      ref.invalidate(stageBundleProvider(task.stageId));
+      if (context.mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: BT.ink, content: Text('Stage started — your PM has been told')));
+      }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    }
+  }
+
   Future<void> _submit(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(workshopRepoProvider).submitForApproval(task.stageId);
       ref.invalidate(pendingApprovalsProvider);
+      ref.invalidate(myTasksProvider);
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -165,7 +243,7 @@ class TaskDetailScreen extends ConsumerWidget {
       }
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(backgroundColor: BT.coral, content: Text('Failed: $e')));
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
     }
   }
 

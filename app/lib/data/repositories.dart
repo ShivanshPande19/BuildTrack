@@ -15,12 +15,50 @@ final myRoleProvider = FutureProvider<String?>((ref) {
   return fetchMyRole();
 });
 
+/// Turns a Supabase/Postgres failure into something a human can act on.
+///
+/// The workflow rules live in the database (fn_assign_stage, fn_submit_stage, …)
+/// and raise plain-English messages, so those are surfaced as-is. Everything
+/// else gets mapped away from raw SQL codes.
+String friendlyError(Object e) {
+  if (e is PostgrestException) {
+    final msg = e.message;
+    if (e.code == '23505' || msg.contains('duplicate key')) {
+      if (msg.contains('projects_code_key') || msg.contains('code')) {
+        return 'That project code is already used by another build.';
+      }
+      return 'That record already exists.';
+    }
+    if (e.code == '42501' || msg.contains('row-level security')) {
+      return 'You do not have permission to do that.';
+    }
+    if (e.code == '23503') {
+      return 'Something this depends on is missing — refresh and try again.';
+    }
+    if (e.code == '23502') {
+      return 'A required field is missing.';
+    }
+    return msg;
+  }
+  if (e is AuthException) return e.message;
+  if (e is FunctionException) {
+    final d = e.details;
+    if (d is Map && d['error'] != null) return d['error'].toString();
+    return 'Server rejected the request (${e.status}).';
+  }
+  return e.toString().replaceFirst('Exception: ', '');
+}
+
 /// Data access — thin wrappers over Supabase queries.
 class ProjectsRepo {
+  /// pm_id comes along so Admin can spot builds with no project manager —
+  /// those are stranded: no PM sees them and their stages cannot be assigned.
+  static const _projectSelect = 'id,code,name,status,progress_pct,pm_id';
+
   Future<List<Project>> all() async {
     final data = await sb
         .from('projects')
-        .select('id,code,name,status,progress_pct')
+        .select(_projectSelect)
         .order('code', ascending: true);
     return (data as List).map((e) => Project.fromMap(e as Map<String, dynamic>)).toList();
   }
@@ -34,10 +72,11 @@ class ProjectsRepo {
   /// A single project + its ordered build stages (Project detail screen).
   Future<ProjectDetailData> detail(String id) async {
     final p = await sb.from('projects')
-        .select('id,code,name,status,progress_pct,target_delivery_date')
+        .select('$_projectSelect,target_delivery_date')
         .eq('id', id).single();
     final st = await sb.from('stages')
-        .select('id,name,ord,status,assignee_id,planned_start,planned_end,actual_start,actual_end')
+        .select('id,name,ord,status,assignee_id,discipline,planned_start,planned_end,'
+                'actual_start,actual_end,assigned_start,assigned_due')
         .eq('project_id', id).order('ord', ascending: true);
     return ProjectDetailData(
       Project.fromMap(p),
@@ -82,18 +121,93 @@ class ProjectsRepo {
   }
 
   // ── PM assigns build tasks (stages) to execution staff ─────────────
-  /// Members a PM can assign build stages to (the doers).
-  Future<List<Member>> assignableMembers() async {
+  /// The roles that actually execute build stages. A PM/admin/procurement member
+  /// can never be a stage assignee (the DB enforces this too).
+  static const doerRoles = ['workshop', 'design', 'store', 'service'];
+
+  /// Members a PM can assign build stages to (the doers), active ones only.
+  /// Sorted so the stage's own discipline comes first — assigning a design stage
+  /// should offer designers before it offers welders.
+  Future<List<Member>> assignableMembers({String? discipline}) async {
     final d = await sb.from('profiles')
         .select('id,full_name,email,role,status')
-        .inFilter('role', ['workshop', 'design', 'store', 'service'])
+        .inFilter('role', doerRoles)
+        .neq('status', 'disabled')
         .order('full_name', ascending: true);
-    return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+    final list = (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+    if (discipline != null) {
+      list.sort((a, b) {
+        final ra = a.role == discipline ? 0 : 1;
+        final rb = b.role == discipline ? 0 : 1;
+        return ra != rb ? ra - rb : a.name.compareTo(b.name);
+      });
+    }
+    return list;
   }
 
-  /// Assign (assigneeId) or unassign (null) a stage.
-  Future<void> assignStage(String stageId, String? assigneeId) async {
-    await sb.from('stages').update({'assignee_id': assigneeId}).eq('id', stageId);
+  /// Assign (assigneeId) or unassign (null) a stage, optionally with the dates
+  /// the PM committed to.
+  ///
+  /// Goes through fn_assign_stage so the server checks that the caller really is
+  /// this build's PM, that the member's role matches the stage's discipline, that
+  /// the account is active, and that the dates make sense — then notifies both the
+  /// new and the previous assignee. Set [override] only when the PM has explicitly
+  /// confirmed moving the stage to a different discipline.
+  Future<void> assignStage(String stageId, String? assigneeId,
+      {DateTime? start, DateTime? due, bool override = false}) async {
+    await sb.rpc('fn_assign_stage', params: {
+      'p_stage': stageId,
+      'p_assignee': assigneeId,
+      'p_start': _dateStr(start),
+      'p_due': _dateStr(due),
+      'p_override': override,
+    });
+  }
+
+  /// Every stage across the PM's builds that still needs handing out
+  /// (never assigned, or sent back for rework) — powers the Assign work screen.
+  Future<List<AssignableStage>> stagesNeedingAssignment(List<Project> projects) async {
+    if (projects.isEmpty) return [];
+    final byId = {for (final p in projects) p.id: p};
+    final d = await sb.from('stages')
+        .select('id,name,ord,status,assignee_id,discipline,planned_start,planned_end,'
+                'actual_start,actual_end,assigned_start,assigned_due,project_id')
+        .inFilter('project_id', byId.keys.toList())
+        .order('ord', ascending: true);
+
+    final out = <AssignableStage>[];
+    for (final r in (d as List)) {
+      final m = r as Map<String, dynamic>;
+      final s = Stage.fromMap(m);
+      final p = byId[m['project_id']];
+      if (p == null) continue;
+      // unassigned work, plus anything the PM sent back that nobody now owns
+      if (s.needsAssigning || s.status == 'rework') {
+        out.add(AssignableStage(
+          stage: s, projectId: p.id, projectCode: p.code, projectName: p.name));
+      }
+    }
+    return out;
+  }
+
+  /// The builds a PM has actually put me on (I hold at least one stage).
+  ///
+  /// This is what "my work" means for an execution role. Screens must scope to
+  /// it — otherwise every designer sees every truck in the company and can start
+  /// uploading designs onto builds nobody asked them to touch.
+  Future<List<Project>> myAssignedProjects() async {
+    final uid = sb.auth.currentUser?.id;
+    if (uid == null) return [];
+    final d = await sb.from('stages')
+        .select('project_id,projects($_projectSelect)')
+        .eq('assignee_id', uid);
+    final byId = <String, Project>{};
+    for (final r in (d as List)) {
+      final p = (r as Map<String, dynamic>)['projects'] as Map<String, dynamic>?;
+      if (p != null) byId[p['id'] as String] = Project.fromMap(p);
+    }
+    final out = byId.values.toList()..sort((a, b) => a.code.compareTo(b.code));
+    return out;
   }
 
   /// Change a project's target delivery date, then re-run backward scheduling.
@@ -103,32 +217,49 @@ class ProjectsRepo {
     await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId});
   }
 
-  // ── PM approvals: stage completions submitted by workshop ──────────
+  // ── PM approvals: stage completions submitted by the assignee ──────
+  /// Submissions waiting on the signed-in PM.
+  ///
+  /// fn_submit_stage stamps approver_id with the build's PM, so this filters on
+  /// the server instead of pulling every pending approval in the database and
+  /// sifting through it in Dart.
   Future<List<ApprovalItem>> pendingApprovals() async {
     final uid = sb.auth.currentUser?.id;
+    if (uid == null) return [];
     final d = await sb.from('stage_approvals')
-        .select('id,stage_id,status,stages(name,projects(code,pm_id))')
-        .eq('status', 'pending');
-    final out = <ApprovalItem>[];
-    for (final r in (d as List)) {
+        .select('id,stage_id,status,created_at,approver_id,'
+                'profiles:submitted_by(full_name),stages!inner(name,projects!inner(code))')
+        .eq('status', 'pending')
+        .eq('approver_id', uid)
+        .order('created_at', ascending: true);
+
+    return (d as List).map((r) {
       final st = r['stages'] as Map<String, dynamic>?;
       final pr = st?['projects'] as Map<String, dynamic>?;
-      if (pr != null && pr['pm_id'] == uid) {
-        out.add(ApprovalItem(
-          id: r['id'] as String, stageId: r['stage_id'] as String,
-          stageName: st?['name'] as String? ?? 'Stage', projectCode: pr['code'] as String? ?? ''));
-      }
-    }
-    return out;
+      final by = r['profiles'] as Map<String, dynamic>?;
+      return ApprovalItem(
+        id: r['id'] as String,
+        stageId: r['stage_id'] as String,
+        stageName: st?['name'] as String? ?? 'Stage',
+        projectCode: pr?['code'] as String? ?? '',
+        submittedBy: by?['full_name'] as String?,
+        submittedAt: parseDate(r['created_at']),
+      );
+    }).toList();
   }
 
-  /// Approve → stage done; reject → stage back to rework.
-  Future<void> decideApproval(String approvalId, String stageId, bool approve) async {
-    await sb.from('stage_approvals').update({
-      'status': approve ? 'approved' : 'changes_requested',
-      'decided_at': DateTime.now().toIso8601String(),
-    }).eq('id', approvalId);
-    await sb.from('stages').update({'status': approve ? 'done' : 'rework'}).eq('id', stageId);
+  /// Approve → stage done, next stage auto-starts, client is told.
+  /// Reject → stage back to rework with a reason the assignee can read.
+  ///
+  /// fn_decide_stage checks the caller owns the build, refuses a second decision
+  /// on the same submission, stamps actual_end, pulls the next stage into
+  /// progress, recomputes progress/status, and sends the notifications.
+  Future<void> decideApproval(String approvalId, bool approve, {String? note}) async {
+    await sb.rpc('fn_decide_stage', params: {
+      'p_approval': approvalId,
+      'p_approve': approve,
+      'p_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+    });
   }
 
   /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
@@ -318,6 +449,29 @@ final assignableMembersProvider = FutureProvider<List<Member>>((ref) {
   return ref.read(projectsRepoProvider).assignableMembers();
 });
 
+/// Same list, but ordered so the stage's own discipline comes first.
+/// Keyed by discipline ('design', 'workshop', 'store', 'service').
+final assignableForDisciplineProvider =
+    FutureProvider.family<List<Member>, String?>((ref, discipline) {
+  ref.watch(authStateProvider);
+  return ref.read(projectsRepoProvider).assignableMembers(discipline: discipline);
+});
+
+/// The builds I personally hold a stage on — "my work" for any execution role.
+/// Design/Store/Service screens scope to this instead of the whole fleet.
+final assignedProjectsProvider = FutureProvider<List<Project>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(projectsRepoProvider).myAssignedProjects();
+});
+
+/// Stages across the signed-in PM's builds that still need handing out.
+final stagesToAssignProvider = FutureProvider<List<AssignableStage>>((ref) async {
+  ref.watch(authStateProvider);
+  final repo = ref.read(projectsRepoProvider);
+  final mine = await ref.read(pmRepoProvider).myProjects();
+  return repo.stagesNeedingAssignment(mine);
+});
+
 /// Pending stage-completion approvals for the signed-in PM's projects.
 final pendingApprovalsProvider = FutureProvider<List<ApprovalItem>>((ref) {
   ref.watch(authStateProvider);
@@ -343,6 +497,18 @@ class StoreRepo {
   Future<List<RecallRow>> recall(String itemCatalogId) async {
     final d = await sb.rpc('fn_recall', params: {'p_item': itemCatalogId});
     return (d as List).map((e) => RecallRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Actually send the recall notice: every affected build's PM and client get a
+  /// notification. Returns how many trucks were notified.
+  ///
+  /// The "Notify all N" button previously only showed a snackbar.
+  Future<int> recallNotify(String itemCatalogId, {String? note}) async {
+    final d = await sb.rpc('fn_recall_notify', params: {
+      'p_item': itemCatalogId,
+      'p_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+    });
+    return (d as num?)?.toInt() ?? 0;
   }
 
   /// Log a component at intake (serial + warranty + optional assign to a build).
@@ -380,13 +546,50 @@ final recallProvider = FutureProvider.family<List<RecallRow>, String>(
 class WorkshopRepo {
   String? get _uid => sb.auth.currentUser?.id;
 
+  /// The stages assigned to me, enriched with what the PM did with my last
+  /// submission — so a task can show "waiting for approval" or the reason it
+  /// was sent back instead of silently sitting there.
   Future<List<WorkshopTask>> myTasks() async {
     final uid = _uid;
     if (uid == null) return [];
     final d = await sb.from('stages')
-        .select('id,name,status,project_id,projects(code,name)')
+        .select('id,name,status,project_id,assigned_due,projects(code,name)')
         .eq('assignee_id', uid).order('ord', ascending: true);
-    return (d as List).map((e) => WorkshopTask.fromMap(e as Map<String, dynamic>)).toList();
+    final tasks = (d as List).map((e) => WorkshopTask.fromMap(e as Map<String, dynamic>)).toList();
+    if (tasks.isEmpty) return tasks;
+
+    final appr = await sb.from('stage_approvals')
+        .select('stage_id,status,note,created_at')
+        .inFilter('stage_id', tasks.map((t) => t.stageId).toList())
+        .order('created_at', ascending: true);
+
+    final pending = <String>{};
+    final notes = <String, String>{};
+    for (final r in (appr as List)) {
+      final sid = r['stage_id'] as String;
+      if (r['status'] == 'pending') {
+        pending.add(sid);
+      } else if (r['status'] == 'rejected') {
+        final n = r['note'] as String?;
+        if (n != null && n.trim().isNotEmpty) notes[sid] = n.trim();
+      }
+    }
+    return [
+      for (final t in tasks)
+        t.copyWith(
+          awaitingApproval: pending.contains(t.stageId),
+          reworkNote: t.status == 'rework' ? notes[t.stageId] : null,
+        ),
+    ];
+  }
+
+  /// Mark a stage as actually started.
+  ///
+  /// Nothing used to make this transition, so every stage sat on 'todo' forever
+  /// and the PM's "in progress today", the bay board and the workload numbers
+  /// were all permanently empty.
+  Future<void> startTask(String stageId) async {
+    await sb.rpc('fn_start_stage', params: {'p_stage': stageId});
   }
 
   Future<void> toggleChecklist(String id, bool done) async {
@@ -401,16 +604,23 @@ class WorkshopRepo {
   }
 
   /// Install a component into a truck+stage (Hero #2 install side).
-  Future<void> installComponent(String componentId, String stageId, String projectId) async {
-    await sb.from('component_instances').update({
-      'status': 'installed', 'installed_in_project_id': projectId, 'installed_stage_id': stageId,
-      'installed_by': _uid, 'install_date': DateTime.now().toIso8601String().split('T').first,
-    }).eq('id', componentId);
+  ///
+  /// fn_install_component checks the part is genuinely in stock and that the
+  /// caller is the member on that stage, so a mis-scan can't quietly re-install
+  /// a part that is already fitted to another truck.
+  Future<void> installComponent(String componentId, String stageId) async {
+    await sb.rpc('fn_install_component', params: {
+      'p_component': componentId, 'p_stage': stageId,
+    });
   }
 
   /// Submit a stage completion for PM approval.
+  ///
+  /// fn_submit_stage addresses it to the build's PM, refuses a duplicate
+  /// submission, and refuses outright if the build has no PM — which used to
+  /// send the work into a black hole nobody could approve.
   Future<void> submitForApproval(String stageId) async {
-    await sb.from('stage_approvals').insert({'stage_id': stageId, 'submitted_by': _uid, 'status': 'pending'});
+    await sb.rpc('fn_submit_stage', params: {'p_stage': stageId});
   }
 
   /// Add a stage photo (demo placeholder image + caption).
@@ -510,12 +720,19 @@ class ClientRepo {
     }).toList();
   }
 
+  /// Approve a design, or send it back with the changes the client wants.
+  ///
+  /// This used to UPDATE design_artifacts directly — but a client only holds a
+  /// SELECT policy on that table, so the update matched zero rows and Postgres
+  /// reported success. The client saw "Design approved" and nothing changed.
+  /// fn_client_decide_design verifies the caller owns the build, records a real
+  /// design_approvals row, and notifies the designer and the PM.
   Future<void> decideDesign(String artifactId, bool approve, {String? feedback}) async {
-    final data = <String, dynamic>{'status': approve ? 'approved' : 'revision'};
-    if (!approve && feedback != null && feedback.trim().isNotEmpty) {
-      data['client_feedback'] = feedback.trim();
-    }
-    await sb.from('design_artifacts').update(data).eq('id', artifactId);
+    await sb.rpc('fn_client_decide_design', params: {
+      'p_artifact': artifactId,
+      'p_approve': approve,
+      'p_feedback': (feedback == null || feedback.trim().isEmpty) ? null : feedback.trim(),
+    });
   }
 
   Future<List<TicketRow>> myTickets() async {
@@ -558,13 +775,39 @@ class AdminRepo {
     final d = await sb.from('workflow_templates').select('id,name').order('name', ascending: true);
     return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
   }
+  /// Client accounts that actually have a login attached.
+  ///
+  /// An account with no contact_user_id is unreachable: my_client_account()
+  /// returns null for it, so RLS matches no rows and the client can never see
+  /// their truck. Those are filtered out here so a build can't be attached to one.
   Future<List<OptRef>> clients() async {
-    final d = await sb.from('client_accounts').select('id,business_name').order('business_name', ascending: true);
+    final d = await sb.from('client_accounts')
+        .select('id,business_name')
+        .not('contact_user_id', 'is', null)
+        .order('business_name', ascending: true);
     return (d as List).map((e) => OptRef(e['id'] as String, (e['business_name'] ?? '') as String)).toList();
   }
+
+  /// How many legacy client accounts have no login (e.g. the demo seed row), so
+  /// the onboarding screen can explain why they aren't in the list.
+  Future<int> loginlessClientCount() async {
+    final d = await sb.from('client_accounts')
+        .select('id')
+        .isFilter('contact_user_id', null);
+    return (d as List).length;
+  }
+
+  /// Only active PMs — assigning a build to a disabled account would strand it.
   Future<List<OptRef>> pms() async {
-    final d = await sb.from('profiles').select('id,full_name').eq('role', 'pm').order('full_name', ascending: true);
-    return (d as List).map((e) => OptRef(e['id'] as String, (e['full_name'] ?? '') as String)).toList();
+    final d = await sb.from('profiles')
+        .select('id,full_name,email')
+        .eq('role', 'pm')
+        .neq('status', 'disabled')
+        .order('full_name', ascending: true);
+    return (d as List).map((e) {
+      final name = (e['full_name'] ?? '') as String;
+      return OptRef(e['id'] as String, name.isEmpty ? (e['email'] ?? '') as String : name);
+    }).toList();
   }
 
   /// Create a custom workflow template + its stages + each stage's BOM items.
@@ -620,24 +863,67 @@ class AdminRepo {
     }
   }
 
-  /// Create a new client account.
-  Future<OptRef> createClient(String businessName, String? phone) async {
-    final c = await sb.from('client_accounts')
-        .insert({'business_name': businessName, 'phone': phone}).select('id,business_name').single();
-    return OptRef(c['id'] as String, c['business_name'] as String);
+  /// Create a client's login **and** their client_account in one step, so the
+  /// two can never drift apart. Returns the account for immediate selection in
+  /// the onboarding form.
+  ///
+  /// Runs through the same admin-create-member Edge Function as staff, which
+  /// links contact_user_id and rolls the auth user back if anything downstream
+  /// fails. Pass [password] for a straight-to-login account, or leave it null to
+  /// email an invite.
+  Future<OptRef> createClientLogin({
+    required String businessName, required String email,
+    String? contactName, String? phone, String? password,
+  }) async {
+    final res = await sb.functions.invoke('admin-create-member', body: {
+      'full_name': (contactName == null || contactName.trim().isEmpty)
+          ? businessName : contactName.trim(),
+      'email': email.trim(),
+      'phone': phone,
+      'role': 'client',
+      'business_name': businessName.trim(),
+      'redirect_to': inviteRedirectUrl,
+      if (password != null && password.isNotEmpty) 'password': password,
+    });
+    final data = res.data;
+    if (res.status != 200 || (data is Map && data['error'] != null)) {
+      throw Exception(data is Map && data['error'] != null ? data['error'] : 'Failed (${res.status})');
+    }
+    final id = data is Map ? data['client_account_id'] as String? : null;
+    if (id == null) {
+      // Older deployment of the function — fall back to looking the account up.
+      final row = await sb.from('client_accounts')
+          .select('id,business_name').eq('email', email.trim()).maybeSingle();
+      if (row == null) throw Exception('Client created, but could not be selected. Reopen this screen.');
+      return OptRef(row['id'] as String, (row['business_name'] ?? businessName) as String);
+    }
+    return OptRef(id, businessName.trim());
   }
 
   /// Insert a project then generate its stages + schedule (fn_onboard_project).
+  ///
+  /// [pmId] is required: fn_onboard_project refuses a build with no project
+  /// manager, because such a build is invisible to every PM and none of its
+  /// stages can ever be assigned or approved.
   Future<void> onboard({
     required String code, required String name, required String templateId,
-    String? clientId, String? pmId, required DateTime target,
+    required String pmId, String? clientId, required DateTime target,
   }) async {
     final proj = await sb.from('projects').insert({
-      'code': code, 'name': name, 'template_id': templateId,
+      'code': code.trim(), 'name': name.trim(), 'template_id': templateId,
       'client_account_id': clientId, 'pm_id': pmId,
+      'pm_assigned_at': DateTime.now().toIso8601String(),
       'target_delivery_date': target.toIso8601String().split('T').first,
     }).select('id').single();
     await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+  }
+
+  /// Assign or change a build's project manager (admin only).
+  ///
+  /// fn_assign_pm verifies the target really is an active PM, records who
+  /// assigned them, notifies the new PM and — on a hand-over — the old one.
+  Future<void> assignPm(String projectId, String pmId) async {
+    await sb.rpc('fn_assign_pm', params: {'p_project': projectId, 'p_pm': pmId});
   }
 }
 
@@ -657,8 +943,15 @@ class NotificationsRepo {
 }
 
 final notificationsRepoProvider = Provider<NotificationsRepo>((ref) => NotificationsRepo());
-final notificationsProvider = FutureProvider<List<AppNotification>>(
-    (ref) => ref.read(notificationsRepoProvider).all());
+final notificationsProvider = FutureProvider<List<AppNotification>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(notificationsRepoProvider).all();
+});
+
+/// Unread count for the bell badges. Now that assignments and approvals actually
+/// write notifications, this is a real number.
+final unreadCountProvider = Provider<int>((ref) =>
+    ref.watch(notificationsProvider).valueOrNull?.where((n) => !n.read).length ?? 0);
 
 /// Project Manager — builds assigned to the signed-in PM, schedule, workload.
 class PmRepo {
@@ -668,7 +961,7 @@ class PmRepo {
     final uid = _uid;
     if (uid == null) return [];
     final d = await sb.from('projects')
-        .select('id,code,name,status,progress_pct')
+        .select('id,code,name,status,progress_pct,pm_id')
         .eq('pm_id', uid).order('code', ascending: true);
     return (d as List).map((e) => Project.fromMap(e as Map<String, dynamic>)).toList();
   }
@@ -693,9 +986,16 @@ class PmRepo {
     return (d as List).map((e) => BayRow.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// assignee_id → count of in-progress stages (workload).
+  /// assignee_id → number of stages still on their plate.
+  ///
+  /// Counts everything open, not just in_progress: a member holding five queued
+  /// stages used to show up as "Free", which made the Team tab useless for
+  /// deciding who to hand the next stage to.
   Future<Map<String, int>> workload() async {
-    final d = await sb.from('stages').select('assignee_id').eq('status', 'in_progress');
+    final d = await sb.from('stages')
+        .select('assignee_id')
+        .inFilter('status', ['todo', 'in_progress', 'rework'])
+        .not('assignee_id', 'is', null);
     final m = <String, int>{};
     for (final r in (d as List)) {
       final a = r['assignee_id'] as String?;
@@ -735,15 +1035,45 @@ final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRe
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
 
+/// Legacy client accounts with no login (e.g. the demo seed row). Onboarding
+/// hides them from the picker, so it explains the gap using this count.
+final loginlessClientsProvider = FutureProvider<int>(
+    (ref) => ref.read(adminRepoProvider).loginlessClientCount());
+
 
 /// Designer — create designs, upload versions (2D image + .glb model),
 /// submit for client approval, and track the outcome / feedback loop.
 class DesignRepo {
-  /// Every design artifact + its project context + current version details.
+  static const _artifactSelect =
+      'id,type,status,project_id,current_version_id,client_feedback, projects(code,name)';
+
+  /// Design work that is actually mine: artifacts on the builds a PM assigned me
+  /// a stage on, plus anything I authored myself.
+  ///
+  /// This used to select every design_artifacts row in the database, so the
+  /// Design role ignored assignment completely — each designer saw (and could
+  /// revise) every truck's designs.
   Future<List<DesignItem>> myDesigns() async {
-    final rows = await sb.from('design_artifacts')
-        .select('id,type,status,project_id,current_version_id,client_feedback, projects(code,name)');
-    final list = (rows as List).cast<Map<String, dynamic>>();
+    final uid = sb.auth.currentUser?.id;
+    if (uid == null) return [];
+
+    final projectIds =
+        (await ProjectsRepo().myAssignedProjects()).map((p) => p.id).toList();
+
+    final list = <Map<String, dynamic>>[];
+    if (projectIds.isNotEmpty) {
+      final r = await sb.from('design_artifacts')
+          .select(_artifactSelect).inFilter('project_id', projectIds);
+      list.addAll((r as List).cast<Map<String, dynamic>>());
+    }
+    // keep drafts I started even if the stage has since moved to someone else
+    final mine = await sb.from('design_artifacts')
+        .select(_artifactSelect).eq('created_by', uid);
+    final seen = list.map((e) => e['id']).toSet();
+    for (final m in (mine as List).cast<Map<String, dynamic>>()) {
+      if (seen.add(m['id'])) list.add(m);
+    }
+    if (list.isEmpty) return [];
     final vmap = await _versionsById(
       [for (final r in list) if (r['current_version_id'] != null) r['current_version_id'] as String],
     );

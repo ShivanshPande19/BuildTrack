@@ -43,6 +43,15 @@ Deno.serve(async (req) => {
     if (!email || !role) {
       return json({ error: "email and role are required" }, 400);
     }
+    const ROLES = ["admin", "pm", "procurement", "workshop", "store", "design", "service", "client"];
+    if (!ROLES.includes(role)) {
+      return json({ error: `unknown role "${role}"` }, 400);
+    }
+    // A client with no business name would land in the onboarding dropdown as a
+    // blank row, so require it up front.
+    if (role === "client" && !(business_name ?? full_name)) {
+      return json({ error: "business_name is required for a client" }, 400);
+    }
 
     // 3) create the user + profile.
     //    - password given  → create directly with a temp password (NO email/SMTP needed).
@@ -71,16 +80,34 @@ Deno.serve(async (req) => {
     const { error: pErr } = await admin.from("profiles").insert({
       id: uid, full_name, email, phone, role, status, created_by: user.id,
     });
-    if (pErr) return json({ error: pErr.message }, 400);
-
-    // 4) client role → also create a linked client_account
-    if (role === "client") {
-      await admin.from("client_accounts").insert({
-        business_name: business_name ?? full_name, contact_user_id: uid, email, phone,
-      });
+    if (pErr) {
+      // Don't leave an auth user with no profile behind — that user could sign in
+      // and get no role at all.
+      await admin.auth.admin.deleteUser(uid);
+      return json({ error: pErr.message }, 400);
     }
 
-    return json({ ok: true, user_id: uid });
+    // 4) client role → also create the linked client_account.
+    //    contact_user_id is what makes the account reachable: without it the
+    //    client can never see their truck (my_client_account() returns null),
+    //    so the account and its login are always created together.
+    let clientAccountId: string | null = null;
+    if (role === "client") {
+      const { data: ca, error: caErr } = await admin.from("client_accounts")
+        .insert({ business_name: business_name ?? full_name, contact_user_id: uid, email, phone })
+        .select("id")
+        .single();
+      if (caErr) {
+        await admin.from("profiles").delete().eq("id", uid);
+        await admin.auth.admin.deleteUser(uid);
+        return json({ error: caErr.message }, 400);
+      }
+      clientAccountId = ca.id;
+    }
+
+    // client_account_id lets "Onboard project" create the client inline and
+    // immediately select it, instead of sending the admin off to the Team tab.
+    return json({ ok: true, user_id: uid, client_account_id: clientAccountId });
   } catch (e) {
     return json({ error: String(e) }, 500);
   }

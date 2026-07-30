@@ -302,9 +302,12 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (f) {
-          final list = _filter == 'all'
-              ? f.projects
-              : f.projects.where((p) => p.status == _filter).toList();
+          final noPm = f.projects.where((p) => !p.hasPm).toList();
+          final list = switch (_filter) {
+            'all'   => f.projects,
+            'no_pm' => noPm,
+            _       => f.projects.where((p) => p.status == _filter).toList(),
+          };
           return ListView(
             padding: _pad,
             children: [
@@ -317,9 +320,34 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
                   _chip('On-track', 'on_track'),
                   _chip('At-risk', 'at_risk'),
                   _chip('Delayed', 'delayed'),
+                  // Builds with no PM are stranded — nobody can assign or approve
+                  // their work — so they get their own filter.
+                  if (noPm.isNotEmpty) _chip('No PM ${noPm.length}', 'no_pm', tint: BT.coral),
                 ]),
               ),
               const SizedBox(height: 14),
+              if (noPm.isNotEmpty && _filter != 'no_pm') ...[
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() => _filter = 'no_pm'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
+                    margin: const EdgeInsets.only(bottom: 12),
+                    decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
+                      borderRadius: BorderRadius.circular(BT.radiusCard)),
+                    child: Row(children: [
+                      const Icon(Icons.person_off_rounded, size: 18, color: BT.coral),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(
+                        '${noPm.length} build${noPm.length == 1 ? '' : 's'} '
+                        '${noPm.length == 1 ? 'has' : 'have'} no project manager — '
+                        'their stages cannot be assigned yet.',
+                        style: const TextStyle(fontSize: 12.5, height: 1.35))),
+                      const Icon(Icons.chevron_right_rounded, size: 18, color: BT.coral),
+                    ]),
+                  ),
+                ),
+              ],
               if (list.isEmpty)
                 const EmptyState(
                   icon: Icons.grid_view_rounded, tint: BT.sky,
@@ -334,7 +362,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     );
   }
 
-  Widget _chip(String label, String value) {
+  Widget _chip(String label, String value, {Color? tint}) {
     final on = _filter == value;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -344,12 +372,12 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
           decoration: BoxDecoration(
-            color: on ? BT.ink : BT.card,
+            color: on ? BT.ink : (tint ?? BT.card),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: on ? BT.ink : BT.line),
+            border: Border.all(color: on ? BT.ink : (tint ?? BT.line)),
           ),
           child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
-            color: on ? Colors.white : BT.mut)),
+            color: on ? Colors.white : (tint != null ? BT.ink : BT.mut))),
         ),
       ),
     );
@@ -361,8 +389,9 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
       padding: const EdgeInsets.only(bottom: 11),
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
+        // canAssignPm: assigning / changing the project manager is Admin's job.
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p))),
+          builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, canAssignPm: true))),
         child: AppCard(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -370,6 +399,10 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
             Expanded(child: Text('${p.code} · ${p.name}',
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15.5))),
             const SizedBox(width: 8),
+            if (!p.hasPm) ...[
+              const StatusPill('No PM', color: BT.coral),
+              const SizedBox(width: 6),
+            ],
             StatusPill(s.label, color: s.color),
           ]),
           const SizedBox(height: 11),

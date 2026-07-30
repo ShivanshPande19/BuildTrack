@@ -41,7 +41,7 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
     ));
     if (ok != true) return;
     try {
-      await ref.read(workshopRepoProvider).installComponent(c.id, t.stageId, t.projectId);
+      await ref.read(workshopRepoProvider).installComponent(c.id, t.stageId);
       ref.invalidate(inStockProvider);
       ref.invalidate(workshopPartsProvider);
       ref.invalidate(stageBundleProvider(t.stageId));

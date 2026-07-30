@@ -10,21 +10,58 @@ class ApprovalsScreen extends ConsumerWidget {
   const ApprovalsScreen({super.key});
 
   Future<void> _decide(BuildContext context, WidgetRef ref, ApprovalItem a, bool approve) async {
+    // Sending work back without saying why leaves the assignee guessing, so ask.
+    String? note;
+    if (!approve) {
+      note = await _askReason(context, a);
+      if (note == null) return; // cancelled
+    }
     try {
-      await ref.read(projectsRepoProvider).decideApproval(a.id, a.stageId, approve);
+      await ref.read(projectsRepoProvider).decideApproval(a.id, approve, note: note);
       ref.invalidate(pendingApprovalsProvider);
       ref.invalidate(pmDashboardProvider);
       ref.invalidate(myProjectsProvider);
+      ref.invalidate(stagesToAssignProvider);
+      ref.invalidate(workloadProvider);
+      ref.invalidate(notificationsProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.ink,
-          content: Text('${a.projectCode} · ${a.stageName} ${approve ? 'approved' : 'sent back'}')));
+          content: Text(approve
+            ? '${a.projectCode} · ${a.stageName} approved — next stage started'
+            : '${a.projectCode} · ${a.stageName} sent back for rework')));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }
     }
+  }
+
+  /// Reject reason — stored on the submission and pushed to the assignee.
+  Future<String?> _askReason(BuildContext context, ApprovalItem a) async {
+    final c = TextEditingController();
+    return showDialog<String>(context: context, builder: (dctx) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('Send back', style: display(18, w: FontWeight.w600)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${a.projectCode} · ${a.stageName}',
+          style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+        const SizedBox(height: 10),
+        Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: TextField(controller: c, maxLines: 3,
+            decoration: const InputDecoration(hintText: 'What needs fixing?', border: InputBorder.none))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx),
+          child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, c.text.trim()),
+          child: const Text('Send back', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700))),
+      ],
+    ));
   }
 
   @override
@@ -80,7 +117,10 @@ class ApprovalsScreen extends ConsumerWidget {
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${a.stageName} · done', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
             const SizedBox(height: 2),
-            Text(a.projectCode, style: const TextStyle(color: BT.mut, fontSize: 12)),
+            Text([
+              a.projectCode,
+              if (a.submittedBy != null && a.submittedBy!.isNotEmpty) a.submittedBy!,
+            ].join(' · '), style: const TextStyle(color: BT.mut, fontSize: 12)),
           ])),
         ]),
         const SizedBox(height: 13),
