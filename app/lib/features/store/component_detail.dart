@@ -175,10 +175,27 @@ class RecallCheckScreen extends ConsumerWidget {
                         color: r.status == 'faulty' ? BT.coral : BT.amber),
                     ])))),
                   const SizedBox(height: 6),
+                  // Actually sends it: each affected build's PM and client get a
+                  // notification. This button used to only show a snackbar.
                   PrimaryButton('Notify all ${rows.length}', icon: Icons.notifications_active_rounded,
-                    bg: BT.ink, fg: BT.card, onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        backgroundColor: BT.ink, content: Text('Recall notice queued for ${rows.length} truck(s).')));
+                    bg: BT.ink, fg: BT.card, onTap: () async {
+                      try {
+                        final n = await ref.read(storeRepoProvider)
+                            .recallNotify(itemCatalogId, note: 'Safety check required on this part.');
+                        ref.invalidate(notificationsProvider);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            backgroundColor: BT.ink,
+                            content: Text(n == 0
+                              ? 'No trucks to notify.'
+                              : 'Recall notice sent for $n truck(s) — PMs and clients told.')));
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            backgroundColor: BT.coral, content: Text(friendlyError(e))));
+                        }
+                      }
                     }),
                 ],
               ]);

@@ -115,6 +115,52 @@ approved design's `.glb` flows to the **3D showcase**.
 
 ## 8. Service ⬜ *(Phase 2 — next)*
 
+## 9. Assignment chain hardening ✅ *(migration 0009)*
+
+The roles were all built, but the **chain between them** was not. Full audit in
+`docs/WORKFLOW_AUDIT.md` (~40 findings). Headlines:
+
+**Step 1-2 — Admin creates the build, then assigns a PM**
+- ✅ Client **account + login created together**, inline from Onboard Project (`＋ New`)
+- ✅ Onboarding hides login-less client accounts (they can never see their truck)
+- ✅ **PM is required**, and now changeable any time (Project detail → Project manager → Assign/Change)
+- ✅ `fn_onboard_project` refuses a PM-less build · **Admin → Projects → No PM** finds legacy ones
+- ✅ `fn_assign_pm` validates the target is an active PM · records who assigned · notifies both PMs
+
+**Step 3-4 — PM sees their builds and hands out the work**
+- ✅ PM's ＋ is now **Assign work** (was "Onboard project" — Admin-only work a PM could do)
+- ✅ Stages carry a **`discipline`**; the assign sheet recommends that role and requires an explicit
+  override to hand a design stage to a welder — enforced by `fn_assign_stage`, not just the UI
+- ✅ Assignment carries **start + due dates** and notifies the assignee (and the previous one)
+- ✅ New **Assign work** screen: every unassigned / rework stage across the PM's builds
+- ✅ Workload counts all open stages, so someone holding 5 queued stages no longer reads "Free"
+
+**Step 5 — the assignee actually sees and does the work**
+- ✅ **Design is scoped to assigned builds** (`assignedProjectsProvider`) — it previously showed
+  every truck in the company to every designer
+- ✅ **Start work** action (`fn_start_stage`) — the transition nothing used to make
+- ✅ Submit → addressed to the build's PM · duplicates blocked · refused if there is no PM
+- ✅ Approve → stage done + `actual_end` + **next stage auto-starts** + client notified
+- ✅ Reject → rework **with a reason** shown on the assignee's task card
+- ✅ Client design approval **actually works** (`fn_client_decide_design`) — the old direct UPDATE
+  silently changed nothing while showing "Design approved"
+
+**Cross-cutting**
+- ✅ `projects.status` is finally computed (`delivered → delayed → at_risk → on_track`), so every
+  dashboard, at-risk count and on-time % stops lying · `current_stage_id` maintained
+- ✅ Notifications are real: nothing in the app wrote a single row before (`fn_notify`)
+- ✅ RLS tightened from blanket `is_staff()` writes to the documented per-role matrix
+- ✅ `v_order_due` no longer leaks procurement data to clients (`security_invoker`)
+- ✅ Clients can no longer read the staff directory
+- ✅ Offboarding a PM / assignee no longer fails on a foreign key
+- ✅ Recall "Notify all" actually notifies · scan-to-install validated server-side
+- ✅ `full_setup.sql` is **generated** (`build_full_setup.sh`) — it had drifted and was missing 0005/0006
+- ✅ `supabase/tests/run.sh` — Docker-only backend verification, ~40 assertions as real users
+
 ---
-*Phase 2: Design role ✅ done. Next: Service role (connects to Client raise-request / tickets).*
-*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage (public 'designs' bucket). Edge functions: admin-create-member, admin-delete-member.*
+*Next: Service role (Client raise-request / tickets), real build-photo upload (`builds` bucket),
+delay logging + bay allocation, template checklists.*
+*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage
+(public 'designs' bucket), **0009_workflow**. Edge functions: admin-create-member (re-deploy — it now
+returns `client_account_id`), admin-delete-member.*
+*After 0009: assign a PM to any pre-existing build under Admin → Projects → No PM.*

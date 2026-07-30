@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -137,15 +138,41 @@ class _TasksTab extends ConsumerWidget {
           borderRadius: BorderRadius.circular(BT.radiusCard), border: Border.all(color: const Color(0xFFF0E4C8)),
           boxShadow: const [BoxShadow(color: Color(0x11695228), blurRadius: 24, offset: Offset(0, 12))]),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          StatusPill(p.label, color: p.color),
+          Row(children: [
+            StatusPill(t.awaitingApproval ? 'Awaiting approval' : p.label,
+              color: t.awaitingApproval ? BT.amber : p.color),
+            if (t.isOverdue) ...[
+              const SizedBox(width: 7),
+              const StatusPill('Overdue', color: BT.coral),
+            ],
+          ]),
           const SizedBox(height: 12),
           Text(t.stageName, style: display(21, w: FontWeight.w600)),
           const SizedBox(height: 3),
           Text('${t.projectCode} · ${t.projectName}', style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+          // The PM's reason for sending it back, right where the work is picked up.
+          if (t.status == 'rework' && t.reworkNote != null) ...[
+            const SizedBox(height: 10),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+              decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(11)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.rate_review_rounded, size: 14, color: BT.coral),
+                const SizedBox(width: 7),
+                Expanded(child: Text(t.reworkNote!, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, height: 1.3))),
+              ])),
+          ],
           const SizedBox(height: 12),
-          const Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            Text('Open task', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Icon(Icons.arrow_forward_rounded, size: 16),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            if (t.assignedDue != null)
+              Text('Due ${DateFormat('d MMM').format(t.assignedDue!)}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                  color: t.isOverdue ? BT.coral : BT.mut))
+            else const SizedBox.shrink(),
+            const Row(children: [
+              Text('Open task', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              Icon(Icons.arrow_forward_rounded, size: 16),
+            ]),
           ]),
         ]),
       ),
@@ -160,9 +187,15 @@ class _TasksTab extends ConsumerWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(t.stageName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
           const SizedBox(height: 2),
-          Text(t.projectCode, style: const TextStyle(color: BT.mut, fontSize: 12)),
+          Text([
+            t.projectCode,
+            if (t.assignedDue != null) 'due ${DateFormat('d MMM').format(t.assignedDue!)}',
+          ].join(' · '), style: TextStyle(
+            color: t.isOverdue ? BT.coral : BT.mut, fontSize: 12,
+            fontWeight: t.isOverdue ? FontWeight.w600 : FontWeight.normal)),
         ])),
-        const StatusPill('Queued', color: BT.sky),
+        StatusPill(t.awaitingApproval ? 'Awaiting approval' : 'Queued',
+          color: t.awaitingApproval ? BT.amber : BT.sky),
       ])),
     ));
 }

@@ -82,7 +82,13 @@ Build these as **shared** methods so no role re-implements them:
 | Team / Add member | profiles | profiles (create+role); **if role=client → also create client_account** (contact_user_id = new user) | — |
 | Analytics | projects, delay_logs, vendors | — | data over time |
 
-> **Client sourcing rule:** clients are **not** created inline during onboarding. When Admin adds a user with `role='client'`, a `client_account` is created and linked. The onboarding **Client dropdown lists those existing client accounts** only.
+> **Client sourcing rule:** a `client_account` and its **login are always created together** —
+> either from Team → Add member (`role='client'`) or inline from **Onboard Project → Client → ＋ New**
+> (`createClientLogin()`, which calls the same `admin-create-member` Edge Function and returns the new
+> `client_account_id` so it can be selected immediately).
+> The onboarding dropdown lists **only accounts that have `contact_user_id` set**: an account with no
+> login is unreachable (`my_client_account()` returns null, so RLS matches no rows) and the client
+> could never see their truck. Legacy login-less rows are hidden and counted in a hint on the screen.
 
 ### Procurement
 | Screen | Reads | Writes | Depends on |
@@ -193,14 +199,55 @@ operational data entry.
 
 ---
 
-## Assignment architecture (two levels)
+## Assignment architecture (two levels) — enforced in the database
 
-1. **Admin → assigns PM to a project** — `projects.pm_id`. Set at **Onboard Project** (PM dropdown).
-   PM then sees only projects where `pm_id = me` (`myProjectsProvider`).
-2. **PM → assigns build tasks (stages) to execution staff** — `stages.assignee_id`.
-   - Assignable staff = roles **workshop / design / store / service** (`assignableMembersProvider`).
-     NOT admin / pm / procurement / client. (PM's Team tab shows only these — PM never sees themselves.)
-   - From PM's Project detail → each stage → **Assign / Reassign / Unassign** (`assignStage(stageId, uid|null)`).
-   - Workload (`workloadProvider`) = count of in-progress stages per `assignee_id`; refreshed on assign.
+See `docs/WORKFLOW_AUDIT.md` for the problems this replaced and
+`supabase/migrations/0009_workflow.sql` for the implementation.
 
-`canAssign` flag on `ProjectDetailScreen`: PM opens it `true`; Admin `false` (monitor only).
+**Level 1 — Admin assigns the PM** (`projects.pm_id`)
+
+- Set at **Onboard Project** (PM dropdown, **required**) and changeable any time from
+  **Project detail → Project manager → Assign / Change** (`canAssignPm: true`, Admin only).
+- Goes through `fn_assign_pm(project, pm)`, which checks the target is an *active* member with
+  `role='pm'`, records `pm_assigned_by` / `pm_assigned_at`, notifies the new PM and (on a
+  hand-over) the previous one.
+- `fn_onboard_project` **refuses** a build with no PM. A PM-less build is stranded: no PM sees it,
+  its stages cannot be assigned, and submitted work cannot be approved. Legacy PM-less builds
+  (e.g. the demo `AZ-118`) surface under **Admin → Projects → No PM**.
+- A PM cannot create a project or take one over: `projects` INSERT/DELETE is admin-only in RLS,
+  and `trg_guard_projects` blocks any non-admin from changing `pm_id`, `code`, `client_account_id`
+  or `template_id`.
+
+**Level 2 — PM assigns each stage to the right discipline** (`stages.assignee_id`)
+
+- Every stage carries a **`discipline`** (`workshop | design | store | service`), copied from
+  `template_stages.discipline` at onboarding, or inferred from the stage name by
+  `fn_infer_discipline()` so existing templates work unchanged.
+- Assignable staff = roles **workshop / design / store / service**, active only
+  (`assignableForDisciplineProvider(discipline)` sorts the stage's own discipline first).
+  Never admin / pm / procurement / client.
+- Entry points: **PM → ＋ Assign work** (every unassigned or rework stage across their builds,
+  `stagesToAssignProvider`) and **Project detail → stage → Assign / Reassign / Unassign**.
+- `assignStage(stageId, uid, start:, due:, override:)` → `fn_assign_stage`, which enforces:
+  caller is that build's PM (or admin) · target role matches the stage discipline unless the PM
+  explicitly confirms an `override` · account not disabled · `due >= start`. It stores
+  `assigned_by/at/start/due` and notifies the new *and* previous assignee.
+- `trg_guard_stages` stops an assignee from touching `assignee_id`, `discipline`, `ord`,
+  `bay_id`, `project_id` or the planned/assigned dates — they may only move their own work forward.
+- Workload (`workloadProvider`) counts **all open** stages (`todo + in_progress + rework`) per
+  assignee, not just in-progress ones.
+
+**Level 3 — the assignee executes** (this is what "assigned work shows up" means)
+
+- `assignedProjectsProvider` = builds where I hold at least one stage. **Execution roles must scope
+  to it** — Design's Studio / Library / Approvals and the New-design project picker all do.
+- `fn_start_stage` → `in_progress` + `actual_start` (+ notifies the PM). Without this every stage
+  stayed `todo` forever and the PM's day view, bay board and workload were always empty.
+- `fn_submit_stage` → one pending `stage_approvals` row addressed to the build's PM. Refuses a
+  duplicate submission and refuses outright when the build has no PM.
+- `fn_decide_stage` → approve: stage `done` + `actual_end`, **next stage auto-starts**, submitter
+  and client notified; reject: stage `rework` with a note the assignee sees on their task card.
+- `fn_install_component` (Hero #2) validates the part is in stock and the caller owns the stage.
+
+`ProjectDetailScreen` flags: PM opens with `canAssign / materialsEditable / canEditTimeline = true`;
+Admin opens with `canAssignPm: true` and everything else read-only (oversight).

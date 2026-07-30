@@ -118,13 +118,15 @@ class _NewDesignState extends ConsumerState<NewDesign> {
           backgroundColor: BT.ink, content: Text(submit ? 'Sent to client for approval 🎉' : 'Saved as draft')));
       }
     } catch (e) {
-      setState(() { _saving = false; _error = '$e'; });
+      setState(() { _saving = false; _error = friendlyError(e); });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final projects = ref.watch(allProjectsProvider).valueOrNull ?? const <Project>[];
+    // Only the builds a PM actually assigned me. This used to be the whole fleet,
+    // so a designer could start uploading designs onto any truck in the company.
+    final projects = ref.watch(assignedProjectsProvider).valueOrNull ?? const <Project>[];
     return Scaffold(
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
@@ -156,6 +158,16 @@ class _NewDesignState extends ConsumerState<NewDesign> {
             const SizedBox(height: 14),
           ] else ...[
             _label('PROJECT'),
+            if (projects.isEmpty) Padding(padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
+                  borderRadius: BorderRadius.circular(14)),
+                child: const Text(
+                  'No builds are assigned to you yet. A project manager has to assign '
+                  'you a design stage before you can create a design.',
+                  style: TextStyle(fontSize: 12.5, height: 1.35)),
+              )),
             _dropdown<String>(value: _projectId, hint: 'Select a truck',
               items: [for (final p in projects) DropdownMenuItem(value: p.id, child: Text('${p.code} · ${p.name}', overflow: TextOverflow.ellipsis))],
               onChanged: (v) => setState(() => _projectId = v)),

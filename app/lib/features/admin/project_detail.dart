@@ -9,15 +9,21 @@ import 'stage_detail.dart';
 import 'project_requirements.dart';
 import '../client/truck_3d.dart';
 
-/// Admin — Project detail (a4): progress, delivery date and the build-stage timeline.
+/// Admin / PM — Project detail (a4): progress, delivery date, who owns the build,
+/// and the build-stage timeline.
+///
+/// Role split: Admin owns *who runs the build* (the PM). The PM owns *who does
+/// each stage*. Both are enforced in the database, not just here.
 class ProjectDetailScreen extends ConsumerWidget {
   final String projectId;
   final Project? initial; // for an instant header while stages load
   final bool materialsEditable; // PM opens editable; Admin monitors (read-only)
   final bool canAssign;         // PM can assign stages to team members
   final bool canEditTimeline;   // PM can change delivery date (re-schedules)
+  final bool canAssignPm;       // Admin can assign / change the project manager
   const ProjectDetailScreen({super.key, required this.projectId, this.initial,
-    this.materialsEditable = false, this.canAssign = false, this.canEditTimeline = false});
+    this.materialsEditable = false, this.canAssign = false, this.canEditTimeline = false,
+    this.canAssignPm = false});
 
   static final _fmt = DateFormat('d MMM');
   String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -56,7 +62,7 @@ class ProjectDetailScreen extends ConsumerWidget {
             const SizedBox(height: 14),
             detail.when(
               loading: () => _headerFromInitial(),
-              error: (e, _) => AppCard(child: Text('Could not load project.\n$e',
+              error: (e, _) => AppCard(child: Text('Could not load project.\n${friendlyError(e)}',
                 style: const TextStyle(color: BT.coral, fontSize: 13))),
               data: (d) => _content(context, ref, d),
             ),
@@ -78,7 +84,7 @@ class ProjectDetailScreen extends ConsumerWidget {
   Widget _content(BuildContext context, WidgetRef ref, ProjectDetailData d) {
     final s = _status(d.project.status);
     final cur = d.currentStage;
-    // id → name for showing stage assignees
+    // id → name for showing stage assignees + the PM
     final names = <String, String>{
       for (final m in (ref.watch(membersProvider).valueOrNull ?? <Member>[])) m.id: m.name
     };
@@ -90,6 +96,9 @@ class ProjectDetailScreen extends ConsumerWidget {
         StatusPill(s.label, color: s.color),
       ]),
       const SizedBox(height: 16),
+
+      _pmCard(context, ref, d, names),
+      const SizedBox(height: 12),
 
       // 3D design preview — shared by Admin + PM. Real approved model when
       // available, else the demo model.
@@ -169,8 +178,82 @@ class ProjectDetailScreen extends ConsumerWidget {
           subtitle: 'Stages generate from the workflow template when the project is onboarded.')
       else
         ...List.generate(d.stages.length,
-          (i) => _timelineTile(context, ref, d.stages[i], i == d.stages.length - 1, d.project.code, names)),
+          (i) => _timelineTile(context, ref, d.stages[i], i == d.stages.length - 1,
+                               d.project, names)),
     ]);
+  }
+
+  /// Who runs this build. Admin-only control — and the loudest thing on the
+  /// screen when it is missing, because nothing downstream can happen without it.
+  Widget _pmCard(BuildContext context, WidgetRef ref, ProjectDetailData d, Map<String, String> names) {
+    final pmId = d.project.pmId;
+    final pmName = pmId == null ? null : (names[pmId] ?? 'Assigned');
+    final missing = pmId == null;
+
+    Future<void> pick() async {
+      final chosen = await showModalBottomSheet<OptRef>(
+        context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+        builder: (_) => _PickPmSheet(currentPmId: pmId),
+      );
+      if (chosen == null) return;
+      try {
+        await ref.read(adminRepoProvider).assignPm(projectId, chosen.id);
+        ref.invalidate(projectDetailProvider(projectId));
+        ref.invalidate(fleetProvider);
+        ref.invalidate(myProjectsProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.ink,
+            content: Text('${d.project.code} assigned to ${chosen.label}')));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.coral, content: Text(friendlyError(e))));
+        }
+      }
+    }
+
+    return AppCard(
+      color: missing ? const Color(0xFFFBE4E0) : null,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: missing ? BT.coral : BT.sky, borderRadius: BorderRadius.circular(12)),
+            child: Icon(missing ? Icons.person_off_rounded : Icons.engineering_rounded,
+              size: 20, color: BT.ink)),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Project manager', style: TextStyle(color: BT.mut, fontSize: 11.5)),
+            const SizedBox(height: 2),
+            Text(pmName ?? 'Not assigned',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5,
+                color: missing ? BT.coral : BT.ink)),
+          ])),
+          if (canAssignPm) GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: pick,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+              decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(999)),
+              child: Text(missing ? 'Assign' : 'Change',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
+          ),
+        ]),
+        if (missing) ...[
+          const SizedBox(height: 10),
+          Text(
+            canAssignPm
+              ? 'Until a PM owns this build, its stages cannot be assigned and no '
+                'submitted work can be approved. Assign one to unblock it.'
+              : 'This build has no project manager yet, so its stages cannot be '
+                'assigned. Ask an admin to assign one.',
+            style: const TextStyle(fontSize: 12, color: BT.ink, height: 1.4)),
+        ],
+      ]),
+    );
   }
 
   // progress track: textured-free bar with a floating % pill.
@@ -200,17 +283,19 @@ class ProjectDetailScreen extends ConsumerWidget {
     );
   }
 
-  Widget _timelineTile(BuildContext context, WidgetRef ref, Stage s, bool isLast, String code, Map<String, String> names) {
+  Widget _timelineTile(BuildContext context, WidgetRef ref, Stage s, bool isLast,
+      Project project, Map<String, String> names) {
     final done = s.status == 'done';
     final now = s.status == 'in_progress';
     final todo = s.status == 'todo';
+    final rework = s.status == 'rework';
 
     final assignee = s.assigneeId == null ? null : names[s.assigneeId];
     final who = assignee ?? 'Unassigned';
     final subtitle = switch (s.status) {
       'done'        => 'Completed ${_d(s.actualEnd ?? s.plannedEnd)}${assignee != null ? ' · $assignee' : ''}',
       'in_progress' => 'In progress · $who',
-      'rework'      => 'Rework · $who',
+      'rework'      => 'Sent back for rework · $who',
       _             => 'Starts ${_d(s.plannedStart)} · $who',
     };
 
@@ -223,6 +308,10 @@ class ProjectDetailScreen extends ConsumerWidget {
       dot = Container(width: 22, height: 22, alignment: Alignment.center,
         decoration: const BoxDecoration(color: BT.ink, shape: BoxShape.circle),
         child: Container(width: 7, height: 7, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle)));
+    } else if (rework) {
+      dot = Container(width: 22, height: 22, alignment: Alignment.center,
+        decoration: const BoxDecoration(color: BT.coral, shape: BoxShape.circle),
+        child: const Icon(Icons.replay_rounded, size: 13, color: BT.ink));
     } else {
       dot = Container(width: 22, height: 22,
         decoration: BoxDecoration(color: BT.card2, shape: BoxShape.circle, border: Border.all(color: BT.line, width: 1.5)));
@@ -238,17 +327,32 @@ class ProjectDetailScreen extends ConsumerWidget {
       Expanded(child: Padding(
         padding: EdgeInsets.only(bottom: isLast ? 0 : 20, top: 1),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(s.name, style: TextStyle(fontSize: 15,
-            fontWeight: todo ? FontWeight.w500 : FontWeight.w600,
-            color: todo ? BT.mut2 : BT.ink)),
+          Row(children: [
+            Expanded(child: Text(s.name, style: TextStyle(fontSize: 15,
+              fontWeight: todo ? FontWeight.w500 : FontWeight.w600,
+              color: todo ? BT.mut2 : BT.ink))),
+            if (s.discipline != null) _disciplineChip(s.discipline!),
+          ]),
           const SizedBox(height: 2),
           Text(subtitle, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
+          if (s.assignedDue != null && !done) ...[
+            const SizedBox(height: 3),
+            Row(children: [
+              Icon(Icons.flag_rounded, size: 12,
+                color: s.assignedDue!.isBefore(DateTime.now()) ? BT.coral : BT.mut2),
+              const SizedBox(width: 4),
+              Text('Due ${_d(s.assignedDue)}',
+                style: TextStyle(fontSize: 11,
+                  color: s.assignedDue!.isBefore(DateTime.now()) ? BT.coral : BT.mut,
+                  fontWeight: FontWeight.w600)),
+            ]),
+          ],
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => StageDetailScreen(stage: s, projectCode: code))),
+                builder: (_) => StageDetailScreen(stage: s, projectCode: project.code))),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                 decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999)),
@@ -262,7 +366,12 @@ class ProjectDetailScreen extends ConsumerWidget {
             if (canAssign && s.status != 'done')
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => _openAssignSheet(context, s),
+                onTap: () => openAssignSheet(context, ref, s, projectId,
+                  onDone: () {
+                    ref.invalidate(projectDetailProvider(projectId));
+                    ref.invalidate(workloadProvider);
+                    ref.invalidate(stagesToAssignProvider);
+                  }),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(999)),
@@ -279,78 +388,299 @@ class ProjectDetailScreen extends ConsumerWidget {
       )),
     ]));
   }
+}
 
-  /// Bottom sheet to assign / reassign / unassign a stage (PM only).
-  void _openAssignSheet(BuildContext context, Stage stage) {
-    showModalBottomSheet<void>(
-      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (ctx) => Consumer(builder: (ctx, ref, _) {
-        final members = ref.watch(assignableMembersProvider);
-        Future<void> apply(String? uid) async {
-          await ref.read(projectsRepoProvider).assignStage(stage.id, uid);
-          ref.invalidate(projectDetailProvider(projectId));
-          ref.invalidate(workloadProvider);
-          if (ctx.mounted) Navigator.pop(ctx);
-        }
-        return Container(
-          decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
-            Text('Assign · ${stage.name}', style: display(19, w: FontWeight.w600)),
-            const SizedBox(height: 12),
-            members.when(
-              loading: () => const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => Text('Could not load team.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13)),
-              data: (list) {
-                if (list.isEmpty) {
-                  return const EmptyState(icon: Icons.people_outline_rounded, tint: BT.lav,
-                    title: 'No assignable staff', subtitle: 'Add workshop/design/store/service members first.');
-                }
-                return Column(children: [
-                  ...list.map((m) {
-                    final selected = m.id == stage.assigneeId;
-                    return Padding(padding: const EdgeInsets.only(bottom: 8), child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => apply(m.id),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: selected ? BT.ink : BT.line, width: selected ? 1.5 : 1)),
-                        child: Row(children: [
-                          Container(width: 38, height: 38, alignment: Alignment.center,
-                            decoration: BoxDecoration(color: roleColor(m.role), shape: BoxShape.circle),
-                            child: Text(m.name.isNotEmpty ? m.name[0].toUpperCase() : '?',
-                              style: const TextStyle(fontWeight: FontWeight.w700, color: BT.ink))),
-                          const SizedBox(width: 12),
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(m.name.isEmpty ? m.email : m.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                            const SizedBox(height: 1),
-                            Text(m.role, style: const TextStyle(color: BT.mut, fontSize: 12)),
-                          ])),
-                          if (selected) const Icon(Icons.check_circle_rounded, color: BT.ink, size: 20),
-                        ]),
-                      ),
-                    ));
-                  }),
-                  if (stage.assigneeId != null) Padding(padding: const EdgeInsets.only(top: 4),
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => apply(null),
-                      child: Container(
-                        width: double.infinity, alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(vertical: 13),
-                        decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(16)),
-                        child: const Text('Unassign', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700)),
-                      ),
-                    )),
-                ]);
-              },
-            ),
+/// Small role tag on a stage, so it is obvious at a glance whose work it is.
+Widget _disciplineChip(String discipline) => Container(
+  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+  decoration: BoxDecoration(color: roleColor(discipline).withOpacity(0.45),
+    borderRadius: BorderRadius.circular(999)),
+  child: Text(discipline,
+    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: BT.ink)),
+);
+
+/// Assign / reassign / unassign a stage (PM only). Shared by Project detail and
+/// the PM's Assign work screen.
+void openAssignSheet(BuildContext context, WidgetRef ref, Stage stage, String projectId,
+    {VoidCallback? onDone}) {
+  showModalBottomSheet<void>(
+    context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+    builder: (_) => _AssignSheet(stage: stage, projectId: projectId, onDone: onDone),
+  );
+}
+
+class _AssignSheet extends ConsumerStatefulWidget {
+  final Stage stage;
+  final String projectId;
+  final VoidCallback? onDone;
+  const _AssignSheet({required this.stage, required this.projectId, this.onDone});
+  @override
+  ConsumerState<_AssignSheet> createState() => _AssignSheetState();
+}
+
+class _AssignSheetState extends ConsumerState<_AssignSheet> {
+  static final _fmt = DateFormat('d MMM');
+  DateTime? _start, _due;
+  bool _busy = false;
+  String? _error;
+  /// Set once the PM has confirmed handing this stage to another discipline.
+  String? _overrideFor;
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.stage.assignedStart ?? widget.stage.plannedStart;
+    _due = widget.stage.assignedDue ?? widget.stage.plannedEnd;
+  }
+
+  Future<void> _apply(String? uid, {bool override = false}) async {
+    setState(() { _busy = true; _error = null; });
+    try {
+      await ref.read(projectsRepoProvider).assignStage(
+        widget.stage.id, uid, start: _start, due: _due, override: override);
+      widget.onDone?.call();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _error = friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Tapping someone outside the stage's discipline asks first, then overrides.
+  Future<void> _tap(Member m) async {
+    final disc = widget.stage.discipline;
+    final mismatch = disc != null && m.role != disc;
+    if (!mismatch || _overrideFor == m.id) {
+      await _apply(m.id, override: mismatch);
+      return;
+    }
+    setState(() {
+      _overrideFor = m.id;
+      _error = 'This is a $disc stage and ${m.name.isEmpty ? m.email : m.name} '
+               'works in ${m.role}. Tap again to move the stage to ${m.role}.';
+    });
+  }
+
+  Future<void> _pickDate(bool isStart) async {
+    final base = isStart ? _start : _due;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: base ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 90)),
+      lastDate: DateTime.now().add(const Duration(days: 730)));
+    if (picked == null) return;
+    setState(() {
+      if (isStart) {
+        _start = picked;
+        if (_due != null && _due!.isBefore(picked)) _due = picked;
+      } else {
+        _due = picked;
+      }
+    });
+  }
+
+  Widget _dateChip(String label, DateTime? value, bool isStart) => Expanded(
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _pickDate(isStart),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: BT.line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(color: BT.mut, fontSize: 11)),
+          const SizedBox(height: 3),
+          Row(children: [
+            Text(value == null ? 'Pick' : _fmt.format(value),
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5,
+                color: value == null ? BT.mut2 : BT.ink)),
+            const Spacer(),
+            const Icon(Icons.calendar_today_rounded, size: 14, color: BT.mut2),
           ]),
-        );
-      }),
+        ]),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final members = ref.watch(assignableForDisciplineProvider(widget.stage.discipline));
+    final disc = widget.stage.discipline;
+
+    return Container(
+      decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+          Row(children: [
+            Expanded(child: Text('Assign · ${widget.stage.name}', style: display(19, w: FontWeight.w600))),
+            if (disc != null) _disciplineChip(disc),
+          ]),
+          const SizedBox(height: 14),
+          Row(children: [
+            _dateChip('Start', _start, true),
+            const SizedBox(width: 10),
+            _dateChip('Due', _due, false),
+          ]),
+          const SizedBox(height: 14),
+          if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(12)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.info_outline_rounded, size: 15, color: BT.coral),
+                const SizedBox(width: 7),
+                Expanded(child: Text(_error!,
+                  style: const TextStyle(color: BT.ink, fontSize: 12.5, height: 1.35))),
+              ]),
+            )),
+          if (_busy)
+            const Padding(padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator(color: BT.ink)))
+          else members.when(
+            loading: () => const Padding(padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+            error: (e, _) => Text('Could not load team.\n${friendlyError(e)}',
+              style: const TextStyle(color: BT.coral, fontSize: 13)),
+            data: (list) {
+              if (list.isEmpty) {
+                return const EmptyState(icon: Icons.people_outline_rounded, tint: BT.lav,
+                  title: 'No assignable staff',
+                  subtitle: 'Add workshop / design / store / service members first.');
+              }
+              final recommended = disc == null ? <Member>[] : list.where((m) => m.role == disc).toList();
+              final others = disc == null ? list : list.where((m) => m.role != disc).toList();
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (recommended.isNotEmpty) ...[
+                  Padding(padding: const EdgeInsets.only(left: 4, bottom: 8),
+                    child: Text('RECOMMENDED · ${disc!.toUpperCase()}',
+                      style: const TextStyle(fontSize: 10.5, letterSpacing: 1.3,
+                        fontWeight: FontWeight.w700, color: BT.mut))),
+                  ...recommended.map(_memberTile),
+                ],
+                if (others.isNotEmpty) ...[
+                  Padding(padding: const EdgeInsets.only(left: 4, top: 6, bottom: 8),
+                    child: Text(recommended.isEmpty ? 'TEAM' : 'OTHER ROLES',
+                      style: const TextStyle(fontSize: 10.5, letterSpacing: 1.3,
+                        fontWeight: FontWeight.w700, color: BT.mut))),
+                  ...others.map(_memberTile),
+                ],
+                if (widget.stage.assigneeId != null) Padding(padding: const EdgeInsets.only(top: 4),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => _apply(null),
+                    child: Container(
+                      width: double.infinity, alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(16)),
+                      child: const Text('Unassign', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700)),
+                    ),
+                  )),
+              ]);
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _memberTile(Member m) {
+    final selected = m.id == widget.stage.assigneeId;
+    final confirming = _overrideFor == m.id;
+    final load = ref.watch(workloadProvider).valueOrNull?[m.id] ?? 0;
+    return Padding(padding: const EdgeInsets.only(bottom: 8), child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _tap(m),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: confirming ? BT.coral : (selected ? BT.ink : BT.line),
+            width: (confirming || selected) ? 1.5 : 1)),
+        child: Row(children: [
+          Container(width: 38, height: 38, alignment: Alignment.center,
+            decoration: BoxDecoration(color: roleColor(m.role), shape: BoxShape.circle),
+            child: Text(m.name.isNotEmpty ? m.name[0].toUpperCase() : '?',
+              style: const TextStyle(fontWeight: FontWeight.w700, color: BT.ink))),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(m.name.isEmpty ? m.email : m.name,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 1),
+            Text(load == 0 ? '${m.role} · free' : '${m.role} · $load open',
+              style: const TextStyle(color: BT.mut, fontSize: 12)),
+          ])),
+          if (confirming)
+            const Text('Tap again', style: TextStyle(color: BT.coral, fontSize: 11.5, fontWeight: FontWeight.w700))
+          else if (selected)
+            const Icon(Icons.check_circle_rounded, color: BT.ink, size: 20),
+        ]),
+      ),
+    ));
+  }
+}
+
+/// Admin picks the project manager for a build.
+class _PickPmSheet extends ConsumerWidget {
+  final String? currentPmId;
+  const _PickPmSheet({this.currentPmId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pms = ref.watch(pmsProvider);
+    return Container(
+      decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      child: SingleChildScrollView(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+          Text('Project manager', style: display(19, w: FontWeight.w600)),
+          const SizedBox(height: 4),
+          const Text('They will see this build, assign its stages and approve the work.',
+            style: TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)),
+          const SizedBox(height: 14),
+          pms.when(
+            loading: () => const Padding(padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+            error: (e, _) => Text('Could not load PMs.\n${friendlyError(e)}',
+              style: const TextStyle(color: BT.coral, fontSize: 13)),
+            data: (list) {
+              if (list.isEmpty) {
+                return const EmptyState(icon: Icons.engineering_outlined, tint: BT.sky,
+                  title: 'No project managers yet',
+                  subtitle: 'Add one under Team → Add member with the PM role.');
+              }
+              return Column(children: list.map((p) {
+                final selected = p.id == currentPmId;
+                return Padding(padding: const EdgeInsets.only(bottom: 8), child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: selected ? null : () => Navigator.pop(context, p),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: selected ? BT.ink : BT.line, width: selected ? 1.5 : 1)),
+                    child: Row(children: [
+                      Container(width: 38, height: 38, alignment: Alignment.center,
+                        decoration: const BoxDecoration(color: BT.sky, shape: BoxShape.circle),
+                        child: Text(p.label.isNotEmpty ? p.label[0].toUpperCase() : '?',
+                          style: const TextStyle(fontWeight: FontWeight.w700, color: BT.ink))),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(p.label,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                      if (selected) const Text('Current',
+                        style: TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                ));
+              }).toList());
+            },
+          ),
+        ]),
+      ),
     );
   }
 }
