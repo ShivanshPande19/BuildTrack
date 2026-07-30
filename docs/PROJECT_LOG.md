@@ -12,7 +12,7 @@ Last updated: **30 Jul 2026**
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0009` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0010` |
 | **Roughly complete** | **~85%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Not usable yet** | Real photo upload, real QR scanning, documents, delay/bay tracking, template checklists |
 | **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
@@ -76,22 +76,22 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 2. **Real QR/barcode scanning.** "Scan to install" is a manual dropdown pick. Needs `mobile_scanner`.
 
 ### Features that exist in the schema but nothing writes to them
-4. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
+3. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
    define checks. Needs a `template_stage_checks` table + UI in Create Template.
-5. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
+4. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
    "tag reason & reschedule" card has no action behind it.
-6. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
-7. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
+5. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
+6. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
    Documents tab is permanently empty.
 
 ### Smaller
-6. Profile "My details" is a coming-soon snackbar.
-7. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
+7. Profile "My details" is a coming-soon snackbar.
+8. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
    a PM can override per stage).
-8. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
-9. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
+9. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
+10. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
    would make them configurable.
-10. Ticket photo attachment is a coming-soon snackbar on the client's raise-request screen.
+11. Ticket photo attachment is a coming-soon snackbar on the client's raise-request screen.
 
 ---
 
@@ -114,7 +114,7 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 ### Verifying a change
 
 ```bash
-sh supabase/tests/run.sh        # backend: needs only Docker. ~49 assertions as real users
+sh supabase/tests/run.sh        # backend: needs only Docker. ~83 assertions as real users
 cd app && flutter analyze       # app: must report 0 errors
 ```
 
@@ -140,8 +140,9 @@ cd supabase && sh build_full_setup.sh
   `contact_user_id` can never see its truck.
 - **Business rules live in the database**, exposed as RPCs, so they hold no matter what calls them.
   The app surfaces their messages via `friendlyError()`.
-- **DB and app must ship together.** After `0009`, direct table writes are blocked — an old app
-  build against the new schema will fail on assignment/approval.
+- **DB and app must ship together.** From `0009` on, direct table writes are blocked — an old app
+  build against the new schema fails on assignment/approval, and on `0010` it would miss ticket
+  SLAs and the delivery handover.
 
 ---
 
@@ -227,3 +228,9 @@ At the end of **every** change, update:
 
 Keep it factual and short. If something is half-built, say so — an honest gap is more useful than an
 optimistic tick. Verify claims (`flutter analyze`, `supabase/tests/run.sh`) before writing ✅.
+
+Two things that go stale quietly:
+- **The migration number appears in §1, §4 and §5.** After adding a migration, grep the file for the
+  previous number and update every hit.
+- **The assertion count in §4** — read it off the actual test run, don't carry the old number over.
+- **§3 is one continuous numbered list** across all three sub-headings. Renumber after removing an item.
