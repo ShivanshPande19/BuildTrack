@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/photo_picker.dart';
 import 'scan_install.dart';
 
 /// Workshop — task (stage) detail: checklist, photos, install parts, submit for approval.
@@ -188,30 +189,58 @@ class TaskDetailScreen extends ConsumerWidget {
     ),
   );
 
+  /// Take (or pick) a real photo, caption it, and upload it to the `builds`
+  /// bucket. The client sees these on their stage timeline, so they used to be
+  /// looking at random stock images from picsum.photos.
   Future<void> _addPhoto(BuildContext context, WidgetRef ref) async {
+    final photo = await pickPhoto(context);
+    if (photo == null || !context.mounted) return;
+
     final noteC = TextEditingController();
     final ok = await showDialog<bool>(context: context, builder: (dctx) => AlertDialog(
       backgroundColor: BT.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text('Add photo', style: display(18, w: FontWeight.w600)),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Text('Camera upload comes later — this attaches a work photo with your note.',
-          style: TextStyle(color: BT.mut, fontSize: 12.5)),
-        const SizedBox(height: 10),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(14),
+          child: Image.memory(photo.bytes, height: 150, width: double.infinity, fit: BoxFit.cover),
+        ),
+        const SizedBox(height: 12),
         Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: TextField(controller: noteC, decoration: const InputDecoration(hintText: 'Note (optional)', border: InputBorder.none))),
+          child: TextField(controller: noteC,
+            decoration: const InputDecoration(hintText: 'Caption (optional)', border: InputBorder.none))),
       ]),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(dctx, false), child: const Text('Cancel', style: TextStyle(color: BT.mut))),
-        TextButton(onPressed: () => Navigator.pop(dctx, true), child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+        TextButton(onPressed: () => Navigator.pop(dctx, false),
+          child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, true),
+          child: const Text('Upload', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
     ));
-    if (ok == true) {
-      await ref.read(workshopRepoProvider).addStagePhoto(task.stageId, noteC.text.trim());
+    if (ok != true || !context.mounted) return;
+
+    // Uploads on site can be slow — say so instead of looking frozen.
+    final bar = ScaffoldMessenger.of(context);
+    bar.showSnackBar(const SnackBar(backgroundColor: BT.ink,
+      duration: Duration(minutes: 1), content: Row(children: [
+        SizedBox(width: 16, height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: BT.lime)),
+        SizedBox(width: 12),
+        Text('Uploading photo…'),
+      ])));
+    try {
+      await ref.read(workshopRepoProvider).addStagePhoto(task.stageId, photo.bytes,
+        filename: photo.filename, contentType: photo.contentType, caption: noteC.text);
       ref.invalidate(stageBundleProvider(task.stageId));
-      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(backgroundColor: BT.ink, content: Text('Photo attached')));
+      ref.invalidate(truckPhotosProvider(task.projectId));
+      ref.invalidate(stagePhotosProvider(task.stageId));
+      bar.clearSnackBars();
+      bar.showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Photo uploaded')));
+    } catch (e) {
+      bar.clearSnackBars();
+      bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
     }
   }
 
