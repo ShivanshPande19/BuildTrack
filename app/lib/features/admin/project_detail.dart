@@ -170,6 +170,13 @@ class ProjectDetailScreen extends ConsumerWidget {
           ]),
         ),
       ),
+      // Handover — the step that moves a build into after-sales. Until this
+      // happens the Service role has nothing to support.
+      if (canEditTimeline && d.project.status != 'delivered') ...[
+        const SizedBox(height: 12),
+        _deliverCard(context, ref, d),
+      ],
+
       const SectionLabel('Build stages'),
       if (d.stages.isEmpty)
         const EmptyState(
@@ -253,6 +260,74 @@ class ProjectDetailScreen extends ConsumerWidget {
             style: const TextStyle(fontSize: 12, color: BT.ink, height: 1.4)),
         ],
       ]),
+    );
+  }
+
+  /// PM marks the truck handed over → it becomes 'delivered' and the Service
+  /// role starts supporting it. Offers a confirm-anyway path when stages remain.
+  Widget _deliverCard(BuildContext context, WidgetRef ref, ProjectDetailData d) {
+    final pending = d.stages.where((s) => s.status != 'done').length;
+
+    Future<void> deliver({required bool force}) async {
+      try {
+        await ref.read(projectsRepoProvider).markDelivered(projectId, force: force);
+        ref.invalidate(projectDetailProvider(projectId));
+        ref.invalidate(myProjectsProvider);
+        ref.invalidate(fleetProvider);
+        ref.invalidate(deliveredTrucksProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.ink,
+            content: Text('${d.project.code} delivered — now in after-sales support')));
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        // The server refuses while stages are open; offer the explicit override.
+        if (!force && pending > 0) {
+          final ok = await showDialog<bool>(context: context, builder: (dctx) => AlertDialog(
+            backgroundColor: BT.card,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+            title: Text('Deliver anyway?', style: display(18, w: FontWeight.w600)),
+            content: Text('$pending stage${pending == 1 ? '' : 's'} '
+                          '${pending == 1 ? 'is' : 'are'} still not approved as done.',
+              style: const TextStyle(fontSize: 13.5, height: 1.4)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dctx, false),
+                child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+              TextButton(onPressed: () => Navigator.pop(dctx, true),
+                child: const Text('Deliver', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+            ],
+          ));
+          if (ok == true) await deliver(force: true);
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => deliver(force: false),
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        child: Row(children: [
+          Container(width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.mint, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.local_shipping_rounded, size: 20, color: BT.ink)),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Mark delivered',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+            const SizedBox(height: 2),
+            Text(pending == 0
+                ? 'All stages approved — hand it over to the client'
+                : '$pending stage${pending == 1 ? '' : 's'} still open',
+              style: const TextStyle(color: BT.mut, fontSize: 12)),
+          ])),
+          const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+        ]),
+      ),
     );
   }
 

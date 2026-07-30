@@ -12,6 +12,7 @@ import '../store/store_home.dart';
 import '../workshop/workshop_home.dart';
 import '../client/client_home.dart';
 import '../design/design_home.dart';
+import '../service/service_home.dart';
 
 /// After login the app routes here and renders the shell for the user's role.
 /// The 72 designed screens plug into each role's shell (Phase-1 build).
@@ -57,6 +58,7 @@ class RoleHome extends ConsumerWidget {
         if (role == 'workshop') return const WorkshopHome();
         if (role == 'client') return const ClientHome();
         if (role == 'design') return const DesignHome();
+        if (role == 'service') return const ServiceHome();
         final title = _titles[role] ?? 'Home';
         final nav = _navs[role] ?? _navs['client']!;
         return Scaffold(

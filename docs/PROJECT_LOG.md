@@ -12,10 +12,10 @@ Last updated: **30 Jul 2026**
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0009` |
-| **Roughly complete** | **~75%** of the intended product. 7 of 8 roles usable, the core chain works, the two "hero" features work |
-| **Not usable yet** | Service role, real photo upload, real QR scanning, documents, delay/bay tracking |
-| **Deployed state** | Migrations through `0009`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0010` |
+| **Roughly complete** | **~85%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
+| **Not usable yet** | Real photo upload, real QR scanning, documents, delay/bay tracking, template checklists |
+| **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
 
 ### The operating chain — works end to end ✅
 
@@ -24,6 +24,16 @@ Admin   creates the build + the client's login  ──►  assigns a Project Man
 PM      sees only their builds  ──►  assigns each stage to the right discipline (+ dates)
 Staff   see only their assigned work  ──►  start it, upload, submit
 PM      approves  ──►  stage done  ──►  next stage auto-starts  ──►  client sees progress
+```
+
+Then, after handover:
+
+```
+PM      marks the build delivered  ──►  it enters after-sales
+Client  raises a request           ──►  every service member is notified
+Service triages → assigns a technician → books a visit
+Service resolves (warranty replace / repair / remote guide)  ──►  client told
+Client  can reopen if it is still broken  ──►  jumps the queue at high priority
 ```
 
 Enforced in Postgres (RLS + guard triggers + `SECURITY DEFINER` RPCs), not just the UI.
@@ -46,13 +56,13 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 | Role | Screens | Status | What works |
 |---|---|---|---|
 | 👑 **Admin** | 7 | ✅ usable | Fleet dashboard (health, order-by alerts) · onboard project **+ create the client's login inline** · **assign / change the PM** · **No PM** filter for stranded builds · project detail + stage detail (read-only oversight) · materials/order-by view · team management (add/delete members, all 8 roles) · create workflow template + BOM · insights |
-| 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · team workload · bay list *(read-only, see gaps)* |
+| 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · **mark delivered** (hands the truck to after-sales) · team workload · bay list *(read-only, see gaps)* |
 | 🛒 **Procurement** | 4 | ✅ usable | To-Order (order-by alerts) · create PO from an alert or manually · PO list + detail · mark dispatched / received (closes requirements, writes GRN) · vendors + add vendor · add catalog items inline |
 | 📦 **Store** | 3 | ✅ usable | Inbox/receive · log component (serial + warranty + vendor, optionally assign to a build) · inventory + low-stock · component list + digital record · **recall check + working "Notify all"** |
 | 🔧 **Workshop** | 3 | ✅ usable | My tasks (with due dates, overdue flags, **rework reason from the PM**, "awaiting approval") · **Start work** · checklist toggle · scan-to-install a part *(manual pick, not camera)* · add photo *(placeholder image)* · submit for approval |
 | 🎨 **Design** | 3 | ✅ usable | **Scoped to assigned builds only** · studio stats · design library + filters · new design (upload `.glb` + preview to Storage) · new version after a change request · design detail with interactive 3D · client approval loop + feedback |
-| 🙋 **Client** | 6 | ✅ usable | My trucks + progress + **3D showcase of the approved design** · stage timeline + per-stage photos · **approve / request changes on designs (now actually works)** · raise a request (ticket) · my requests · documents tab *(always empty — nothing creates documents)* |
-| 🛠️ **Service** | 0 | ❌ **not built** | Falls back to a generic "role shell" placeholder. Client tickets have no consumer |
+| 🙋 **Client** | 6 | ✅ usable | My trucks + progress + **3D showcase of the approved design** · stage timeline + per-stage photos · **approve / request changes on designs (now actually works)** · raise a request (ticket) · my requests **with the resolution and a "still not fixed" reopen** · documents tab *(always empty — nothing creates documents)* |
+| 🛠️ **Service** | 5 | ✅ usable | Ticket queue sorted by **SLA countdown** (open / overdue / fixed-today) · ticket detail with the linked part's **warranty state** · triage to a technician · **schedule a visit** (tech + date + time + note) · **resolve** (warranty replace / repair / remote guide) with a note the client reads · close · **delivered trucks** list with open-ticket / warranty health · **truck history** (parts tracked, warranty position, every past request) · **warranty lookup** by serial / model / truck · log a phoned-in ticket |
 
 **Shared:** login · set-password (invite flow) · notifications feed · profile · role-based routing.
 
@@ -61,35 +71,33 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 ## 3. What's pending
 
 ### Blocking a complete product
-1. **Service role — no screens at all.** Clients can raise tickets but nobody can see or resolve them.
-   Needs: ticket queue, assign technician, resolution (warranty replace / repair / remote guide),
-   `service_visits`, warranty lookup by serial. Tables already exist.
-2. **Real build-photo upload.** `addStagePhoto()` attaches a random `picsum.photos` URL. Needs an
+1. **Real build-photo upload.** `addStagePhoto()` attaches a random `picsum.photos` URL. Needs an
    `image_picker` + a `builds` Storage bucket + policies (mirror `0008` for `designs`).
-3. **Real QR/barcode scanning.** "Scan to install" is a manual dropdown pick. Needs `mobile_scanner`.
+2. **Real QR/barcode scanning.** "Scan to install" is a manual dropdown pick. Needs `mobile_scanner`.
 
 ### Features that exist in the schema but nothing writes to them
-4. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
+3. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
    define checks. Needs a `template_stage_checks` table + UI in Create Template.
-5. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
+4. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
    "tag reason & reschedule" card has no action behind it.
-6. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
-7. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
+5. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
+6. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
    Documents tab is permanently empty.
 
 ### Smaller
-8. Profile "My details" is a coming-soon snackbar.
-9. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
+7. Profile "My details" is a coming-soon snackbar.
+8. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
    a PM can override per stage).
-10. Delivery isn't an action — nothing sets `actual_delivery_date`, so nothing reaches `delivered`
-    except by hand.
-11. Client tickets aren't visible to Admin/PM anywhere.
+9. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
+10. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
+   would make them configurable.
+11. Ticket photo attachment is a coming-soon snackbar on the client's raise-request screen.
 
 ---
 
 ## 4. Deploy / environment facts
 
-- **Supabase:** migrations `0001`–`0009` applied. Storage bucket `designs` (public) from `0008`.
+- **Supabase:** migrations `0001`–`0010` applied. Storage bucket `designs` (public) from `0008`.
 - **Edge Functions:** `admin-create-member`, `admin-delete-member` — both deployed.
   Service-role key is injected by Supabase automatically.
 - **App config:** `--dart-define=SUPABASE_URL=… --dart-define=SUPABASE_ANON_KEY=…`
@@ -106,7 +114,7 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 ### Verifying a change
 
 ```bash
-sh supabase/tests/run.sh        # backend: needs only Docker. ~49 assertions as real users
+sh supabase/tests/run.sh        # backend: needs only Docker. ~83 assertions as real users
 cd app && flutter analyze       # app: must report 0 errors
 ```
 
@@ -132,12 +140,49 @@ cd supabase && sh build_full_setup.sh
   `contact_user_id` can never see its truck.
 - **Business rules live in the database**, exposed as RPCs, so they hold no matter what calls them.
   The app surfaces their messages via `friendlyError()`.
-- **DB and app must ship together.** After `0009`, direct table writes are blocked — an old app
-  build against the new schema will fail on assignment/approval.
+- **DB and app must ship together.** From `0009` on, direct table writes are blocked — an old app
+  build against the new schema fails on assignment/approval, and on `0010` it would miss ticket
+  SLAs and the delivery handover.
 
 ---
 
 ## 6. Change log
+
+### 30 Jul 2026 — Service role built, after-sales loop closed (migration `0010`)
+
+The last unbuilt role. Clients could raise requests but nothing consumed them, and no truck could
+even reach `delivered`, so after-sales had no data to work with.
+
+**Backend (`0010_service.sql`)**
+- `fn_mark_delivered` — the missing handover step. Nothing set `actual_delivery_date`, so no build
+  could ever become `delivered`. Refuses while stages are unapproved unless forced; notifies the
+  client and the service team.
+- SLA is real: `trg_ticket_defaults` stamps `sla_due` (high 4h · medium 24h · low 72h) and a
+  sequential `T-001` number on **every** insert path, so the client's own screen gets it too.
+  Ticket numbers used to be `R-<millis>` generated in Dart.
+- `trg_ticket_created` notifies every service member — a client request used to go nowhere.
+- `fn_notify_role` — notify a whole role (the piece that was missing for this).
+- `fn_create_ticket` (phoned-in requests) · `fn_assign_ticket` · `fn_schedule_visit`
+  (one live booking per ticket; re-scheduling cancels the old one) · `fn_resolve_ticket` (a note is
+  mandatory — the client reads it) · `fn_close_ticket` (only after resolve) · `fn_reopen_ticket`
+  (client-facing; re-prioritises to high).
+- `fn_warranty_search` / `fn_warranty_expiring` — lookup by serial / model / truck, staff-only.
+- A client can now see the visit booked on their own ticket (`p_visits_client`).
+
+**App** — 5 new screens under `features/service/`: ticket queue (SLA-sorted), ticket detail with the
+linked part's warranty state, resolve, schedule visit, new ticket, truck history; plus delivered
+trucks and warranty lookup tabs. `role_home` routes `service` → `ServiceHome`. PM project detail gains
+**Mark delivered**. The client's requests now show the resolution and a "still not fixed" reopen.
+
+**Watch out when deploying:** run `0010`; ticket numbering switches from `R-…` to `T-…` (existing
+tickets are backfilled with both a number and an SLA); a build must be marked delivered by its PM
+before it appears to Service.
+
+**Found and fixed while testing:** resolving a ticket sent the client **two** identical
+notifications (once as the project's client, once as the raiser).
+
+Verified: 83 backend assertions pass (`supabase/tests/run.sh`, now including `20_service_tests.sql`),
+`flutter analyze` reports 0 errors.
 
 ### 30 Jul 2026 — Assignment chain made real and enforced ([PR #1](https://github.com/ShivanshPande19/BuildTrack/pull/1), merged)
 Audited the whole repo against the intended flow; ~40 findings in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md).
@@ -183,3 +228,9 @@ At the end of **every** change, update:
 
 Keep it factual and short. If something is half-built, say so — an honest gap is more useful than an
 optimistic tick. Verify claims (`flutter analyze`, `supabase/tests/run.sh`) before writing ✅.
+
+Two things that go stale quietly:
+- **The migration number appears in §1, §4 and §5.** After adding a migration, grep the file for the
+  previous number and update every hit.
+- **The assertion count in §4** — read it off the actual test run, don't carry the old number over.
+- **§3 is one continuous numbered list** across all three sub-headings. Renumber after removing an item.

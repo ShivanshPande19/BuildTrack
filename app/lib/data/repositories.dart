@@ -217,6 +217,20 @@ class ProjectsRepo {
     await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId});
   }
 
+  /// Hand the truck over: the build becomes 'delivered' and enters after-sales,
+  /// where the Service role picks it up. Nothing used to set actual_delivery_date,
+  /// so no build could ever reach 'delivered'.
+  ///
+  /// fn_mark_delivered checks the caller is this build's PM (or an admin) and
+  /// refuses while stages are still unapproved unless [force] is set.
+  Future<void> markDelivered(String projectId, {DateTime? date, bool force = false}) async {
+    await sb.rpc('fn_mark_delivered', params: {
+      'p_project': projectId,
+      'p_date': _dateStr(date),
+      'p_force': force,
+    });
+  }
+
   // ── PM approvals: stage completions submitted by the assignee ──────
   /// Submissions waiting on the signed-in PM.
   ///
@@ -737,18 +751,37 @@ class ClientRepo {
 
   Future<List<TicketRow>> myTickets() async {
     final d = await sb.from('tickets')
-        .select('id,ticket_number,category,description,status,created_at')
+        .select('id,ticket_number,category,description,status,created_at,'
+                'resolution_note,resolution_type,resolved_at')
         .order('created_at', ascending: false);
     return (d as List).map((e) => TicketRow.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  Future<void> raiseTicket({required String projectId, required String category, required String description}) async {
-    final num = 'R-${DateTime.now().millisecondsSinceEpoch % 100000}';
+  /// Raise a support request.
+  ///
+  /// The ticket number and the SLA deadline are set by the database
+  /// (trg_ticket_defaults), and every service member is notified — previously
+  /// a client request went nowhere because nothing consumed it.
+  Future<void> raiseTicket({
+    required String projectId, required String category, required String description,
+    String priority = 'medium',
+  }) async {
     await sb.from('tickets').insert({
-      'ticket_number': num, 'project_id': projectId, 'raised_by': sb.auth.currentUser?.id,
-      'category': category, 'description': description, 'status': 'open',
+      'project_id': projectId,
+      'category': category,
+      'description': description,
+      'priority': priority,
+      'status': 'open',
     });
   }
+
+  /// "It's still not fixed" — puts the ticket back in the service queue at high
+  /// priority and tells the team.
+  Future<void> reopenTicket(String ticketId, String reason) =>
+      sb.rpc('fn_reopen_ticket', params: {
+        'p_ticket': ticketId,
+        'p_reason': reason.trim().isEmpty ? null : reason.trim(),
+      });
 }
 
 final clientRepoProvider = Provider<ClientRepo>((ref) => ClientRepo());
@@ -1210,3 +1243,207 @@ final truckModelUrlProvider = FutureProvider.family<String?, String>((ref, proje
   ref.watch(authStateProvider);
   return ref.read(designRepoProvider).approvedModelUrl(projectId);
 });
+
+
+/// Service — after-sales support on delivered trucks.
+///
+/// Every mutation goes through an RPC from `0010_service.sql`, which owns the
+/// rules: who may triage, that a technician is actually a service/workshop
+/// member, that a resolution carries a note the client will read, that a ticket
+/// can't be closed before it's resolved, and who gets notified at each step.
+class ServiceRepo {
+  static const _ticketSelect =
+      'id,ticket_number,category,description,status,priority,sla_due,created_at,'
+      'resolved_at,resolution_type,resolution_note,assigned_to,linked_component_id,'
+      'project_id,projects(code,name,client_accounts(business_name))';
+
+  /// The whole queue, soonest SLA deadline first — that's the order to work in.
+  Future<List<ServiceTicket>> tickets() async {
+    final d = await sb.from('tickets')
+        .select(_ticketSelect)
+        .order('sla_due', ascending: true, nullsFirst: false);
+    return (d as List).map((e) => ServiceTicket.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<ServiceTicket> ticket(String id) async {
+    final d = await sb.from('tickets').select(_ticketSelect).eq('id', id).single();
+    return ServiceTicket.fromMap(d);
+  }
+
+  /// The part a ticket points at, with its warranty state (drives the
+  /// "In warranty / Expired" pill on the ticket).
+  Future<WarrantyRow?> linkedComponent(String componentId) async {
+    final d = await sb.from('component_instances')
+        .select('id,serial_number,warranty_end,status,item_catalog(name,model),vendors(name)')
+        .eq('id', componentId).maybeSingle();
+    if (d == null) return null;
+    final ic = d['item_catalog'] as Map<String, dynamic>?;
+    final vn = d['vendors'] as Map<String, dynamic>?;
+    final end = parseDate(d['warranty_end']);
+    return WarrantyRow(
+      componentId: d['id'] as String,
+      itemName: ic?['name'] as String? ?? 'Component',
+      model: ic?['model'] as String? ?? '',
+      serial: d['serial_number'] as String? ?? '—',
+      vendorName: vn?['name'] as String? ?? '',
+      projectCode: '',
+      compStatus: d['status'] as String? ?? '',
+      warrantyEnd: end,
+      daysLeft: end?.difference(DateTime.now()).inDays,
+    );
+  }
+
+  Future<List<ServiceVisitRow>> visits(String ticketId) async {
+    final d = await sb.from('service_visits')
+        .select('id,ticket_id,technician_id,scheduled_date,status,note')
+        .eq('ticket_id', ticketId)
+        .order('scheduled_date', ascending: false);
+    return (d as List).map((e) => ServiceVisitRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Members who can be sent on a visit — service + workshop only.
+  Future<List<Member>> technicians() async {
+    final d = await sb.from('profiles')
+        .select('id,full_name,email,role,status')
+        .inFilter('role', ['service', 'workshop'])
+        .neq('status', 'disabled')
+        .order('full_name', ascending: true);
+    return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  // ── actions ────────────────────────────────────────────────────────
+  Future<String> createTicket({
+    required String projectId, required String category, required String description,
+    String priority = 'medium', String? componentId,
+  }) async {
+    final d = await sb.rpc('fn_create_ticket', params: {
+      'p_project': projectId, 'p_category': category, 'p_description': description,
+      'p_priority': priority, 'p_component': componentId,
+    });
+    return d as String;
+  }
+
+  Future<void> assign(String ticketId, String? technicianId) =>
+      sb.rpc('fn_assign_ticket', params: {'p_ticket': ticketId, 'p_technician': technicianId});
+
+  Future<void> scheduleVisit({
+    required String ticketId, required String technicianId,
+    required DateTime when, String? note,
+  }) => sb.rpc('fn_schedule_visit', params: {
+        'p_ticket': ticketId, 'p_technician': technicianId,
+        'p_when': when.toUtc().toIso8601String(),
+        'p_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+      });
+
+  Future<void> resolve(String ticketId, String resolutionType, String note) =>
+      sb.rpc('fn_resolve_ticket', params: {
+        'p_ticket': ticketId, 'p_resolution': resolutionType, 'p_note': note,
+      });
+
+  Future<void> close(String ticketId) =>
+      sb.rpc('fn_close_ticket', params: {'p_ticket': ticketId});
+
+  // ── delivered trucks ───────────────────────────────────────────────
+  /// Trucks that have actually been handed over — the Service role's fleet.
+  Future<List<DeliveredTruck>> deliveredTrucks() async {
+    final d = await sb.from('projects')
+        .select('id,code,name,status,progress_pct,pm_id,actual_delivery_date')
+        .eq('status', 'delivered')
+        .order('actual_delivery_date', ascending: false);
+    final rows = (d as List).cast<Map<String, dynamic>>();
+    if (rows.isEmpty) return [];
+
+    final ids = rows.map((e) => e['id'] as String).toList();
+
+    // open ticket count per truck
+    final open = await sb.from('tickets')
+        .select('project_id')
+        .inFilter('project_id', ids)
+        .inFilter('status', ['open', 'in_progress']);
+    final openBy = <String, int>{};
+    for (final r in (open as List)) {
+      final p = r['project_id'] as String?;
+      if (p != null) openBy[p] = (openBy[p] ?? 0) + 1;
+    }
+
+    // warranties running out in the next 60 days
+    final exp = await sb.rpc('fn_warranty_expiring', params: {'p_days': 60});
+    final expBy = <String, int>{};
+    for (final r in (exp as List)) {
+      final p = (r as Map<String, dynamic>)['project_id'] as String?;
+      if (p != null) expBy[p] = (r['expiring'] as num?)?.toInt() ?? 0;
+    }
+
+    return rows.map((e) => DeliveredTruck(
+      project: Project.fromMap(e),
+      deliveredOn: parseDate(e['actual_delivery_date']),
+      openTickets: openBy[e['id']] ?? 0,
+      expiringParts: expBy[e['id']] ?? 0,
+    )).toList();
+  }
+
+  Future<TruckHistory> truckHistory(String projectId) async {
+    final p = await sb.from('projects')
+        .select('id,code,name,status,progress_pct,pm_id,actual_delivery_date,'
+                'client_accounts(business_name)')
+        .eq('id', projectId).single();
+
+    final comps = await sb.from('component_instances')
+        .select('id,warranty_end')
+        .eq('installed_in_project_id', projectId);
+    DateTime? earliest;
+    for (final c in (comps as List)) {
+      final w = parseDate(c['warranty_end']);
+      if (w == null) continue;
+      if (earliest == null || w.isBefore(earliest)) earliest = w;
+    }
+
+    final t = await sb.from('tickets')
+        .select(_ticketSelect)
+        .eq('project_id', projectId)
+        .order('created_at', ascending: false);
+
+    final ca = p['client_accounts'] as Map<String, dynamic>?;
+    return TruckHistory(
+      project: Project.fromMap(p),
+      deliveredOn: parseDate(p['actual_delivery_date']),
+      clientName: ca?['business_name'] as String?,
+      componentCount: (comps).length,
+      earliestWarrantyEnd: earliest,
+      tickets: (t as List).map((e) => ServiceTicket.fromMap(e as Map<String, dynamic>)).toList(),
+    );
+  }
+
+  // ── warranty lookup ────────────────────────────────────────────────
+  Future<List<WarrantyRow>> warrantySearch(String query) async {
+    final d = await sb.rpc('fn_warranty_search', params: {'p_q': query});
+    return (d as List).map((e) => WarrantyRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+}
+
+final serviceRepoProvider = Provider<ServiceRepo>((ref) => ServiceRepo());
+
+final serviceTicketsProvider = FutureProvider<List<ServiceTicket>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(serviceRepoProvider).tickets();
+});
+final serviceTicketProvider = FutureProvider.family<ServiceTicket, String>(
+    (ref, id) => ref.read(serviceRepoProvider).ticket(id));
+final ticketVisitsProvider = FutureProvider.family<List<ServiceVisitRow>, String>(
+    (ref, ticketId) => ref.read(serviceRepoProvider).visits(ticketId));
+final ticketComponentProvider = FutureProvider.family<WarrantyRow?, String>(
+    (ref, componentId) => ref.read(serviceRepoProvider).linkedComponent(componentId));
+final techniciansProvider = FutureProvider<List<Member>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(serviceRepoProvider).technicians();
+});
+final deliveredTrucksProvider = FutureProvider<List<DeliveredTruck>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(serviceRepoProvider).deliveredTrucks();
+});
+final truckHistoryProvider = FutureProvider.family<TruckHistory, String>(
+    (ref, projectId) => ref.read(serviceRepoProvider).truckHistory(projectId));
+
+/// Warranty lookup, keyed by the search box text (empty = the first 100 parts).
+final warrantySearchProvider = FutureProvider.family<List<WarrantyRow>, String>(
+    (ref, q) => ref.read(serviceRepoProvider).warrantySearch(q));

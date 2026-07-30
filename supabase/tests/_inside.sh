@@ -39,7 +39,12 @@ run buildtrack "$(ls "$SQL"/migrations/*.sql | tail -1)"
 echo '--- newest migration is idempotent ---'
 
 echo
+# workflow first — it builds the AZ-200 fixture the later suites reuse
 psql -v ON_ERROR_STOP=1 -d buildtrack -f "$T/10_workflow_tests.sql"
+for t in "$T"/[2-9][0-9]_*.sql; do
+  [ -f "$t" ] || continue
+  psql -v ON_ERROR_STOP=1 -d buildtrack -f "$t"
+done
 
 # ── path B: one-shot full_setup.sql, the way a fresh project is set up ───────
 echo
@@ -47,8 +52,12 @@ createdb oneshot
 run oneshot "$T/00_shim.sql"
 run oneshot "$SQL/full_setup.sql"
 grants oneshot
-printf '%-36s' "workflow tests on that database"
-if psql -v ON_ERROR_STOP=1 -d oneshot -f "$T/10_workflow_tests.sql" >/tmp/o2.log 2>&1; then
+printf '%-36s' "same test suites on that database"
+if psql -v ON_ERROR_STOP=1 -d oneshot -f "$T/10_workflow_tests.sql" >/tmp/o2.log 2>&1 \
+   && { for t in "$T"/[2-9][0-9]_*.sql; do
+          [ -f "$t" ] || continue
+          psql -v ON_ERROR_STOP=1 -d oneshot -f "$t" >>/tmp/o2.log 2>&1 || exit 1
+        done; }; then
   echo ok
 else
   echo FAILED; tail -30 /tmp/o2.log; exit 1

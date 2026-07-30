@@ -181,18 +181,106 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
           error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.headset_mic_outlined, tint: BT.lime, title: 'No requests', subtitle: 'Anything you raise shows here with its status.')
-            : Column(children: list.map((t) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(t.description == null || t.description!.isEmpty ? t.category : t.description!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                    const SizedBox(height: 2),
-                    Text('#${t.number} · ${t.category}', style: const TextStyle(color: BT.mut, fontSize: 11.5)),
-                  ])),
-                  StatusPill(_ticketPill(t.status).label, color: _ticketPill(t.status).color),
-                ])))).toList()),
+            : Column(children: list.map(_ticketCard).toList()),
         ),
       ]),
     );
+  }
+
+  /// One of the client's requests — now showing how it was resolved, and letting
+  /// them say it still isn't fixed (which puts it back in the service queue).
+  Widget _ticketCard(TicketRow t) {
+    final pill = _ticketPill(t.status);
+    return Padding(padding: const EdgeInsets.only(bottom: 11),
+      child: AppCard(padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t.description == null || t.description!.isEmpty ? t.category : t.description!,
+                maxLines: 2, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              const SizedBox(height: 2),
+              Text('#${t.number} · ${t.category}',
+                style: const TextStyle(color: BT.mut, fontSize: 11.5)),
+            ])),
+            const SizedBox(width: 8),
+            StatusPill(pill.label, color: pill.color),
+          ]),
+
+          // what the service team did
+          if (t.isResolved && t.resolutionNote != null && t.resolutionNote!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.verified_rounded, size: 15, color: BT.ink),
+                const SizedBox(width: 8),
+                Expanded(child: Text(t.resolutionNote!,
+                  style: const TextStyle(fontSize: 12.5, height: 1.35))),
+              ])),
+          ],
+
+          if (t.canReopen) ...[
+            const SizedBox(height: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _reopen(t),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
+                decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
+                  borderRadius: BorderRadius.circular(999)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.replay_rounded, size: 14, color: BT.coral),
+                  SizedBox(width: 6),
+                  Text('Still not fixed',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: BT.coral)),
+                ]),
+              ),
+            ),
+          ],
+        ])),
+    );
+  }
+
+  Future<void> _reopen(TicketRow t) async {
+    final c = TextEditingController();
+    final reason = await showDialog<String>(context: context, builder: (dctx) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('Still not fixed?', style: display(18, w: FontWeight.w600)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('We\'ll put this back at the top of the service queue.',
+            style: TextStyle(color: BT.mut, fontSize: 12.5)),
+          const SizedBox(height: 10),
+          Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: TextField(controller: c, maxLines: 3,
+              decoration: const InputDecoration(hintText: 'What is still wrong?',
+                border: InputBorder.none))),
+        ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx),
+          child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, c.text.trim()),
+          child: const Text('Reopen', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700))),
+      ],
+    ));
+    if (reason == null) return;
+    try {
+      await ref.read(clientRepoProvider).reopenTicket(t.id, reason);
+      ref.invalidate(myTicketsProvider);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: BT.ink,
+          content: Text('Reopened — our service team has been alerted.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    }
   }
 
   // ── PROFILE (inline) ──────────────────────────────────────
