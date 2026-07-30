@@ -113,7 +113,31 @@ approved design's `.glb` flows to the **3D showcase**.
 - ✅ `truckModelUrlProvider(projectId)` → approved design's `model_url`
 - Backend: `design_versions.model_url` + `design_artifacts.client_feedback` (migration **0007**)
 
-## 8. Service ⬜ *(Phase 2 — next)*
+## 8. Service ✅ *(Phase 2 — migration 0010)*
+- ✅ **Tab shell** (Tickets · Trucks · Warranty · Profile) + bell + New-ticket FAB
+- ✅ **Ticket queue** (sv1) — open / overdue / fixed-today, filter chips, sorted by **SLA deadline**
+- ✅ **Ticket detail** (sv2) — the client's words, the **linked part + its warranty state**, triage
+  to a technician, visits booked against it, the resolution
+- ✅ **Resolve** (sv3) — warranty replace / repair / remote guide + a note the **client reads**
+- ✅ **Schedule visit** (sv4) — technician + date + time + note; one live booking per ticket
+- ✅ **Delivered trucks** (sv5) — open-ticket / warranty-soon / healthy per truck
+- ✅ **Truck history** (sv6) — client, parts tracked, warranty position, every past request
+- ✅ **Warranty lookup** (sv7) — search by serial / model / truck, expiry state per part
+- ✅ **New ticket** — log a request that came in by phone or on site
+- ✅ Notifications · Profile
+
+**After-sales loop live:** PM **marks delivered** → truck enters service → client raises a request →
+**every service member is notified** → triage → visit → resolve → client told → client can
+**reopen** if it's still broken (jumps the queue at high priority).
+
+Backend (`0010_service.sql`): `fn_mark_delivered` (nothing set `actual_delivery_date` before, so no
+build could ever reach `delivered`) · real SLA via `trg_ticket_defaults` (high 4h / medium 24h /
+low 72h) + sequential `T-001` numbers on every insert path · `trg_ticket_created` + `fn_notify_role`
+so client requests are actually heard · `fn_create_ticket` · `fn_assign_ticket` · `fn_schedule_visit`
+· `fn_resolve_ticket` · `fn_close_ticket` · `fn_reopen_ticket` · `fn_warranty_search` /
+`fn_warranty_expiring`.
+
+**→ ALL 8 ROLES COMPLETE**
 
 ## 9. Assignment chain hardening ✅ *(migration 0009)*
 
@@ -158,8 +182,8 @@ The roles were all built, but the **chain between them** was not. Full audit in
 - ✅ `supabase/tests/run.sh` — Docker-only backend verification, ~40 assertions as real users
 
 ---
-*Next: Service role (Client raise-request / tickets), real build-photo upload (`builds` bucket),
-delay logging + bay allocation, template checklists.*
+*Next: real build-photo upload (`builds` bucket) + real QR scanning, delay logging + bay allocation,
+template checklists, handover documents.*
 *Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage
 (public 'designs' bucket), **0009_workflow**. Edge functions: admin-create-member (re-deploy — it now
 returns `client_account_id`), admin-delete-member.*

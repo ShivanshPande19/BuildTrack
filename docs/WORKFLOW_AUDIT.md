@@ -89,7 +89,8 @@ Legend — **Sev:** 🔴 blocker (breaks the flow) · 🟠 wrong/weak logic · �
 | F8 | 🟡 | `audit_log` was readable by all staff and written by nothing. | ✅ Read = admin; written by the assignment/approval functions. |
 | F9 | 🟡 | Delay reasons (`delay_logs`) are never captured, so Analytics' "top delay reasons" can't work. PM's card even says "tag reason & reschedule" with no action behind it. | ⬜ Needs a "log delay" sheet on the PM stage view. |
 | F10 | 🟡 | `bays.current_stage_id` is never set, so the PM Schedule tab always reports every bay "Free". | ⬜ Needs bay allocation in the assign flow. |
-| F11 | 🟡 | Procurement/Store/Service are fleet-wide by design (correct), but Service has no screens yet, so client tickets have no consumer. | ⬜ Phase-2 Service role. |
+| F11 | 🔴 | Procurement/Store/Service are fleet-wide by design (correct), but **Service had no screens at all**, so client tickets had no consumer — and `tickets.sla_due`, `service_visits` and `resolution_*` were never written. | ✅ Service role built in `0010_service.sql` (see `docs/PROJECT_LOG.md`). |
+| F13 | 🔴 | **Nothing set `projects.actual_delivery_date`**, so no build could ever reach `delivered` — the whole after-sales stage of the product was unreachable. | ✅ `fn_mark_delivered`, surfaced as **Mark delivered** on the PM's project detail. |
 | F12 | 🔴 | **`supabase/full_setup.sql` had drifted out of sync with `migrations/`.** It was missing migration 0005 (the `template_stage_items` BOM table *and* the BOM-aware `fn_onboard_project`) and 0006 (the client build-photo policy). Anyone who set up a project from that one file got an app where Create-Template and client photos fail. | ✅ It is now **generated** — `sh supabase/build_full_setup.sh` concatenates the migrations + seed, so it can never drift again. |
 
 ---
