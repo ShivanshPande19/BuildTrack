@@ -469,10 +469,11 @@ class ClientDoc {
 /// A support request / ticket raised by the client.
 class TicketRow {
   final String id, number, category, status;
-  final String? description;
-  final DateTime? createdAt;
+  final String? description, resolutionNote, resolutionType;
+  final DateTime? createdAt, resolvedAt;
   TicketRow({required this.id, required this.number, required this.category,
-    required this.status, this.description, this.createdAt});
+    required this.status, this.description, this.createdAt,
+    this.resolutionNote, this.resolutionType, this.resolvedAt});
   factory TicketRow.fromMap(Map<String, dynamic> m) => TicketRow(
     id: m['id'] as String,
     number: m['ticket_number'] as String? ?? '',
@@ -480,7 +481,14 @@ class TicketRow {
     status: m['status'] as String? ?? 'open',
     description: m['description'] as String?,
     createdAt: parseDate(m['created_at']),
+    resolutionNote: m['resolution_note'] as String?,
+    resolutionType: m['resolution_type'] as String?,
+    resolvedAt: parseDate(m['resolved_at']),
   );
+
+  bool get isResolved => status == 'resolved' || status == 'closed';
+  /// The client can say "still not fixed" while it is resolved but not closed.
+  bool get canReopen => status == 'resolved';
 }
 
 /// A design artifact the client can view / approve.
@@ -532,4 +540,158 @@ class DesignDetailData {
   final DesignItem design;
   final List<DesignVersionRow> versions;
   DesignDetailData(this.design, this.versions);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Service role — after-sales support on delivered trucks
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// A support ticket as the Service team sees it (the client's view is [TicketRow]).
+class ServiceTicket {
+  final String id, number, category, status, priority;
+  final String? description, projectId, projectCode, projectName, clientName;
+  final String? assignedTo, resolutionType, resolutionNote, linkedComponentId;
+  final DateTime? slaDue, createdAt, resolvedAt;
+
+  ServiceTicket({
+    required this.id, required this.number, required this.category,
+    required this.status, required this.priority,
+    this.description, this.projectId, this.projectCode, this.projectName, this.clientName,
+    this.assignedTo, this.resolutionType, this.resolutionNote, this.linkedComponentId,
+    this.slaDue, this.createdAt, this.resolvedAt,
+  });
+
+  factory ServiceTicket.fromMap(Map<String, dynamic> m) {
+    final p = m['projects'] as Map<String, dynamic>?;
+    final ca = p?['client_accounts'] as Map<String, dynamic>?;
+    return ServiceTicket(
+      id: m['id'] as String,
+      number: m['ticket_number'] as String? ?? '—',
+      category: m['category'] as String? ?? 'other',
+      status: m['status'] as String? ?? 'open',
+      priority: m['priority'] as String? ?? 'medium',
+      description: m['description'] as String?,
+      projectId: m['project_id'] as String?,
+      projectCode: p?['code'] as String?,
+      projectName: p?['name'] as String?,
+      clientName: ca?['business_name'] as String?,
+      assignedTo: m['assigned_to'] as String?,
+      resolutionType: m['resolution_type'] as String?,
+      resolutionNote: m['resolution_note'] as String?,
+      linkedComponentId: m['linked_component_id'] as String?,
+      slaDue: parseDate(m['sla_due']),
+      createdAt: parseDate(m['created_at']),
+      resolvedAt: parseDate(m['resolved_at']),
+    );
+  }
+
+  bool get isOpen     => status == 'open' || status == 'in_progress';
+  bool get isResolved => status == 'resolved' || status == 'closed';
+
+  /// Time left on the SLA. Negative once breached.
+  Duration? get slaRemaining =>
+      slaDue == null ? null : slaDue!.difference(DateTime.now());
+
+  bool get isOverdue => isOpen && slaDue != null && slaDue!.isBefore(DateTime.now());
+
+  /// "1h left" · "3d left" · "2h overdue" — the countdown the queue is sorted by.
+  String get slaLabel {
+    final r = slaRemaining;
+    if (r == null) return '—';
+    if (isResolved) return 'Done';
+    final overdue = r.isNegative;
+    final d = r.abs();
+    final text = d.inDays >= 1
+        ? '${d.inDays}d'
+        : d.inHours >= 1
+            ? '${d.inHours}h'
+            : '${d.inMinutes}m';
+    return overdue ? '$text overdue' : '$text left';
+  }
+}
+
+/// A booked technician visit against a ticket.
+class ServiceVisitRow {
+  final String id, ticketId, status;
+  final String? technicianId, note;
+  final DateTime? scheduledDate;
+  ServiceVisitRow({required this.id, required this.ticketId, required this.status,
+    this.technicianId, this.note, this.scheduledDate});
+  factory ServiceVisitRow.fromMap(Map<String, dynamic> m) => ServiceVisitRow(
+    id: m['id'] as String,
+    ticketId: m['ticket_id'] as String? ?? '',
+    status: m['status'] as String? ?? 'scheduled',
+    technicianId: m['technician_id'] as String?,
+    note: m['note'] as String?,
+    scheduledDate: parseDate(m['scheduled_date']),
+  );
+}
+
+/// A warranty-lookup result row (from fn_warranty_search).
+class WarrantyRow {
+  final String componentId, itemName, model, serial, projectCode, vendorName, compStatus;
+  final String? projectId;
+  final DateTime? warrantyEnd;
+  final int? daysLeft;
+  WarrantyRow({required this.componentId, required this.itemName, required this.model,
+    required this.serial, required this.projectCode, required this.vendorName,
+    required this.compStatus, this.projectId, this.warrantyEnd, this.daysLeft});
+  factory WarrantyRow.fromMap(Map<String, dynamic> m) => WarrantyRow(
+    componentId: m['component_id'] as String,
+    itemName: m['item_name'] as String? ?? 'Component',
+    model: m['model'] as String? ?? '',
+    serial: m['serial'] as String? ?? '—',
+    projectId: m['project_id'] as String?,
+    projectCode: m['project_code'] as String? ?? '',
+    vendorName: m['vendor_name'] as String? ?? '',
+    compStatus: m['comp_status'] as String? ?? '',
+    warrantyEnd: parseDate(m['warranty_end']),
+    daysLeft: (m['days_left'] as num?)?.toInt(),
+  );
+
+  /// none · expired · expiring (≤60d) · active
+  String get state {
+    if (warrantyEnd == null) return 'none';
+    final d = daysLeft ?? warrantyEnd!.difference(DateTime.now()).inDays;
+    if (d < 0) return 'expired';
+    if (d <= 60) return 'expiring';
+    return 'active';
+  }
+
+  /// "2 yr left" · "45d left" · "Expired"
+  String get label {
+    if (warrantyEnd == null) return 'No warranty';
+    final d = daysLeft ?? warrantyEnd!.difference(DateTime.now()).inDays;
+    if (d < 0) return 'Expired';
+    if (d >= 365) return '${(d / 365).floor()} yr left';
+    if (d >= 60) return '${(d / 30).floor()} mo left';
+    return '${d}d left';
+  }
+}
+
+/// A delivered truck in after-sales, with its open-ticket / warranty health.
+class DeliveredTruck {
+  final Project project;
+  final DateTime? deliveredOn;
+  final int openTickets, expiringParts;
+  DeliveredTruck({required this.project, this.deliveredOn,
+    this.openTickets = 0, this.expiringParts = 0});
+
+  bool get healthy => openTickets == 0 && expiringParts == 0;
+}
+
+/// Everything the Truck history screen shows for one delivered truck.
+class TruckHistory {
+  final Project project;
+  final DateTime? deliveredOn;
+  final String? clientName;
+  final int componentCount;
+  final DateTime? earliestWarrantyEnd;
+  final List<ServiceTicket> tickets;
+  TruckHistory({required this.project, this.deliveredOn, this.clientName,
+    this.componentCount = 0, this.earliestWarrantyEnd, required this.tickets});
+
+  int? get daysInService =>
+      deliveredOn == null ? null : DateTime.now().difference(deliveredOn!).inDays;
 }
