@@ -1,5 +1,8 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# image_picker_ios requires iOS 13.0. Left commented, CocoaPods falls back to a
+# lower default and `pod install` fails with "required a higher minimum
+# deployment target". This matches IPHONEOS_DEPLOYMENT_TARGET in
+# Runner.xcodeproj, so the app target and its pods agree.
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'

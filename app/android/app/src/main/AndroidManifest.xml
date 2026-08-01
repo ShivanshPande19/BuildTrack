@@ -1,4 +1,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Workshop scans a part's barcode to install it (mobile_scanner) and takes
+         site photos; a client photographs an issue when raising a request
+         (image_picker). Without this the camera screens open and immediately
+         fail — only the "enter serial manually" fallback keeps working. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Flutter adds INTERNET to debug and profile builds automatically, but NOT
+         to release. Without it a release build cannot reach Supabase at all, so
+         the app installs, opens, and can do nothing. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Gallery picking needs no permission: image_picker goes through the
+         system photo picker, which hands back a single file the user chose. -->
+
     <application
         android:label="buildtrack"
         android:name="${applicationName}"
@@ -23,6 +37,21 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+            <!-- Deep link for member invites and password recovery.
+                 Matches `inviteRedirectUrl` in lib/core/supabase_client.dart
+                 ('io.supabase.buildtrack://login-callback/') and the Redirect URL
+                 registered in Supabase → Authentication → URL Configuration.
+
+                 Without this the invite email opens a browser that cannot hand
+                 the session back to the app, so an invited member can never set
+                 a password and never signs in. See docs/INVITE_FLOW.md §4. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="io.supabase.buildtrack" android:host="login-callback" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

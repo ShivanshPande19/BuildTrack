@@ -20,11 +20,16 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.azimuth.buildtrack"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+
+        // Floor of 23, never a ceiling.
+        //
+        // mobile_scanner runs on CameraX, which needs API 21+, and the current
+        // Flutter template already defaults higher than that. maxOf() pins the
+        // floor without ever lowering whatever Flutter has decided is current —
+        // so a future SDK bump is inherited, and a future *drop* below 23 cannot
+        // silently break the barcode scanner on the factory floor.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

@@ -31,8 +31,31 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- Deep link for member invites and password recovery. Must match
+	     `inviteRedirectUrl` in lib/core/supabase_client.dart and the Redirect URL
+	     in Supabase → Authentication → URL Configuration. Without it the invite
+	     email cannot hand the session back to the app and an invited member can
+	     never set a password. See docs/INVITE_FLOW.md §3. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>io.supabase.buildtrack</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- iOS rejects the app at review without a usage string, and this exact text
+	     is what the permission prompt shows the user — so it says what the app
+	     actually does with the camera rather than "needs camera access". -->
+	<key>NSCameraUsageDescription</key>
+	<string>BuildTrack uses the camera to scan part barcodes and take build photos.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>BuildTrack lets you attach photos of your build or of an issue you are reporting.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

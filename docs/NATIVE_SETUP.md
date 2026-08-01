@@ -4,9 +4,23 @@
 this repo**, so a fresh clone builds without re-doing any of the setup below. Nothing here touches
 `lib/` or `pubspec.yaml`.
 
-They were untracked at first, which meant a clone of this repo could not be built by anyone but the
-author. Everything in this file is therefore a record of edits **already committed** — read it to
-understand *why* a permission or a version floor is there, not as a checklist to re-apply.
+Read this to understand *why* a permission or a version floor is there — **not** as a checklist to
+apply. Everything below is committed.
+
+> ### It was not always
+>
+> The platform folders were untracked until this pass, and when they were finally added they turned
+> out to be **stock `flutter create` output**: no `CAMERA` permission, no deep-link intent filter, no
+> iOS usage strings, `platform :ios, '13.0'` still commented out. This document described
+> configuration that had never actually been applied to the project — it read like a record and
+> behaved like a wish list.
+>
+> On a device that meant: the barcode scanner and every camera screen failed (only *Enter serial
+> manually* survived), a release build could not reach Supabase at all, invite and password-recovery
+> links could not hand the session back to the app, and iOS would have been rejected at review.
+>
+> If you ever regenerate the platform folders, `git diff` before committing — that is what would have
+> caught this.
 
 Two things stay out of the repo on purpose (see `.gitignore`):
 
@@ -19,7 +33,22 @@ Two things stay out of the repo on purpose (see `.gitignore`):
 `pubspec.lock` and `ios/Podfile.lock` **are** committed, so every machine and CI resolve the same
 dependency versions.
 
-Deep links for member invites are covered separately in [`INVITE_FLOW.md`](INVITE_FLOW.md) §3–4.
+> ### ⚠️ `ios/Podfile.lock` is stale — run `pod install`
+>
+> The committed lock file lists `app_links`, `file_picker`, `shared_preferences_foundation`,
+> `url_launcher_ios` and `webview_flutter_wkwebview` — but **not `mobile_scanner` and not
+> `image_picker_ios`**. It was last generated before those two packages were added to
+> `pubspec.yaml`, which means the iOS build has never included the barcode scanner or the camera.
+>
+> ```sh
+> cd app && flutter pub get && cd ios && pod install
+> ```
+>
+> Then commit the updated `Podfile.lock`. Until that happens, treat every iOS camera and scanner path
+> as **unverified on device** — Android is unaffected.
+
+Deep links for member invites are also described in [`INVITE_FLOW.md`](INVITE_FLOW.md) §3–4; both
+edits are applied in this repo.
 
 ---
 
