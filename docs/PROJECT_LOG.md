@@ -15,7 +15,7 @@ Last updated: **30 Jul 2026**
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0011` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Not usable yet** | Documents, delay tracking, template checklists, stock movement, bill capture |
-| **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
+| **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders (`app/android`, `app/ios`, `app/web`) tracked in the repo |
 
 ### The operating chain — works end to end ✅
 
