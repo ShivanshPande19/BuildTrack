@@ -122,7 +122,7 @@ Build these as **shared** methods so no role re-implements them:
 | Dashboard/Projects | projects (pm=me) | — | Admin set pm_id |
 | Assign task | profiles(workshop), stages | stages.assignee/dates | — |
 | Approvals | stage_approvals | stage=done | **Workshop submitted** |
-| Schedule/bays | stages, bays | bay assignment | — |
+| Schedule | stages (assigned_due → planned_end), profiles | — | PM assigned dates / backward schedule |
 
 ### Client
 | Screen | Reads | Writes | Depends on |

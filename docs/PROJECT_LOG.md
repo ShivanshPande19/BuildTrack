@@ -14,7 +14,7 @@ Last updated: **30 Jul 2026**
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0011` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
-| **Not usable yet** | Documents, delay/bay tracking, template checklists |
+| **Not usable yet** | Documents, delay tracking, template checklists, stock movement, bill capture |
 | **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders exist locally (untracked) |
 
 ### The operating chain — works end to end ✅
@@ -56,7 +56,7 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 | Role | Screens | Status | What works |
 |---|---|---|---|
 | 👑 **Admin** | 7 | ✅ usable | Fleet dashboard (health, order-by alerts) · onboard project **+ create the client's login inline** · **assign / change the PM** · **No PM** filter for stranded builds · project detail + stage detail (read-only oversight) · materials/order-by view · team management (add/delete members, all 8 roles) · create workflow template + BOM · insights |
-| 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · **mark delivered** (hands the truck to after-sales) · team workload · bay list *(read-only, see gaps)* |
+| 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · **mark delivered** (hands the truck to after-sales) · team workload · **Schedule** (open stages by due date — overdue / today / next 7 days / later / no date) |
 | 🛒 **Procurement** | 4 | ✅ usable | To-Order (order-by alerts) · create PO from an alert or manually · PO list + detail · mark dispatched / received (closes requirements, writes GRN) · vendors + add vendor · add catalog items inline |
 | 📦 **Store** | 3 | ✅ usable | Inbox/receive · log component (serial + warranty + vendor, optionally assign to a build) · inventory + low-stock · component list + digital record · **recall check + working "Notify all"** |
 | 🔧 **Workshop** | 3 | ✅ usable | My tasks (with due dates, overdue flags, **rework reason from the PM**, "awaiting approval") · **Start work** · checklist toggle · **scan a part's QR/barcode to install it** (with manual-serial fallback) · **take a real site photo** (camera or gallery, uploaded to the `builds` bucket) · submit for approval |
@@ -75,7 +75,13 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
    define checks. Needs a `template_stage_checks` table + UI in Create Template.
 2. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
    "tag reason & reschedule" card has no action behind it.
-3. **`bays`** — never assigned, so the PM Schedule tab always reports every bay "Free".
+3. ~~**`bays`**~~ — **removed from the app.** Nothing in the app or the database ever set
+   `stages.bay_id` or `bays.current_stage_id`, so the PM Schedule tab could only ever report
+   every bay "Free". The bay board is gone; Schedule now shows the PM's open stages grouped as
+   overdue / due today / next 7 days / later / no date, off `assigned_due` (what the PM
+   committed to) falling back to `planned_end` (backward scheduling). The `bays` table and
+   `stages.bay_id` are still in the schema, untouched, for whenever bay allocation is actually
+   built.
 4. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
    Documents tab is permanently empty.
 

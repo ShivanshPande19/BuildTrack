@@ -335,16 +335,42 @@ class Requirement {
 }
 
 
-/// A workshop bay (Schedule screen) — busy if it holds a current stage.
-class BayRow {
-  final String id, name;
-  final bool busy;
-  BayRow({required this.id, required this.name, required this.busy});
-  factory BayRow.fromMap(Map<String, dynamic> m) => BayRow(
-    id: m['id'] as String,
-    name: m['name'] as String? ?? 'Bay',
-    busy: m['current_stage_id'] != null,
-  );
+/// One open stage on the PM's schedule (Schedule tab).
+///
+/// Replaces the old bay board, which read the `bays` table — nothing in the app
+/// or the database ever put a stage in a bay, so that screen could only ever be
+/// empty. This is built from data that genuinely exists: the date the PM
+/// committed to when assigning the stage, falling back to the backward-scheduled
+/// planned end date.
+class ScheduleEntry {
+  final String stageId, stageName, status;
+  final String projectId, projectCode, projectName;
+  final String? assigneeId, assigneeName, discipline;
+  final DateTime? start, due;
+
+  /// True when [due] came from backward scheduling rather than the PM's own
+  /// commitment — worth showing differently, it is a plan and not a promise.
+  final bool dueIsPlanned;
+
+  ScheduleEntry({
+    required this.stageId, required this.stageName, required this.status,
+    required this.projectId, required this.projectCode, required this.projectName,
+    this.assigneeId, this.assigneeName, this.discipline,
+    this.start, this.due, this.dueIsPlanned = false,
+  });
+
+  /// Whole days from today until [due]. Negative = overdue.
+  int? get daysLeft {
+    if (due == null) return null;
+    final today = DateTime.now();
+    return DateTime(due!.year, due!.month, due!.day)
+        .difference(DateTime(today.year, today.month, today.day)).inDays;
+  }
+
+  bool get isOverdue => (daysLeft ?? 1) < 0;
+  bool get isDueToday => daysLeft == 0;
+  bool get isUnassigned => assigneeId == null;
+  bool get hasNoDate => due == null;
 }
 
 /// A PM "today" in-progress stage (project code + stage name).

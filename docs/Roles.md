@@ -53,20 +53,26 @@ Design language is consistent across all roles: warm beige canvas, cream cards, 
 **Owns & manages**
 - Timelines & milestones for assigned projects
 - Task assignment to workshop/design members
-- Workshop bay & resource allocation
+- Workshop bay & resource allocation *(deferred — not built; see below)*
 - Delays: tag reason, reschedule, see cascade impact
 - Approving stage completions submitted by workshop
 
-**How they work:** Reviews "needs you today" (approvals + at-risk), assigns stages to team members with dates, manages the weekly schedule and bays, and keeps builds on track.
+**How they work:** Reviews "needs you today" (approvals + at-risk), assigns stages to team members with dates, works the schedule by due date, and keeps builds on track.
 
-**Screens (9):** Dashboard (my builds) · My Projects · Project detail (with assignees) · **Assign Task** · Schedule & bays · Team workload · Approvals · Notifications · Profile
+**Screens (9):** Dashboard (my builds) · My Projects · Project detail (with assignees) · **Assign Task** · Schedule · Team workload · Approvals · Notifications · Profile
 
 **Features**
 - My builds status + today's focus
 - Assign task: pick member + set start/due dates
-- Schedule: workshop bay allocation + this week's stages
+- Schedule: open stages by due date — overdue / due today / next 7 days / later / no date
 - Team workload view (who's overloaded)
 - Approve/reject workshop stage completions (with photos)
+
+**Deferred**
+- **Bay allocation.** The `bays` table and `stages.bay_id` exist in the schema, but nothing ever
+  wrote to them, so the bay board could only ever show "No bays set up". It has been removed from
+  the app rather than shipped empty. Bringing it back means allocating a bay in the assign flow and
+  keeping `bays.current_stage_id` in step — then the board becomes real.
 
 **Sees:** assigned projects, team, schedule. **Cannot:** create users.
 

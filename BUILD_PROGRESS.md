@@ -69,7 +69,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Tab shell** (My Builds · Projects · Schedule · Team) + bell/avatar
 - ✅ **My Builds** dashboard (assigned counts, needs-you, today's stages) — pm-scoped
 - ✅ **My Projects** (pm_id = me, filters) → project detail with **editable Materials**
-- ✅ **Schedule** (workshop bays: busy/free)
+- ✅ **Schedule** (open stages by due date: overdue · today · next 7 days · later · no date)
+  *(replaced the bay board — `bays` was never written to, so it could only show "No bays set up")*
 - ✅ **Team** (workload — in-progress task count per member; only doer roles)
 - ✅ **Assign / reassign / unassign** stages to team (from project detail)
 - ✅ **Approvals** (approve/reject stage completions → stage done/rework)
@@ -195,8 +196,8 @@ The roles were all built, but the **chain between them** was not. Full audit in
 - 📄 Native permissions documented in `docs/NATIVE_SETUP.md`.
 
 ---
-*Next: delay logging + bay allocation, template checklists, handover documents,
-Admin/PM visibility of client tickets.*
+*Next: stock movement, bill capture at intake, PM approvals with photos, template checklists,
+delay logging, handover documents, Admin/PM visibility of client tickets.*
 *Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage
 (public 'designs' bucket), **0009_workflow**. Edge functions: admin-create-member (re-deploy — it now
 returns `client_account_id`), admin-delete-member.*
