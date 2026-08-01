@@ -33,22 +33,50 @@ Two things stay out of the repo on purpose (see `.gitignore`):
 `pubspec.lock` and `ios/Podfile.lock` **are** committed, so every machine and CI resolve the same
 dependency versions.
 
-> ### ⚠️ `ios/Podfile.lock` is stale — run `pod install`
->
-> The committed lock file lists `app_links`, `file_picker`, `shared_preferences_foundation`,
-> `url_launcher_ios` and `webview_flutter_wkwebview` — but **not `mobile_scanner` and not
-> `image_picker_ios`**. It was last generated before those two packages were added to
-> `pubspec.yaml`, which means the iOS build has never included the barcode scanner or the camera.
->
-> ```sh
-> cd app && flutter pub get && cd ios && pod install
-> ```
->
-> Then commit the updated `Podfile.lock`. Until that happens, treat every iOS camera and scanner path
-> as **unverified on device** — Android is unaffected.
+`ios/Podfile.lock` had gone stale in the same way: it listed `app_links`, `file_picker`,
+`shared_preferences_foundation`, `url_launcher_ios` and `webview_flutter_wkwebview` but **neither
+`mobile_scanner` nor `image_picker_ios`** — it predated both packages, so no iOS build had ever
+included the barcode scanner or the camera. Regenerated with `pod install`.
+
+**Re-run `pod install` whenever `Podfile` or `pubspec.yaml` changes**, and commit the result:
+
+```sh
+cd app && flutter pub get && cd ios && pod install
+```
+
+`Podfile.lock` records a `PODFILE CHECKSUM`, so a Podfile edit alone makes it stale even when the
+resolved pods are identical.
 
 Deep links for member invites are also described in [`INVITE_FLOW.md`](INVITE_FLOW.md) §3–4; both
 edits are applied in this repo.
+
+---
+
+## Known warnings you can ignore
+
+`pod install` prints this, and it is **not** a problem to chase:
+
+```
+[!] CocoaPods did not set the base configuration of your project because your project
+    already has a custom config set. … please either set the base configurations of the
+    target `Runner` to `Pods-Runner.profile.xcconfig` or include it in `Flutter/Release.xcconfig`
+```
+
+Flutter's iOS template ships only `Flutter/Debug.xcconfig` and `Flutter/Release.xcconfig`, and points
+the Xcode **Profile** configuration at `Release.xcconfig`. That file `#include?`s
+`Pods-Runner.release.xcconfig`, so CocoaPods notices its `Pods-Runner.profile.xcconfig` is unused and
+says so. Debug and Release — the two that ship — are wired correctly, and profile builds fall back to
+the release pod settings, which for these pods are equivalent.
+
+It reproduces on a fresh `flutter create`, and Flutter tracks it as a misleading message rather than a
+defect: [flutter#73845](https://github.com/flutter/flutter/issues/73845),
+[flutter#66222](https://github.com/flutter/flutter/issues/66222). Fixing it properly means adding a
+`Flutter/Profile.xcconfig` and re-pointing the build configuration in `project.pbxproj` — a
+divergence from the template that Flutter upgrades will keep fighting, for no shipping benefit.
+
+The other one, `Automatically assigning platform iOS with version 13.0 … because no platform was
+specified`, meant the Podfile's `platform` line was still commented out. That is fixed; if you see it
+again, the line got lost.
 
 ---
 
