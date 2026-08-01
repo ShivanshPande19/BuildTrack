@@ -20,7 +20,9 @@ dependencies:
   mobile_scanner: ^7.4.0        # scan a part's QR/barcode to install it (Hero #2)
 
 dev_dependencies:
-  flutter_lints: ^4.0.0
+  flutter_test:                 # was missing entirely — no test could compile
+    sdk: flutter
+  flutter_lints: ^4.0.0         # rules configured in analysis_options.yaml
 
 flutter:
   uses-material-design: true

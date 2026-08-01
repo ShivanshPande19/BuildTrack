@@ -79,6 +79,23 @@ app/ios/Runner/GeneratedPluginRegistrant.*
 # ── Web ──────────────────────────────────────────────────────────────────────
 app/web/.dart_tool/
 
+# ── Desktop platforms: not shipped, deliberately not tracked ─────────────────
+# BuildTrack runs on Android and iOS on the shop floor, and on the web for Admin
+# in a browser. `flutter create` also scaffolded linux/, macos/ and windows/
+# locally; committing them would mean carrying three more platforms through every
+# Flutter upgrade for builds nobody ever makes, and they would rot unnoticed
+# because nothing exercises them.
+#
+# `app/.metadata` still lists these platforms under `migration:`, which is
+# harmless — `flutter migrate` is opt-in and the folders still exist on whoever's
+# machine created them.
+#
+# If a desktop build is ever genuinely needed: delete the relevant line, run
+# `flutter create --platforms=macos .` inside app/, and commit the result.
+app/linux/
+app/macos/
+app/windows/
+
 # ── Secrets / config ─────────────────────────────────────────────────────────
 # SUPABASE_URL and SUPABASE_ANON_KEY come in via --dart-define (see
 # lib/core/supabase_client.dart), so they are never in the tree. Anything that

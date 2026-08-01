@@ -359,12 +359,19 @@ class ScheduleEntry {
     this.start, this.due, this.dueIsPlanned = false,
   });
 
-  /// Whole days from today until [due]. Negative = overdue.
+  /// Whole calendar days from today until [due]. Negative = overdue.
+  ///
+  /// Both sides are normalised to UTC midnight on purpose. Subtracting two
+  /// *local* midnights across a daylight-saving boundary gives 23 or 25 hours,
+  /// and `inDays` truncates — so a stage due tomorrow can report 0 days left and
+  /// show up as "Today". India has no DST so this would not bite here, but the
+  /// arithmetic is meant to be calendar arithmetic, and this makes it so
+  /// everywhere.
   int? get daysLeft {
     if (due == null) return null;
     final today = DateTime.now();
-    return DateTime(due!.year, due!.month, due!.day)
-        .difference(DateTime(today.year, today.month, today.day)).inDays;
+    return DateTime.utc(due!.year, due!.month, due!.day)
+        .difference(DateTime.utc(today.year, today.month, today.day)).inDays;
   }
 
   bool get isOverdue => (daysLeft ?? 1) < 0;
