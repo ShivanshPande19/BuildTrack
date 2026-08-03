@@ -1,0 +1,172 @@
+name: CI
+
+# Every change to this repo up to now was verified by hand, or not at all — and
+# the things that were never verified are exactly the ones that turned out to be
+# broken: platform folders that only existed on one laptop, native config that
+# the docs described but nobody had applied, a Podfile.lock that predated the
+# barcode scanner, a test suite that could not compile because flutter_test was
+# missing from dev_dependencies.
+#
+# This runs on every push and every pull request so that stops being possible.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Don't leave five stale runs queued on a branch someone is pushing to.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # The Dart side: does it compile, do the lints pass, do the tests pass.
+  # ───────────────────────────────────────────────────────────────────────────
+  app:
+    name: Flutter · analyze + test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # TODO: pin an exact version once `flutter --version` on the dev
+          # machine is known. `stable` means CI can start failing because
+          # Flutter moved, not because this repo changed — which is the kind of
+          # unreproducible build this whole pass is trying to get rid of.
+          channel: stable
+          cache: true
+
+      # Printed on purpose: when a build breaks six months from now, the first
+      # question is always "which Flutter was this?"
+      - name: Flutter version
+        run: flutter --version
+
+      - name: Resolve dependencies
+        run: flutter pub get
+
+      # analyze and test both run even if the other failed. On a first run you
+      # want every signal at once, not one error at a time across three pushes.
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        if: always()
+        run: flutter test
+
+      # pubspec.lock is committed so every machine and CI resolve identical
+      # versions. If `pub get` above changed it, the committed one was stale and
+      # this build was not testing what a teammate would get.
+      - name: pubspec.lock is up to date
+        if: always()
+        run: |
+          if ! git diff --quiet -- pubspec.lock; then
+            echo "::error file=app/pubspec.lock::pubspec.lock changed during 'flutter pub get'."
+            echo ""
+            echo "The committed lock file does not match pubspec.yaml. Run this locally"
+            echo "and commit the result, so CI and every laptop resolve the same versions:"
+            echo ""
+            echo "    cd app && flutter pub get && git add pubspec.lock"
+            echo ""
+            git --no-pager diff -- pubspec.lock
+            exit 1
+          fi
+          echo "pubspec.lock matches pubspec.yaml."
+
+      # Deliberately no `dart format --set-exit-if-changed`. This codebase is
+      # written in a compact style that dart format would rewrite end to end;
+      # that is a decision to make on purpose, in its own commit, not something
+      # to discover as a red CI run.
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The Android build. The manifest, minSdk and Gradle config landed without
+  # ever being compiled, so this is the job that actually proves them.
+  # ───────────────────────────────────────────────────────────────────────────
+  android:
+    name: Android · debug build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.11 with Gradle 8.14, and app/build.gradle.kts pins
+      # source/target/jvmTarget to 17.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('app/android/**/*.gradle*', 'app/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Resolve dependencies
+        working-directory: app
+        run: flutter pub get
+
+      # No --dart-define here on purpose: supabase_client.dart falls back to
+      # placeholder values, so this compiles without putting real credentials in
+      # a CI log. It proves the build, not the connection.
+      - name: Build debug APK
+        working-directory: app
+        run: flutter build apk --debug
+
+      - name: Confirm the manifest kept what it needs
+        working-directory: app
+        run: |
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          fail=0
+          for needle in \
+            'android.permission.CAMERA' \
+            'android.permission.INTERNET' \
+            'io.supabase.buildtrack'
+          do
+            if grep -q "$needle" "$MANIFEST"; then
+              echo "ok    $needle"
+            else
+              echo "::error file=app/$MANIFEST::missing $needle"
+              fail=1
+            fi
+          done
+          # `flutter create .` silently overwrites this file with a stock
+          # template, and the app still builds and runs afterwards — only the
+          # camera, the barcode scanner and invite deep links stop working. That
+          # is how these went missing the first time.
+          exit $fail
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # The backend, against a real Postgres with RLS enforced. This suite already
+  # existed and was never wired to anything.
+  # ───────────────────────────────────────────────────────────────────────────
+  backend:
+    name: Postgres · migrations, RLS, workflow rules
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Applies the migration chain + seed, re-applies the newest migration to
+      # prove it is idempotent, runs the workflow and service suites as real
+      # non-superuser users so RLS and the guard triggers are genuinely
+      # exercised, then checks that full_setup.sql alone produces the same
+      # database. Needs only Docker, which the runner has.
+      - name: Backend test suite
+        run: sh supabase/tests/run.sh
