@@ -1,20 +1,124 @@
-# Flutter / Dart
+# ─────────────────────────────────────────────────────────────────────────────
+# Azimuth BuildTrack
+#
+# `app/android`, `app/ios` and `app/web` ARE tracked. A repo you cannot build is
+# not a repo — a fresh clone has to run `flutter pub get && flutter run` and
+# work. What is excluded below is only generated output and signing secrets.
+#
+# Note: `flutter create` also writes its own `app/android/.gitignore` and
+# `app/ios/.gitignore`. Git honours those too, so they cover most of the
+# per-platform noise. The rules here are the repo-wide safety net (this project
+# keeps the Flutter app in `app/`, not at the repo root, so the stock Flutter
+# patterns need the `app/` prefix to match).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Flutter / Dart build output ──────────────────────────────────────────────
 app/.dart_tool/
 app/.packages
 app/build/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
-app/pubspec.lock
-**/.DS_Store
+app/.flutter-plugins-dependencies.json
+**/doc/api/
+**/.pub-cache/
+**/.pub/
+migrate_working_dir/
 
-# IDE
+# pubspec.lock IS committed. BuildTrack ships as an application, not a package,
+# so the exact resolved dependency versions have to be reproducible — otherwise
+# two machines (or CI and a laptop) silently build against different versions of
+# supabase_flutter / mobile_scanner and only one of them works.
+
+# Crash symbolication / obfuscation maps — build artefacts, regenerated each time
+app/**/app.*.symbols
+app/**/app.*.map.json
+
+# ── Android ──────────────────────────────────────────────────────────────────
+app/android/.gradle/
+app/android/.kotlin/
+app/android/captures/
+app/android/local.properties
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+app/android/.cxx/
+**/GeneratedPluginRegistrant.java
+
+# Release signing — NEVER commit these. A leaked keystore means anyone can ship
+# an update that Android will accept as genuinely from Azimuth.
+app/android/key.properties
+**/*.jks
+**/*.keystore
+
+# ── iOS ──────────────────────────────────────────────────────────────────────
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/App.framework/
+app/ios/Flutter/Flutter.framework/
+app/ios/Flutter/Flutter.podspec
+app/ios/Flutter/Generated.xcconfig
+app/ios/Flutter/ephemeral/
+app/ios/Flutter/flutter_export_environment.sh
+app/ios/Flutter/flutter_assets/
+app/ios/Flutter/.last_build_id
+app/ios/ServiceDefinitions.json
+app/ios/Runner/GeneratedPluginRegistrant.*
+**/DerivedData/
+**/xcuserdata/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.moved-aside
+**/*sync/
+**/.vagrant/
+.swiftpm/
+
+# Podfile.lock IS committed, for the same reason as pubspec.lock.
+
+# ── Web ──────────────────────────────────────────────────────────────────────
+app/web/.dart_tool/
+
+# ── Desktop platforms: not shipped, deliberately not tracked ─────────────────
+# BuildTrack runs on Android and iOS on the shop floor, and on the web for Admin
+# in a browser. `flutter create` also scaffolded linux/, macos/ and windows/
+# locally; committing them would mean carrying three more platforms through every
+# Flutter upgrade for builds nobody ever makes, and they would rot unnoticed
+# because nothing exercises them.
+#
+# `app/.metadata` still lists these platforms under `migration:`, which is
+# harmless — `flutter migrate` is opt-in and the folders still exist on whoever's
+# machine created them.
+#
+# If a desktop build is ever genuinely needed: delete the relevant line, run
+# `flutter create --platforms=macos .` inside app/, and commit the result.
+app/linux/
+app/macos/
+app/windows/
+
+# ── Secrets / config ─────────────────────────────────────────────────────────
+# SUPABASE_URL and SUPABASE_ANON_KEY come in via --dart-define (see
+# lib/core/supabase_client.dart), so they are never in the tree. Anything that
+# does land locally stays local.
+*.env
+.env*
+**/google-services.json
+**/GoogleService-Info.plist
+**/service-account*.json
+*.pem
+*.p8
+*.p12
+*.mobileprovision
+*.cer
+
+# ── Editors / OS ─────────────────────────────────────────────────────────────
 .idea/
 .vscode/
 *.iml
-
-# Env / secrets
-*.env
-.env*
-
-# OS / temp
+*.ipr
+*.iws
+.history
+**/.DS_Store
 Thumbs.db
+*.swp
+*.log

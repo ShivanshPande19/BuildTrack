@@ -615,8 +615,8 @@ class WorkshopRepo {
   /// Mark a stage as actually started.
   ///
   /// Nothing used to make this transition, so every stage sat on 'todo' forever
-  /// and the PM's "in progress today", the bay board and the workload numbers
-  /// were all permanently empty.
+  /// and the PM's "in progress today" and workload numbers were both
+  /// permanently empty.
   Future<void> startTask(String stageId) async {
     await sb.rpc('fn_start_stage', params: {'p_stage': stageId});
   }
@@ -1071,9 +1071,75 @@ class PmRepo {
     )).toList();
   }
 
-  Future<List<BayRow>> bays() async {
-    final d = await sb.from('bays').select('id,name,current_stage_id').order('name', ascending: true);
-    return (d as List).map((e) => BayRow.fromMap(e as Map<String, dynamic>)).toList();
+  /// The PM's real schedule: every stage still open across their builds, with
+  /// the date it is due and who holds it.
+  ///
+  /// This replaced the bay board. `bays` was never written to by anything — no
+  /// screen and no database function ever set `stages.bay_id` or
+  /// `bays.current_stage_id` — so that tab was permanently empty. A PM's actual
+  /// question is "what is due, and what has slipped", which the stage dates can
+  /// already answer.
+  ///
+  /// `assigned_due` (what the PM committed to) wins over `planned_end` (what
+  /// backward scheduling worked out), and the caller is told which one it got.
+  Future<List<ScheduleEntry>> schedule(List<Project> projects) async {
+    if (projects.isEmpty) return [];
+    final byId = {for (final p in projects) p.id: p};
+
+    final d = await sb.from('stages')
+        .select('id,name,status,project_id,assignee_id,discipline,'
+                'assigned_start,assigned_due,planned_start,planned_end')
+        .inFilter('project_id', byId.keys.toList())
+        .neq('status', 'done')
+        .order('ord', ascending: true);
+    final rows = (d as List).cast<Map<String, dynamic>>();
+    if (rows.isEmpty) return [];
+
+    // One round-trip for every assignee name, instead of one per stage.
+    final assigneeIds = <String>{
+      for (final r in rows) if (r['assignee_id'] != null) r['assignee_id'] as String,
+    };
+    final names = <String, String>{};
+    if (assigneeIds.isNotEmpty) {
+      final ps = await sb.from('profiles')
+          .select('id,full_name').inFilter('id', assigneeIds.toList());
+      for (final p in (ps as List)) {
+        names[p['id'] as String] = (p['full_name'] ?? '') as String;
+      }
+    }
+
+    final out = <ScheduleEntry>[];
+    for (final r in rows) {
+      final p = byId[r['project_id']];
+      if (p == null) continue;
+      final committed = parseDate(r['assigned_due']);
+      final planned = parseDate(r['planned_end']);
+      final aid = r['assignee_id'] as String?;
+      out.add(ScheduleEntry(
+        stageId: r['id'] as String,
+        stageName: r['name'] as String? ?? '',
+        status: r['status'] as String? ?? 'todo',
+        projectId: p.id,
+        projectCode: p.code,
+        projectName: p.name,
+        assigneeId: aid,
+        assigneeName: aid == null ? null : names[aid],
+        discipline: r['discipline'] as String?,
+        start: parseDate(r['assigned_start']) ?? parseDate(r['planned_start']),
+        due: committed ?? planned,
+        dueIsPlanned: committed == null && planned != null,
+      ));
+    }
+
+    // Soonest first; anything with no date at all sinks to the bottom, because
+    // it cannot be planned around until someone gives it a date.
+    out.sort((a, b) {
+      if (a.due == null && b.due == null) return a.projectCode.compareTo(b.projectCode);
+      if (a.due == null) return 1;
+      if (b.due == null) return -1;
+      return a.due!.compareTo(b.due!);
+    });
+    return out;
   }
 
   /// assignee_id → number of stages still on their plate.
@@ -1110,9 +1176,11 @@ final pmDashboardProvider = FutureProvider<({List<Project> projects, List<Active
   final stages = await repo.activeStages(projects);
   return (projects: projects, stages: stages);
 });
-final baysProvider = FutureProvider<List<BayRow>>((ref) {
+/// The signed-in PM's schedule — open stages across their builds, soonest first.
+final pmScheduleProvider = FutureProvider<List<ScheduleEntry>>((ref) async {
   ref.watch(authStateProvider);
-  return ref.read(pmRepoProvider).bays();
+  final projects = await ref.read(pmRepoProvider).myProjects();
+  return ref.read(pmRepoProvider).schedule(projects);
 });
 final workloadProvider = FutureProvider<Map<String, int>>((ref) {
   ref.watch(authStateProvider);
