@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -217,7 +216,6 @@ class _PartsTab extends ConsumerStatefulWidget {
 
 class _PartsTabState extends ConsumerState<_PartsTab> {
   String _q = '';
-  static final _fmt = DateFormat('d MMM yyyy');
   @override
   Widget build(BuildContext context) {
     final comps = ref.watch(componentsProvider);
