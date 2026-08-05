@@ -399,15 +399,12 @@ class ProcurementRepo {
 
   /// Mark a PO received: status→received, lines fully received, GRN logged,
   /// linked requirements closed. (Store then logs individual components at intake.)
-  Future<void> markReceived(String poId) async {
-    await sb.from('purchase_orders').update({'status': 'received'}).eq('id', poId);
-    final lines = await sb.from('po_lines').select('id,qty').eq('po_id', poId);
-    for (final l in (lines as List).cast<Map<String, dynamic>>()) {
-      await sb.from('po_lines').update({'received_qty': l['qty']}).eq('id', l['id'] as Object);
-    }
-    await sb.from('goods_receipts').insert({'po_id': poId, 'status': 'complete'});
-    await sb.from('procurement_requirements').update({'status': 'received'}).eq('po_id', poId);
-  }
+  /// Mark a PO received. Goes through fn_receive_po (0013) so it happens in one
+  /// transaction and the received quantities actually land in stock_items —
+  /// which procurement can't write directly, and which nothing used to update,
+  /// so Store's inventory and low-stock alerts stayed frozen at the seed values.
+  Future<void> markReceived(String poId) =>
+      sb.rpc('fn_receive_po', params: {'p_po': poId});
 
   /// Vendors with reliability + lead time.
   Future<List<VendorRow>> vendors() async {
