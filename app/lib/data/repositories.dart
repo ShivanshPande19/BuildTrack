@@ -916,6 +916,15 @@ class AdminRepo {
           for (final it in stages[i].items) {'template_stage_id': sid, 'item_catalog_id': it.itemId, 'qty': it.qty},
         ]);
       }
+      // The checklist labels for this stage. fn_onboard_project copies these
+      // onto every build's stage as real checklist_items.
+      final checks = [for (final c in stages[i].checks) c.trim()]..removeWhere((c) => c.isEmpty);
+      if (checks.isNotEmpty) {
+        await sb.from('template_stage_checks').insert([
+          for (var j = 0; j < checks.length; j++)
+            {'template_stage_id': sid, 'label': checks[j], 'ord': j},
+        ]);
+      }
     }
     return OptRef(tid, name);
   }

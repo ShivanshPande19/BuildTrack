@@ -16,9 +16,13 @@ verified through CI, not locally).
 The foundation is in place; now the features that don't actually work end to end.
 Order (each its own PR, verified by CI, then merged):
 
-1. 🔄 **PM approvals show the work** — photos + checklist + installed parts on the
-   approval card, so a PM stops approving blind. *(in progress)*
-2. ⏭️ Stock movement — PO receive and component install actually move `stock_items`.
+1. ✅ **PM approvals show the work** — photos + checklist + installed parts on the
+   approval card, so a PM stops approving blind. *(PR #7, merged)*
+2. 🔄 **Template checklists** — a template carries a per-stage checklist;
+   `fn_onboard_project` copies it onto every build's stage as real
+   `checklist_items`. New `template_stage_checks` table + Create-Template UI.
+   Closes the empty-checklist gap PR #7 exposed. *(in progress)*
+3. ⏭️ Stock movement — PO receive and component install actually move `stock_items`.
 3. ⏭️ Bill capture + viewer at intake (completes Hero #2).
 4. ⏭️ Client sees every ticket about their truck, including ones Service raised.
 5. ⏭️ Template checklists — stages are created with a real checklist.
