@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -184,6 +185,12 @@ class ProjectDetailScreen extends ConsumerWidget {
         _deliverCard(context, ref, d),
       ],
 
+      // Documents the client sees on their truck (contract, invoice, warranty
+      // pack, handover certificate). Nothing created these before, so the
+      // client's Documents tab was always empty.
+      const SectionLabel('Documents'),
+      _documentsCard(context, ref),
+
       const SectionLabel('Build stages'),
       if (d.stages.isEmpty)
         const EmptyState(
@@ -327,6 +334,114 @@ class ProjectDetailScreen extends ConsumerWidget {
           const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
         ]),
       ),
+    );
+  }
+
+  /// Staff manage the client's documents here: what's attached, and an upload
+  /// that makes a document available on the client's truck.
+  Widget _documentsCard(BuildContext context, WidgetRef ref) {
+    final docsAsync = ref.watch(projectDocsProvider(projectId));
+
+    Future<void> add() async {
+      final type = await showModalBottomSheet<String>(
+        context: context, backgroundColor: Colors.transparent,
+        builder: (ctx) => Container(
+          decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+            Text('Document type', style: display(19, w: FontWeight.w600)),
+            const SizedBox(height: 12),
+            for (final e in _docTypeLabels.entries)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.pop(ctx, e.key),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 9),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                  decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+                  child: Row(children: [
+                    const Icon(Icons.description_outlined, size: 19, color: BT.ink),
+                    const SizedBox(width: 12),
+                    Text(e.value, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                  ]),
+                ),
+              ),
+          ]),
+        ),
+      );
+      if (type == null) return;
+      final res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      if (res == null || res.files.isEmpty) return;
+      final f = res.files.first;
+      final bytes = f.bytes;
+      if (bytes == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: BT.coral, content: Text('Could not read that file.')));
+        }
+        return;
+      }
+      try {
+        await ref.read(projectsRepoProvider).addDocument(
+          projectId: projectId, type: type, bytes: bytes,
+          filename: f.name, contentType: _docContentType(f.name));
+        ref.invalidate(projectDocsProvider(projectId));
+        ref.invalidate(truckDocsProvider(projectId));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.ink,
+            content: Text('${_docTypeLabels[type]} added — the client can see it now')));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.coral, content: Text(friendlyError(e))));
+        }
+      }
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        docsAsync.when(
+          loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 10),
+            child: Center(child: SizedBox(width: 18, height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2, color: BT.mut)))),
+          error: (e, _) => Text('Could not load documents.\n${friendlyError(e)}',
+            style: const TextStyle(color: BT.coral, fontSize: 12)),
+          data: (docs) => docs.isEmpty
+            ? const Padding(padding: EdgeInsets.only(bottom: 4),
+                child: Text('No documents yet. Add the contract, invoices, warranty pack or '
+                            'handover certificate for the client.',
+                  style: TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)))
+            : Column(children: [
+                for (final doc in docs) Padding(
+                  padding: const EdgeInsets.only(bottom: 9),
+                  child: Row(children: [
+                    const Icon(Icons.description_rounded, size: 18, color: BT.mut),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(_docTypeLabels[doc.type] ?? doc.type,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                    StatusPill(doc.available ? 'Shared' : 'Hidden',
+                      color: doc.available ? BT.lime : BT.mut2),
+                  ]),
+                ),
+              ]),
+        ),
+        const SizedBox(height: 6),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: add,
+          child: Container(height: 46, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.upload_file_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
+              Text('Add document', style: TextStyle(fontWeight: FontWeight.w600)),
+            ])),
+        ),
+      ]),
     );
   }
 
@@ -938,4 +1053,23 @@ class _LogDelaySheetState extends State<_LogDelaySheet> {
       ),
     );
   }
+}
+
+/// doc_type enum → labels staff and clients read.
+const Map<String, String> _docTypeLabels = {
+  'contract': 'Contract',
+  'invoice': 'Invoice',
+  'warranty_pack': 'Warranty pack',
+  'handover_cert': 'Handover certificate',
+};
+
+/// Best-effort content type from a filename, so an uploaded PDF opens as a PDF
+/// and an image as an image rather than a download.
+String _docContentType(String name) {
+  final n = name.toLowerCase();
+  if (n.endsWith('.pdf')) return 'application/pdf';
+  if (n.endsWith('.png')) return 'image/png';
+  if (n.endsWith('.webp')) return 'image/webp';
+  if (n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg';
+  return 'application/octet-stream';
 }
