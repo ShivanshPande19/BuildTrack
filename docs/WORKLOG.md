@@ -27,7 +27,9 @@ Order (each its own PR, verified by CI, then merged):
    inventory + low-stock were frozen at seed values because nothing wrote
    stock, and procurement can't write `stock_items` directly. *(stacked on #8)*
 3. ⏭️ Bill capture + viewer at intake (completes Hero #2).
-4. ⏭️ Client sees every ticket about their truck, including ones Service raised.
+4. 🔄 **Client sees every ticket about their truck** — additive RLS policy so a
+   client sees tickets on their trucks, not only ones they raised themselves
+   (Service-raised tickets were invisible). *(stacked on #8, #9)*
 5. ⏭️ Template checklists — stages are created with a real checklist.
 6. ⏭️ Delay logging — tag a reason, reschedule, see the cascade.
 7. ⏭️ Documents / handover pack.
