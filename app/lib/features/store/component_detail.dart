@@ -72,8 +72,21 @@ class ComponentDetailScreen extends StatelessWidget {
 
           const SizedBox(height: 12),
           Row(children: [
-            Expanded(child: _btn(context, 'Bill', Icons.description_outlined, false, () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Bill viewer — coming soon')));
+            Expanded(child: _btn(context, c.hasBill ? 'View bill' : 'No bill', Icons.description_outlined, false, () {
+              if (c.hasBill) {
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => Scaffold(
+                  backgroundColor: Colors.black,
+                  appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white,
+                    title: Text('Bill · ${c.serial}', style: const TextStyle(fontSize: 15))),
+                  body: Center(child: InteractiveViewer(
+                    child: Image.network(c.billUrl!, fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => const Text('Could not load bill',
+                        style: TextStyle(color: Colors.white70))))),
+                )));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  backgroundColor: BT.ink, content: Text('No bill was attached at intake for this part.')));
+              }
             })),
             const SizedBox(width: 11),
             Expanded(flex: 1, child: _btn(context, 'Recall check', Icons.warning_amber_rounded, true, () {

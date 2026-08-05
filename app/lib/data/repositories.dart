@@ -507,7 +507,7 @@ final pendingApprovalsProvider = FutureProvider<List<ApprovalItem>>((ref) {
 /// Store / Inventory — component traceability (Hero #2) + stock.
 class StoreRepo {
   static const _compSelect =
-      'id,serial_number,status,warranty_end,install_date,item_catalog_id,item_catalog(name,model),projects(code),vendors(name)';
+      'id,serial_number,status,warranty_end,install_date,bill_url,item_catalog_id,item_catalog(name,model),projects(code),vendors(name)';
 
   Future<List<ComponentRow>> components() async {
     final d = await sb.from('component_instances').select(_compSelect).order('serial_number', ascending: true);
@@ -540,7 +540,7 @@ class StoreRepo {
   /// Log a component at intake (serial + warranty + optional assign to a build).
   Future<void> logComponent({
     required String itemId, required String serial, String? vendorId,
-    DateTime? warrantyEnd, String? projectId,
+    DateTime? warrantyEnd, String? projectId, String? billUrl,
   }) async {
     final today = DateTime.now().toIso8601String().split('T').first;
     await sb.from('component_instances').insert({
@@ -552,8 +552,16 @@ class StoreRepo {
       'status': projectId != null ? 'installed' : 'in_stock',
       'installed_in_project_id': projectId,
       'install_date': projectId != null ? today : null,
+      'bill_url': billUrl,
     });
   }
+
+  /// Upload a part's bill/invoice image to the public `builds` bucket (under
+  /// `bills/`) and return its URL, to store on the component at intake. This is
+  /// the other half of Hero #2: warranty told you the part is covered, the bill
+  /// is what a vendor actually needs to honour it.
+  Future<String> uploadBill(Uint8List bytes, {required String filename, required String contentType}) =>
+      uploadToBuilds(bytes, filename: filename, contentType: contentType, folder: 'bills');
 }
 
 final storeRepoProvider = Provider<StoreRepo>((ref) => StoreRepo());

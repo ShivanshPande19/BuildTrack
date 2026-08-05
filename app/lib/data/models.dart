@@ -395,10 +395,11 @@ class ActiveStage {
 /// A tracked component instance (Store — traceability, Hero #2).
 class ComponentRow {
   final String id, itemCatalogId, name, model, serial, status;
-  final String? projectCode, vendorName;
+  final String? projectCode, vendorName, billUrl;
   final DateTime? warrantyEnd, installDate;
   ComponentRow({required this.id, required this.itemCatalogId, required this.name, required this.model,
-    required this.serial, required this.status, this.projectCode, this.vendorName, this.warrantyEnd, this.installDate});
+    required this.serial, required this.status, this.projectCode, this.vendorName, this.billUrl,
+    this.warrantyEnd, this.installDate});
   factory ComponentRow.fromMap(Map<String, dynamic> m) {
     final ic = m['item_catalog'] as Map<String, dynamic>?;
     final pr = m['projects'] as Map<String, dynamic>?;
@@ -412,11 +413,13 @@ class ComponentRow {
       status: m['status'] as String? ?? 'in_stock',
       projectCode: pr?['code'] as String?,
       vendorName: vn?['name'] as String?,
+      billUrl: (m['bill_url'] as String?)?.trim().isEmpty ?? true ? null : (m['bill_url'] as String?),
       warrantyEnd: parseDate(m['warranty_end']),
       installDate: parseDate(m['install_date']),
     );
   }
   bool get warrantyActive => warrantyEnd != null && warrantyEnd!.isAfter(DateTime.now());
+  bool get hasBill => billUrl != null;
 }
 
 /// A stock line (Store inventory).

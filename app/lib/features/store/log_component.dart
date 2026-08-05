@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/photo_picker.dart';
 import '../../shared/widgets.dart';
 
 /// Store — log a component at intake (st3): item + serial + warranty + assign to build.
@@ -18,6 +19,7 @@ class _LogComponentState extends ConsumerState<LogComponent> {
   final _serial = TextEditingController();
   String? _itemId, _vendorId, _projectId;
   DateTime? _warrantyEnd;
+  PickedPhoto? _bill; // bill/invoice image, uploaded on save
   final List<OptRef> _extraItems = [];
   bool _saving = false;
   String? _error;
@@ -31,9 +33,17 @@ class _LogComponentState extends ConsumerState<LogComponent> {
     }
     setState(() { _saving = true; _error = null; });
     try {
-      await ref.read(storeRepoProvider).logComponent(
+      final repo = ref.read(storeRepoProvider);
+      // Upload the bill first (if one was attached) so its URL goes in with the
+      // component in a single insert.
+      String? billUrl;
+      if (_bill != null) {
+        billUrl = await repo.uploadBill(_bill!.bytes,
+          filename: _bill!.filename, contentType: _bill!.contentType);
+      }
+      await repo.logComponent(
         itemId: _itemId!, serial: _serial.text.trim(),
-        vendorId: _vendorId, warrantyEnd: _warrantyEnd, projectId: _projectId);
+        vendorId: _vendorId, warrantyEnd: _warrantyEnd, projectId: _projectId, billUrl: billUrl);
       ref.invalidate(componentsProvider);
       if (mounted) {
         Navigator.pop(context);
@@ -129,13 +139,27 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           const SizedBox(height: 14),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(backgroundColor: BT.ink, content: Text('Bill/invoice upload — coming soon'))),
+            onTap: () async {
+              final picked = await pickPhoto(context);
+              if (picked != null) setState(() => _bill = picked);
+            },
             child: Container(height: 50, alignment: Alignment.center,
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                Icon(Icons.attach_file_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
-                Text('Attach bill / invoice', style: TextStyle(fontWeight: FontWeight.w600)),
+              decoration: BoxDecoration(
+                color: _bill == null ? BT.card : BT.lime,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: _bill == null ? BT.line : Colors.transparent)),
+              child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(_bill == null ? Icons.attach_file_rounded : Icons.check_rounded, size: 18, color: BT.ink),
+                const SizedBox(width: 8),
+                Text(_bill == null ? 'Attach bill / invoice' : 'Bill attached · ${_bill!.sizeLabel}',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+                if (_bill != null) ...[
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => setState(() => _bill = null),
+                    child: const Icon(Icons.close_rounded, size: 17, color: Color(0xFF3A4A12))),
+                ],
               ])),
           ),
 
