@@ -240,6 +240,31 @@ class ProjectsRepo {
     });
   }
 
+  /// A build's documents (staff view). Nothing used to create these, so the
+  /// client's Documents tab was always empty; this is the read side for the
+  /// staff screen that now uploads them.
+  Future<List<ClientDoc>> documents(String projectId) async {
+    final d = await sb.from('documents')
+        .select('id,type,file_url,available')
+        .eq('project_id', projectId)
+        .order('type', ascending: true);
+    return (d as List).map((e) => ClientDoc.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Upload a document (contract / invoice / warranty pack / handover cert) to
+  /// builds/docs/<project> and record it as available, so the client sees it on
+  /// their truck. Staff hold the write policy on documents (p_docs_staff).
+  Future<void> addDocument({
+    required String projectId, required String type,
+    required Uint8List bytes, required String filename, required String contentType,
+  }) async {
+    final url = await uploadToBuilds(bytes,
+      filename: filename, contentType: contentType, folder: 'docs/$projectId');
+    await sb.from('documents').insert({
+      'project_id': projectId, 'type': type, 'file_url': url, 'available': true,
+    });
+  }
+
   /// Change a project's target delivery date, then re-run backward scheduling.
   Future<void> setDeliveryDate(String projectId, DateTime date) async {
     await sb.from('projects')
@@ -475,6 +500,10 @@ final itemsProvider = FutureProvider<List<OptRef>>(
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
     (ref, id) => ref.read(projectsRepoProvider).detail(id));
+
+/// A build's documents, staff view (keyed by project id).
+final projectDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
+    (ref, id) => ref.read(projectsRepoProvider).documents(id));
 
 /// Stage detail bundle (photos + parts + checklist + delays), keyed by stage id.
 final stageBundleProvider = FutureProvider.family<StageBundle, String>(
