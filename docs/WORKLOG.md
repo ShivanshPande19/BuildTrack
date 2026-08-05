@@ -31,7 +31,10 @@ Order (each its own PR, verified by CI, then merged):
    client sees tickets on their trucks, not only ones they raised themselves
    (Service-raised tickets were invisible). *(stacked on #8, #9)*
 5. ⏭️ Template checklists — stages are created with a real checklist.
-6. ⏭️ Delay logging — tag a reason, reschedule, see the cascade.
+6. 🔄 **Delay logging** — PM tags why a build slipped (against the slipping
+   stage) and optionally pushes the delivery date by those days, which re-runs
+   backward scheduling (the cascade). `delay_logs` was read but never written.
+   *(from main)*
 7. ⏭️ Documents / handover pack.
 
 ### Known gaps confirmed still open on `main` (as of this entry)

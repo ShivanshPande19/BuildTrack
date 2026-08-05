@@ -170,6 +170,13 @@ class ProjectDetailScreen extends ConsumerWidget {
           ]),
         ),
       ),
+      // Tag why a build slipped, and optionally push the delivery date by the
+      // same number of days (which re-runs backward scheduling — the cascade).
+      if (canEditTimeline && d.project.status != 'delivered' && d.stages.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _delayCard(context, ref, d),
+      ],
+
       // Handover — the step that moves a build into after-sales. Until this
       // happens the Service role has nothing to support.
       if (canEditTimeline && d.project.status != 'delivered') ...[
@@ -260,6 +267,66 @@ class ProjectDetailScreen extends ConsumerWidget {
             style: const TextStyle(fontSize: 12, color: BT.ink, height: 1.4)),
         ],
       ]),
+    );
+  }
+
+  /// Tag why the build slipped (against the stage that's slipping) and, if asked,
+  /// push the delivery date by the same number of days — which re-runs backward
+  /// scheduling, so every stage's plan moves with it.
+  Widget _delayCard(BuildContext context, WidgetRef ref, ProjectDetailData d) {
+    // The stage that is actually slipping: the first one not yet done.
+    final current = d.stages.firstWhere((s) => s.status != 'done', orElse: () => d.stages.last);
+
+    Future<void> open() async {
+      final res = await showModalBottomSheet<_DelayResult>(
+        context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+        builder: (_) => _LogDelaySheet(stageName: current.name),
+      );
+      if (res == null) return;
+      try {
+        final repo = ref.read(projectsRepoProvider);
+        await repo.logDelay(stageId: current.id, reasonCode: res.reason,
+          daysDelayed: res.days, note: res.note);
+        if (res.pushDelivery && res.days > 0) {
+          final base = d.targetDelivery ?? DateTime.now();
+          await repo.setDeliveryDate(projectId, base.add(Duration(days: res.days)));
+        }
+        ref.invalidate(projectDetailProvider(projectId));
+        ref.invalidate(myProjectsProvider);
+        ref.invalidate(fleetProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.ink,
+            content: Text(res.pushDelivery && res.days > 0
+              ? 'Delay logged · delivery pushed ${res.days} day${res.days == 1 ? '' : 's'}'
+              : 'Delay logged on ${current.name}')));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.coral, content: Text(friendlyError(e))));
+        }
+      }
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: open,
+      child: AppCard(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(children: [
+          Container(width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.amber, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.timelapse_rounded, size: 20, color: Color(0xFF4A3410))),
+          const SizedBox(width: 13),
+          const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Log a delay', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+            SizedBox(height: 2),
+            Text('Tag the reason and reschedule', style: TextStyle(color: BT.mut, fontSize: 12)),
+          ])),
+          const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+        ]),
+      ),
     );
   }
 
@@ -754,6 +821,119 @@ class _PickPmSheet extends ConsumerWidget {
               }).toList());
             },
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+
+
+/// What the log-delay sheet hands back.
+class _DelayResult {
+  final String reason;
+  final int days;
+  final String? note;
+  final bool pushDelivery;
+  _DelayResult(this.reason, this.days, this.note, this.pushDelivery);
+}
+
+/// The delay_reason enum, with labels a PM reads.
+const Map<String, String> _delayReasons = {
+  'procurement': 'Procurement',
+  'design_approval': 'Design approval',
+  'workshop_capacity': 'Workshop capacity',
+  'weather': 'Weather',
+  'client': 'Client',
+  'quality': 'Quality',
+  'other': 'Other',
+};
+
+/// Bottom sheet: pick a reason, how many days, an optional note, and whether to
+/// push the delivery date by the same amount.
+class _LogDelaySheet extends StatefulWidget {
+  final String stageName;
+  const _LogDelaySheet({required this.stageName});
+  @override
+  State<_LogDelaySheet> createState() => _LogDelaySheetState();
+}
+
+class _LogDelaySheetState extends State<_LogDelaySheet> {
+  String _reason = 'procurement';
+  int _days = 1;
+  bool _push = true;
+  final _note = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+          Text('Log a delay', style: display(19, w: FontWeight.w600)),
+          const SizedBox(height: 2),
+          Text('On ${widget.stageName}', style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+          const SizedBox(height: 16),
+          const Text('REASON', style: TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final e in _delayReasons.entries)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _reason = e.key),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: _reason == e.key ? BT.ink : BT.card,
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: _reason == e.key ? BT.ink : BT.line)),
+                  child: Text(e.value, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
+                    color: _reason == e.key ? Colors.white : BT.mut))),
+              ),
+          ]),
+          const SizedBox(height: 16),
+          Row(children: [
+            const Text('Days delayed', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Spacer(),
+            Container(
+              height: 46,
+              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                GestureDetector(behavior: HitTestBehavior.opaque, onTap: () { if (_days > 1) setState(() => _days--); },
+                  child: const SizedBox(width: 42, height: 46, child: Icon(Icons.remove, size: 18))),
+                SizedBox(width: 34, child: Text('$_days', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w700))),
+                GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => setState(() => _days++),
+                  child: const SizedBox(width: 42, height: 46, child: Icon(Icons.add, size: 18))),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 14),
+          Container(
+            decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: TextField(controller: _note, maxLines: 2,
+              decoration: const InputDecoration(hintText: 'Note (optional)', border: InputBorder.none)),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _push = !_push),
+            child: Row(children: [
+              Icon(_push ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                color: _push ? BT.ink : BT.mut2, size: 22),
+              const SizedBox(width: 10),
+              const Expanded(child: Text('Push delivery date by these days',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500))),
+            ]),
+          ),
+          const SizedBox(height: 18),
+          PrimaryButton('Log delay', icon: Icons.check,
+            onTap: () => Navigator.pop(context, _DelayResult(_reason, _days,
+              _note.text.trim().isEmpty ? null : _note.text.trim(), _push))),
         ]),
       ),
     );
