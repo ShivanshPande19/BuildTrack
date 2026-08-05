@@ -225,6 +225,21 @@ class ProjectsRepo {
     return out;
   }
 
+  /// Record why a build slipped, against the stage that slipped. delay_logs was
+  /// read (stage detail shows delays) but nothing ever wrote it, so "tag the
+  /// reason" did not exist. RLS lets admin/pm/workshop insert.
+  Future<void> logDelay({
+    required String stageId, required String reasonCode, required int daysDelayed, String? note,
+  }) async {
+    await sb.from('delay_logs').insert({
+      'stage_id': stageId,
+      'reason_code': reasonCode,
+      'days_delayed': daysDelayed,
+      'note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+      'logged_by': sb.auth.currentUser?.id,
+    });
+  }
+
   /// Change a project's target delivery date, then re-run backward scheduling.
   Future<void> setDeliveryDate(String projectId, DateTime date) async {
     await sb.from('projects')
