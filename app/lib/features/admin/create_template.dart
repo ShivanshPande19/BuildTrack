@@ -18,10 +18,12 @@ class _StageRow {
   final TextEditingController name;
   final TextEditingController days;
   final List<StageItemDraft> items;
+  final List<TextEditingController> checks;
   _StageRow(String n, int d)
       : name = TextEditingController(text: n),
         days = TextEditingController(text: '$d'),
-        items = [];
+        items = [],
+        checks = [];
 }
 
 class _CreateTemplateState extends ConsumerState<CreateTemplate> {
@@ -47,7 +49,8 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
     for (final r in _rows) {
       final n = r.name.text.trim();
       if (n.isEmpty) continue;
-      stages.add(StageDraft(n, int.tryParse(r.days.text.trim()) ?? 1, items: r.items));
+      final checks = [for (final c in r.checks) c.text.trim()]..removeWhere((c) => c.isEmpty);
+      stages.add(StageDraft(n, int.tryParse(r.days.text.trim()) ?? 1, items: r.items, checks: checks));
     }
     if (_name.text.trim().isEmpty || stages.isEmpty) {
       setState(() => _error = 'Template name and at least one stage are required.');
@@ -140,6 +143,39 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
               ),
             ),
           ]),
+
+          // ── Checklist for this stage ──────────────────────────────────────
+          // These labels become real checklist_items on every build's stage at
+          // onboarding, so the assignee has something to tick and the PM has
+          // something to review before approving.
+          const SizedBox(height: 12),
+          const Text('CHECKLIST', style: TextStyle(fontSize: 10.5, letterSpacing: 1.2,
+            fontWeight: FontWeight.w700, color: BT.mut2)),
+          const SizedBox(height: 7),
+          ...List.generate(r.checks.length, (ci) => Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(children: [
+              const Padding(padding: EdgeInsets.only(right: 8),
+                child: Icon(Icons.check_box_outline_blank_rounded, size: 17, color: BT.mut2)),
+              Expanded(child: _boxField(r.checks[ci], 'Check item')),
+              IconButton(
+                onPressed: () => setState(() => r.checks.removeAt(ci)),
+                icon: const Icon(Icons.close, size: 17, color: BT.mut2),
+                padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+            ]),
+          )),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => r.checks.add(TextEditingController())),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.add, size: 15, color: BT.ink), SizedBox(width: 4),
+                Text('check', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: BT.ink)),
+              ]),
+            ),
+          ),
         ]),
       ),
     );

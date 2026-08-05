@@ -58,12 +58,17 @@ class StageItemDraft {
   StageItemDraft(this.itemId, this.label, this.qty);
 }
 
-/// One stage while building a custom workflow template (+ its BOM items).
+/// One stage while building a custom workflow template — its BOM items and the
+/// checklist the assignee will tick off (copied onto every build's stage on
+/// onboarding).
 class StageDraft {
   String name;
   int days;
   final List<StageItemDraft> items;
-  StageDraft(this.name, this.days, {List<StageItemDraft>? items}) : items = items ?? [];
+  final List<String> checks;
+  StageDraft(this.name, this.days, {List<StageItemDraft>? items, List<String>? checks})
+      : items = items ?? [],
+        checks = checks ?? [];
 }
 
 /// A pending stage-completion approval (PM approves work submitted by workshop).
