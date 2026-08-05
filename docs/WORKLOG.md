@@ -11,40 +11,50 @@ verified through CI, not locally).
 
 ---
 
-## Phase 1 — closing the broken logic loops
+## Phase 1 — closing the broken logic loops ✅ COMPLETE
 
-The foundation is in place; now the features that don't actually work end to end.
-Order (each its own PR, verified by CI, then merged):
+All seven loops shipped, each its own CI-verified PR, all merged to `main`.
+Migrations 0012–0014 have been applied to the live Supabase project.
 
-1. ✅ **PM approvals show the work** — photos + checklist + installed parts on the
-   approval card, so a PM stops approving blind. *(PR #7, merged)*
-2. 🔄 **Template checklists** — a template carries a per-stage checklist;
-   `fn_onboard_project` copies it onto every build's stage as real
-   `checklist_items`. New `template_stage_checks` table + Create-Template UI.
-   Closes the empty-checklist gap PR #7 exposed. *(in progress)*
-3. 🔄 **Stock movement** — receiving a PO now adds the quantities to
-   `stock_items` via `fn_receive_po` (security-definer, atomic). Store's
-   inventory + low-stock were frozen at seed values because nothing wrote
-   stock, and procurement can't write `stock_items` directly. *(stacked on #8)*
-3. ⏭️ Bill capture + viewer at intake (completes Hero #2).
-4. 🔄 **Client sees every ticket about their truck** — additive RLS policy so a
-   client sees tickets on their trucks, not only ones they raised themselves
-   (Service-raised tickets were invisible). *(stacked on #8, #9)*
-5. ⏭️ Template checklists — stages are created with a real checklist.
-6. 🔄 **Delay logging** — PM tags why a build slipped (against the slipping
-   stage) and optionally pushes the delivery date by those days, which re-runs
-   backward scheduling (the cascade). `delay_logs` was read but never written.
-   *(from main)*
-7. ⏭️ Documents / handover pack.
+1. ✅ **PM approvals show the work** *(PR #7)* — photos + checklist + installed
+   parts on the approval card, so a PM stops approving blind.
+2. ✅ **Template checklists** *(PR #8 · migration 0012)* — a template carries a
+   per-stage checklist; `fn_onboard_project` copies it onto every build's stage
+   as real `checklist_items`. New `template_stage_checks` table + Create-Template
+   UI. Closed the empty-checklist gap PR #7 exposed.
+3. ✅ **Stock movement** *(PR #9 · migration 0013)* — receiving a PO adds the
+   quantities to `stock_items` via `fn_receive_po` (security-definer, atomic).
+   Store's inventory + low-stock were frozen at seed values before this.
+4. ✅ **Client ticket visibility** *(PR #10 · migration 0014)* — additive RLS
+   policy so a client sees every ticket on their trucks, not only ones they
+   raised (Service-raised tickets were invisible).
+5. ✅ **Bill capture + viewer** *(PR #11)* — Store attaches a bill/invoice image
+   at intake (`builds/bills/`, stored on `component_instances.bill_url`); the
+   component detail opens it full-screen. Completes Hero #2.
+6. ✅ **Delay logging** *(PR #12)* — PM tags why a build slipped (against the
+   slipping stage) and optionally pushes the delivery date by those days, which
+   re-runs backward scheduling (the cascade). `delay_logs` was read but never
+   written.
+7. ✅ **Documents / handover pack** *(PR #13)* — staff upload a build's documents
+   (contract / invoice / warranty pack / handover cert) from the project detail
+   screen; they become available on the client's truck.
 
-### Known gaps confirmed still open on `main` (as of this entry)
-- `stock_items` — no writes from app or triggers; Store stock + low-stock are frozen seed data.
-- `checklist_items` — nothing creates them; every stage checklist is empty.
-- `documents` — no inserts; client Documents tab always empty.
-- `delay_logs` — no writes; delay tagging/reschedule missing.
-- `bill_url` — never captured or shown ("coming soon" in log_component + component_detail).
-- PM approvals — submitted photos/checklist not shown (being fixed as loop #1).
-- Tickets RLS — client only sees `raised_by = auth.uid()`, so Service-raised tickets are invisible to them.
+### Gaps these closed (all previously open on `main`)
+`stock_items`, `checklist_items`, `documents`, `delay_logs`, `bill_url` — each
+had a read path but no write path. PM approvals showed no evidence. Tickets RLS
+hid Service-raised tickets from the client. All resolved above.
+
+### Verify on device (Phase 1 acceptance)
+Run against the live Supabase (0012–0014 applied). Suggested pass:
+- Admin: create a template **with a checklist** → onboard a project → the stages
+  carry that checklist.
+- Workshop: open a task → tick the checklist, add a photo → submit.
+- PM: on the approval, the **photos + checklist + parts** are shown → approve.
+- Procurement: receive a PO → **Store stock goes up** for those items.
+- Store: log a component **with a bill** → open it from the component detail.
+- PM: **log a delay** on a build → the delivery date shifts.
+- Admin/PM: **add a document** on a project → it appears on the client's truck.
+- Service: raise a ticket for a client → the **client sees it** in their app.
 
 ### Deferred (Phase 2 — robustness)
 Offline support · push notifications · realtime · pagination · localization ·

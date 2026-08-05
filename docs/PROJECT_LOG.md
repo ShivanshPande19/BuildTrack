@@ -14,7 +14,8 @@ Last updated: **30 Jul 2026**
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0011` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
-| **Not usable yet** | Documents, delay tracking, template checklists, stock movement, bill capture |
+| **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
+| **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
 | **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders (`app/android`, `app/ios`, `app/web`) tracked in the repo |
 
 ### The operating chain — works end to end ✅
