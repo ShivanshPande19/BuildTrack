@@ -22,7 +22,10 @@ Order (each its own PR, verified by CI, then merged):
    `fn_onboard_project` copies it onto every build's stage as real
    `checklist_items`. New `template_stage_checks` table + Create-Template UI.
    Closes the empty-checklist gap PR #7 exposed. *(in progress)*
-3. ⏭️ Stock movement — PO receive and component install actually move `stock_items`.
+3. 🔄 **Stock movement** — receiving a PO now adds the quantities to
+   `stock_items` via `fn_receive_po` (security-definer, atomic). Store's
+   inventory + low-stock were frozen at seed values because nothing wrote
+   stock, and procurement can't write `stock_items` directly. *(stacked on #8)*
 3. ⏭️ Bill capture + viewer at intake (completes Hero #2).
 4. ⏭️ Client sees every ticket about their truck, including ones Service raised.
 5. ⏭️ Template checklists — stages are created with a real checklist.
