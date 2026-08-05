@@ -133,8 +133,11 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     String? err;
 
     // catalog items available for picking (add mode)
+    // The empty fallback needs its element type spelled out: `?? []` infers
+    // List<dynamic>, which makes `catalog` dynamic and `o.id` / `o.label` below
+    // untyped (strict-casts then rejects them). `<OptRef>[]` keeps it OptRef.
     final catalog = {
-      for (final o in [...(ref.read(itemsProvider).valueOrNull ?? []), ..._extraItems]) o.id: o
+      for (final o in [...(ref.read(itemsProvider).valueOrNull ?? <OptRef>[]), ..._extraItems]) o.id: o
     }.values.toList();
 
     await showModalBottomSheet<void>(
@@ -231,7 +234,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                       GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () async {
-                          await ref.read(projectsRepoProvider).deleteRequirement(existing!.id);
+                          await ref.read(projectsRepoProvider).deleteRequirement(existing.id);
                           _refresh();
                           if (ctx.mounted) Navigator.pop(ctx);
                         },
@@ -248,7 +251,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                         try {
                           final repo = ref.read(projectsRepoProvider);
                           if (isEdit) {
-                            await repo.updateRequirement(id: existing!.id, projectId: widget.projectId, qty: qty, neededBy: neededBy);
+                            await repo.updateRequirement(id: existing.id, projectId: widget.projectId, qty: qty, neededBy: neededBy);
                           } else {
                             await repo.addRequirement(projectId: widget.projectId, itemId: itemId!, qty: qty, neededBy: neededBy);
                           }

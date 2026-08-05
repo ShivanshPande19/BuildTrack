@@ -402,8 +402,8 @@ class ProcurementRepo {
   Future<void> markReceived(String poId) async {
     await sb.from('purchase_orders').update({'status': 'received'}).eq('id', poId);
     final lines = await sb.from('po_lines').select('id,qty').eq('po_id', poId);
-    for (final l in (lines as List)) {
-      await sb.from('po_lines').update({'received_qty': l['qty']}).eq('id', l['id']);
+    for (final l in (lines as List).cast<Map<String, dynamic>>()) {
+      await sb.from('po_lines').update({'received_qty': l['qty']}).eq('id', l['id'] as Object);
     }
     await sb.from('goods_receipts').insert({'po_id': poId, 'status': 'complete'});
     await sb.from('procurement_requirements').update({'status': 'received'}).eq('po_id', poId);
@@ -1247,10 +1247,10 @@ class DesignRepo {
         .eq('artifact_id', artifactId).order('version_no', ascending: false);
     final versions = (vs as List).map((e) => DesignVersionRow.fromMap(e as Map<String, dynamic>)).toList();
     Map<String, dynamic>? cur;
-    for (final e in (vs)) {
-      if ((e as Map<String, dynamic>)['id'] == r['current_version_id']) { cur = e; break; }
+    for (final e in vs) {
+      if (e['id'] == r['current_version_id']) { cur = e; break; }
     }
-    return DesignDetailData(_itemFrom(r as Map<String, dynamic>, cur), versions);
+    return DesignDetailData(_itemFrom(r, cur), versions);
   }
 
   /// Create a brand-new design artifact with its first version.
