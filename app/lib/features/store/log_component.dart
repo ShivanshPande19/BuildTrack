@@ -158,11 +158,18 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       backgroundColor: BT.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text('New item', style: display(18, w: FontWeight.w600)),
-      content: Container(
-        decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: TextField(controller: nameC, decoration: const InputDecoration(hintText: 'Item name', border: InputBorder.none)),
-      ),
+      // The validation message ('Name required') was assigned to `e` but never
+      // shown, so an empty name looked like the Add button simply did nothing.
+      // Rendering it fixes both the dead variable and the silent failure.
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: TextField(controller: nameC, decoration: const InputDecoration(hintText: 'Item name', border: InputBorder.none)),
+        ),
+        if (e != null) Padding(padding: const EdgeInsets.only(top: 8),
+          child: Text(e!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
+      ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel', style: TextStyle(color: BT.mut))),
         TextButton(onPressed: () async {

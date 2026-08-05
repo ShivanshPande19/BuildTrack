@@ -71,7 +71,9 @@ class RoleHome extends ConsumerWidget {
                   const SizedBox(height: 2),
                   Text(title, style: display(29, w: FontWeight.w500)),
                 ]),
-                GestureDetector(onTap: () => sb.auth.signOut().then((_) => context.go('/login')),
+                GestureDetector(onTap: () => sb.auth.signOut().then((_) {
+                    if (context.mounted) context.go('/login');
+                  }),
                   child: CircleAvatar(radius: 21, backgroundColor: roleColor(role),
                     child: Text(role[0].toUpperCase(), style: display(16, c: role == 'admin' ? BT.lime : BT.ink)))),
               ]),

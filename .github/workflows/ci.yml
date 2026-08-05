@@ -38,10 +38,11 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          # TODO: pin an exact version once `flutter --version` on the dev
-          # machine is known. `stable` means CI can start failing because
-          # Flutter moved, not because this repo changed — which is the kind of
-          # unreproducible build this whole pass is trying to get rid of.
+          # Pinned to the version the dev machine and the first CI run resolved,
+          # so a build breaks because this repo changed, not because Flutter
+          # moved. Bump it deliberately, in its own commit, and regenerate
+          # pubspec.lock in the same change.
+          flutter-version: 3.44.8
           channel: stable
           cache: true
 
@@ -55,8 +56,12 @@ jobs:
 
       # analyze and test both run even if the other failed. On a first run you
       # want every signal at once, not one error at a time across three pushes.
+      #
+      # --no-fatal-infos: warnings and errors block, info-level lints are
+      # advisory. The codebase carries a backlog of info-level style lints; see
+      # analysis_options.yaml for why those are deferred rather than gated on.
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Test
         if: always()
@@ -106,6 +111,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: 3.44.8
           channel: stable
           cache: true
 
