@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
@@ -6,7 +5,8 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 
 /// Admin — create a member (auth user + profile + role) via the Edge Function.
-/// Matches the "New member" mockup: name, email/phone, role chips, Send invite.
+/// Admin sets the email and password directly (no auto-generated temp password
+/// / invite step) — the member signs in with exactly what the admin typed.
 /// role=client also creates a client_account (shown then in onboarding).
 class AddMember extends ConsumerStatefulWidget {
   const AddMember({super.key});
@@ -17,9 +17,11 @@ class AddMember extends ConsumerStatefulWidget {
 class _AddMemberState extends ConsumerState<AddMember> {
   final _name = TextEditingController();
   final _email = TextEditingController();
+  final _password = TextEditingController();
   final _business = TextEditingController();
   String _role = 'procurement';
   bool _saving = false;
+  bool _showPass = false;
   String? _error;
 
   // Order matches the mockup; Admin added at the end for completeness.
@@ -29,32 +31,29 @@ class _AddMemberState extends ConsumerState<AddMember> {
     ['client', 'Client'], ['admin', 'Admin'],
   ];
 
-  String _genPassword() {
-    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-    final r = Random.secure();
-    return 'Az${List.generate(8, (_) => chars[r.nextInt(chars.length)]).join()}';
-  }
-
   Future<void> _submit() async {
     if (_name.text.trim().isEmpty || _email.text.trim().isEmpty) {
       setState(() => _error = 'Full name and email are required.');
+      return;
+    }
+    if (_password.text.length < 6) {
+      setState(() => _error = 'Set a password of at least 6 characters.');
       return;
     }
     if (_role == 'client' && _business.text.trim().isEmpty) {
       setState(() => _error = 'Business name is required for a client.');
       return;
     }
-    final tempPass = _genPassword();
     setState(() { _saving = true; _error = null; });
     try {
       await ref.read(adminRepoProvider).createMember(
         fullName: _name.text.trim(), email: _email.text.trim(),
-        phone: null, role: _role, password: tempPass,
+        phone: null, role: _role, password: _password.text,
         businessName: _business.text.trim().isEmpty ? null : _business.text.trim());
       ref.invalidate(membersProvider);
       if (_role == 'client') ref.invalidate(clientsProvider);
       if (!mounted) return;
-      await _showCredentials(_email.text.trim(), tempPass);
+      await _showCredentials(_email.text.trim(), _password.text);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       setState(() => _error = '$e');
@@ -74,7 +73,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
         const SizedBox(height: 12),
         _cred('EMAIL', email),
         const SizedBox(height: 8),
-        _cred('TEMP PASSWORD', pass),
+        _cred('PASSWORD', pass),
         const SizedBox(height: 12),
         const Text('Share these securely. They can change the password later.',
           style: TextStyle(fontSize: 11.5, color: BT.mut2)),
@@ -129,8 +128,10 @@ class _AddMemberState extends ConsumerState<AddMember> {
 
           _field('FULL NAME', _name, hint: 'Karan Mehta'),
           const SizedBox(height: 11),
-          _field('EMAIL / PHONE', _email, hint: 'karan@azimuth.co',
+          _field('EMAIL', _email, hint: 'karan@azimuth.co',
             keyboard: TextInputType.emailAddress),
+          const SizedBox(height: 11),
+          _passwordField(),
 
           const SectionLabel('Assign role'),
           Wrap(spacing: 9, runSpacing: 9, children: _roles.map(_roleChip).toList()),
@@ -174,6 +175,30 @@ class _AddMemberState extends ConsumerState<AddMember> {
       ),
     );
   }
+
+  Widget _passwordField() => Container(
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('PASSWORD', style: TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      Row(children: [
+        Expanded(child: TextField(
+          controller: _password, obscureText: !_showPass,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
+          decoration: const InputDecoration(
+            isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
+            hintText: 'At least 6 characters', hintStyle: TextStyle(color: BT.mut2, fontWeight: FontWeight.w500)),
+        )),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _showPass = !_showPass),
+          child: Icon(_showPass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+            size: 19, color: BT.mut2),
+        ),
+      ]),
+    ]),
+  );
 
   Widget _field(String label, TextEditingController c, {String? hint, TextInputType? keyboard}) => Container(
     decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
