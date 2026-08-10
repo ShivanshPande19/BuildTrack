@@ -305,15 +305,23 @@ class _ReceiveTab extends ConsumerWidget {
           error: (e, _) => AppCard(child: Text('Could not load.\n$e',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
-            final incoming = list.where((o) => o.status == 'ordered' || o.status == 'dispatched').toList();
-            if (incoming.isEmpty) {
+            // A PO must be dispatched before it can be received.
+            final ready    = list.where((o) => o.status == 'dispatched' || o.status == 'partial').toList();
+            final awaiting  = list.where((o) => o.status == 'ordered').toList();
+            if (ready.isEmpty && awaiting.isEmpty) {
               return const Padding(padding: EdgeInsets.only(top: 20), child: EmptyState(
                 icon: Icons.local_shipping_outlined, tint: BT.amber,
                 title: 'Nothing incoming', subtitle: 'POs waiting to arrive will show up here.'));
             }
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const SectionLabel('Incoming'),
-              ...incoming.map((o) => _receiveCard(context, ref, o)),
+              if (ready.isNotEmpty) ...[
+                const SectionLabel('Ready to receive'),
+                ...ready.map((o) => _receiveCard(context, ref, o)),
+              ],
+              if (awaiting.isNotEmpty) ...[
+                const SectionLabel('Awaiting dispatch'),
+                ...awaiting.map((o) => _dispatchCard(context, ref, o)),
+              ],
             ]);
           },
         ),
@@ -321,31 +329,87 @@ class _ReceiveTab extends ConsumerWidget {
     );
   }
 
+  Widget _poHeader(PurchaseOrder o, {Widget? trailing}) => Row(
+    mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${o.poNumber} · ${o.vendorName ?? 'Vendor'}',
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+      const SizedBox(height: 2),
+      Text('${o.itemCount} item${o.itemCount == 1 ? '' : 's'}${o.projectCode != null ? ' · ${o.projectCode}' : ''}',
+        style: const TextStyle(color: BT.mut, fontSize: 12)),
+    ])),
+    if (trailing != null) trailing,
+  ]);
+
   Widget _receiveCard(BuildContext context, WidgetRef ref, PurchaseOrder o) => Padding(
     padding: const EdgeInsets.only(bottom: 11),
     child: AppCard(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${o.poNumber} · ${o.vendorName ?? 'Vendor'}',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-            const SizedBox(height: 2),
-            Text('${o.itemCount} item${o.itemCount == 1 ? '' : 's'}${o.projectCode != null ? ' · ${o.projectCode}' : ''}',
-              style: const TextStyle(color: BT.mut, fontSize: 12)),
-          ])),
-          if (o.expectedDate != null) StatusPill(_fmt.format(o.expectedDate!), color: BT.sky),
-        ]),
+        _poHeader(o, trailing: o.expectedDate != null
+          ? StatusPill(_fmt.format(o.expectedDate!), color: BT.sky) : null),
         const SizedBox(height: 12),
         PrimaryButton('Receive & verify', icon: Icons.check,
           onTap: () async {
-            await ref.read(procurementRepoProvider).markReceived(o.id);
-            ref.invalidate(purchaseOrdersProvider);
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                backgroundColor: BT.ink, content: Text('${o.poNumber} received.')));
+            try {
+              await ref.read(procurementRepoProvider).markReceived(o.id);
+              ref.invalidate(purchaseOrdersProvider);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  backgroundColor: BT.ink, content: Text('${o.poNumber} received.')));
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  backgroundColor: BT.coral, content: Text(friendlyError(e))));
+              }
             }
           }),
+      ]),
+    ),
+  );
+
+  /// An 'ordered' PO — not receivable yet. Procurement dispatches it here
+  /// (with an ETA), which moves it into "Ready to receive".
+  Widget _dispatchCard(BuildContext context, WidgetRef ref, PurchaseOrder o) => Padding(
+    padding: const EdgeInsets.only(bottom: 11),
+    child: AppCard(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _poHeader(o, trailing: const StatusPill('Ordered', color: BT.sky)),
+        const SizedBox(height: 12),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () async {
+            final now = DateTime.now();
+            final eta = await showDatePicker(context: context,
+              initialDate: now.add(const Duration(days: 7)),
+              firstDate: now, lastDate: now.add(const Duration(days: 365)),
+              helpText: 'Expected arrival date');
+            if (eta == null) return; // ETA required to dispatch
+            try {
+              await ref.read(procurementRepoProvider).markDispatched(o.id, expectedDate: eta);
+              ref.invalidate(purchaseOrdersProvider);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  backgroundColor: BT.ink,
+                  content: Text('${o.poNumber} dispatched · arriving ${_fmt.format(eta)}')));
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  backgroundColor: BT.coral, content: Text(friendlyError(e))));
+              }
+            }
+          },
+          child: Container(height: 52, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(16)),
+            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Icon(Icons.local_shipping_rounded, size: 18, color: BT.card),
+              SizedBox(width: 8),
+              Text('Mark dispatched', style: TextStyle(fontWeight: FontWeight.w600, color: BT.card)),
+            ])),
+        ),
       ]),
     ),
   );
