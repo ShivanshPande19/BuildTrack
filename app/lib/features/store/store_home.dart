@@ -184,7 +184,10 @@ class _StockTabState extends ConsumerState<_StockTab> {
   Widget _row(StockRow s) {
     final color = s.low ? BT.coral : (s.quantity <= s.threshold * 2 ? BT.amber : BT.lime);
     final label = s.low ? 'Low' : (s.quantity <= s.threshold * 2 ? 'Fair' : 'OK');
-    return Padding(padding: const EdgeInsets.only(bottom: 11), child: AppCard(
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: s.itemCatalogId == null ? null : () => _openReorder(s),
+      child: AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(children: [
         Container(width: 44, height: 44, alignment: Alignment.center,
@@ -201,9 +204,87 @@ class _StockTabState extends ConsumerState<_StockTab> {
           const SizedBox(height: 3),
           StatusPill(label, color: color),
         ]),
+        const SizedBox(width: 10),
+        const Icon(Icons.add_shopping_cart_rounded, size: 18, color: BT.mut2),
       ]),
-    ));
+    )));
   }
+
+  Future<void> _openReorder(StockRow s) async {
+    final qtyCtl = TextEditingController(text: s.threshold > 0 ? '${s.threshold}' : '1');
+    final noteCtl = TextEditingController();
+    var sending = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          decoration: const BoxDecoration(color: BT.bg,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4,
+              decoration: BoxDecoration(color: BT.line, borderRadius: BorderRadius.circular(999)))),
+            const SizedBox(height: 16),
+            const Text('REQUEST REORDER',
+              style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text(s.name, style: display(22, w: FontWeight.w600)),
+            const SizedBox(height: 2),
+            Text('${s.quantity} ${s.unit} in stock · procurement will order it',
+              style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+            const SizedBox(height: 18),
+            _sheetField('QUANTITY NEEDED', qtyCtl, hint: 'e.g. 20', number: true),
+            const SizedBox(height: 11),
+            _sheetField('NOTE (OPTIONAL)', noteCtl, hint: 'Why / for which builds'),
+            const SizedBox(height: 20),
+            PrimaryButton(sending ? 'Sending…' : 'Send to procurement', icon: Icons.send_rounded,
+              onTap: sending ? null : () async {
+                final qty = int.tryParse(qtyCtl.text.trim()) ?? 0;
+                if (qty <= 0) {
+                  ScaffoldMessenger.of(sheetCtx).showSnackBar(const SnackBar(
+                    backgroundColor: BT.coral, content: Text('Enter a quantity greater than zero.')));
+                  return;
+                }
+                setSheet(() => sending = true);
+                try {
+                  await ref.read(storeRepoProvider).requestStock(
+                    itemId: s.itemCatalogId!, qty: qty, note: noteCtl.text);
+                  if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      backgroundColor: BT.ink, content: Text('Reorder for ${s.name} sent to procurement.')));
+                  }
+                } catch (e) {
+                  setSheet(() => sending = false);
+                  if (sheetCtx.mounted) {
+                    ScaffoldMessenger.of(sheetCtx).showSnackBar(SnackBar(
+                      backgroundColor: BT.coral, content: Text('Failed: $e')));
+                  }
+                }
+              }),
+          ]),
+        ),
+      )),
+    );
+  }
+
+  Widget _sheetField(String label, TextEditingController c, {String? hint, bool number = false}) => Container(
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      TextField(
+        controller: c, keyboardType: number ? TextInputType.number : null,
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
+        decoration: InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
+          hintText: hint, hintStyle: const TextStyle(color: BT.mut2, fontWeight: FontWeight.w500)),
+      ),
+    ]),
+  );
 }
 
 // ───────────────────────────────────────────────────────────── PARTS
