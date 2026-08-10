@@ -423,7 +423,7 @@ class ProcurementRepo {
 
   /// Create a purchase order manually (project + vendor + line items).
   Future<void> createManualPo({
-    required String projectId, required String vendorId,
+    String? projectId, required String vendorId,
     required DateTime orderDate, DateTime? expectedDate,
     required List<({String itemId, int qty})> lines,
   }) async {
@@ -439,6 +439,31 @@ class ProcurementRepo {
         for (final l in lines) {'po_id': poId, 'item_catalog_id': l.itemId, 'qty': l.qty},
       ]);
     }
+  }
+
+  /// Pending stock reorder requests raised by Store (general essentials, no
+  /// project). These sit alongside project order-by alerts in "To Order".
+  Future<List<StockRequest>> stockRequests() async {
+    final d = await sb.from('stock_requests')
+        .select('id,qty,note,status,created_at,item_catalog_id,item_catalog(name)')
+        .eq('status', 'pending').order('created_at', ascending: true);
+    return (d as List).map((e) => StockRequest.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Order a Store reorder request: cut a general PO (project_id null) for the
+  /// item, then link + mark the request 'ordered'. Vendor is optional here —
+  /// same as createPO — Procurement can attach one from the PO later.
+  Future<void> orderStockRequest(StockRequest r, {String? vendorId}) async {
+    final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
+    final today = DateTime.now().toIso8601String().split('T').first;
+    final po = await sb.from('purchase_orders').insert({
+      'po_number': poNum, 'vendor_id': vendorId, 'project_id': null,
+      'status': 'ordered', 'order_date': today,
+    }).select('id').single();
+    await sb.from('po_lines').insert({
+      'po_id': po['id'], 'item_catalog_id': r.itemCatalogId, 'qty': r.qty,
+    });
+    await sb.from('stock_requests').update({'status': 'ordered', 'po_id': po['id']}).eq('id', r.id);
   }
 
   /// Add a new vendor.
@@ -501,6 +526,10 @@ final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
     (ref) => ref.read(procurementRepoProvider).purchaseOrders());
 final poDetailProvider = FutureProvider.family<PoDetail, String>(
     (ref, id) => ref.read(procurementRepoProvider).poDetail(id));
+final stockRequestsProvider = FutureProvider<List<StockRequest>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(procurementRepoProvider).stockRequests();
+});
 final vendorsProvider = FutureProvider<List<VendorRow>>(
     (ref) => ref.read(procurementRepoProvider).vendors());
 final allProjectsProvider = FutureProvider<List<Project>>(
@@ -570,9 +599,18 @@ class StoreRepo {
   }
 
   Future<List<StockRow>> stock() async {
-    final d = await sb.from('stock_items').select('quantity,unit,item_catalog(name,category,low_stock_threshold)');
+    final d = await sb.from('stock_items')
+        .select('quantity,unit,item_catalog_id,item_catalog(id,name,category,low_stock_threshold)');
     return (d as List).map((e) => StockRow.fromMap(e as Map<String, dynamic>)).toList();
   }
+
+  /// Raise a reorder request to Procurement for a general essential (wheels,
+  /// sheets, metal…). Goes through fn_request_stock, which notifies Procurement.
+  Future<void> requestStock({required String itemId, required int qty, String? note}) =>
+      sb.rpc('fn_request_stock', params: {
+        'p_item': itemId, 'p_qty': qty,
+        'p_note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+      });
 
   /// Hero #2 — every truck that has a given item model installed.
   Future<List<RecallRow>> recall(String itemCatalogId) async {

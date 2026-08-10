@@ -114,25 +114,45 @@ class _ToOrderTab extends ConsumerWidget {
     }
   }
 
+  Future<void> _orderStock(BuildContext context, WidgetRef ref, StockRequest r) async {
+    try {
+      await ref.read(procurementRepoProvider).orderStockRequest(r);
+      ref.invalidate(stockRequestsProvider);
+      ref.invalidate(purchaseOrdersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.ink, content: Text('General PO created for ${r.itemName}')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text('Failed: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(toOrderProvider);
+    final reqs = ref.watch(stockRequestsProvider);
     final badge = items.valueOrNull?.where((d) => d.daysLeft <= 0).length ?? 0;
+    final bothEmpty = (items.valueOrNull?.isEmpty ?? false) && (reqs.valueOrNull?.isEmpty ?? false);
     return RefreshIndicator(
-      onRefresh: () async => ref.refresh(toOrderProvider.future),
+      onRefresh: () async {
+        ref.invalidate(stockRequestsProvider);
+        return ref.refresh(toOrderProvider.future);
+      },
       child: ListView(padding: _pad, children: [
         _header(context, 'To Order', badge: badge),
         const SizedBox(height: 20),
+        // Project materials — order-by alerts (backward-scheduled requirements).
         items.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
           error: (e, _) => AppCard(child: Text('Could not load.\n$e',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
-            if (list.isEmpty) {
-              return const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
-                title: 'Nothing to order', subtitle: 'Every requirement is ordered or on track.');
-            }
+            if (list.isEmpty) return const SizedBox.shrink();
             final sorted = [...list]..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
             final hero = sorted.first;
             final rest = sorted.skip(1).toList();
@@ -143,9 +163,48 @@ class _ToOrderTab extends ConsumerWidget {
             ]);
           },
         ),
+        // Essentials — general reorder requests raised by Store (no project).
+        reqs.when(
+          loading: () => const SizedBox.shrink(),
+          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n$e',
+            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          data: (list) {
+            if (list.isEmpty) return const SizedBox.shrink();
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const SectionLabel('Essentials to reorder · from Store'),
+              ...list.map((r) => _stockReqCard(context, ref, r)),
+            ]);
+          },
+        ),
+        if (bothEmpty) const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
+          title: 'Nothing to order', subtitle: 'Every requirement is ordered or on track.'),
       ]),
     );
   }
+
+  Widget _stockReqCard(BuildContext context, WidgetRef ref, StockRequest r) => Padding(
+    padding: const EdgeInsets.only(bottom: 11),
+    child: AppCard(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 44, height: 44, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+            child: const Icon(Icons.inventory_2_outlined, size: 20, color: BT.ink)),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(r.itemName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+            const SizedBox(height: 2),
+            Text('qty ${r.qty}${r.note != null && r.note!.isNotEmpty ? ' · ${r.note}' : ''}',
+              style: const TextStyle(color: BT.mut, fontSize: 12)),
+          ])),
+          const StatusPill('Store', color: BT.mint),
+        ]),
+        const SizedBox(height: 12),
+        PrimaryButton('Order (general PO)', icon: Icons.add,
+          onTap: () => _orderStock(context, ref, r)),
+      ]),
+    ),
+  );
 
   Widget _heroCard(BuildContext context, WidgetRef ref, OrderDue d) {
     final p = _duePill(d.daysLeft);

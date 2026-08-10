@@ -425,13 +425,14 @@ class ComponentRow {
 /// A stock line (Store inventory).
 class StockRow {
   final String name, unit;
-  final String? category;
+  final String? itemCatalogId, category;
   final num quantity;
   final int threshold;
-  StockRow({required this.name, required this.unit, this.category, required this.quantity, required this.threshold});
+  StockRow({required this.name, required this.unit, this.itemCatalogId, this.category, required this.quantity, required this.threshold});
   factory StockRow.fromMap(Map<String, dynamic> m) {
     final ic = m['item_catalog'] as Map<String, dynamic>?;
     return StockRow(
+      itemCatalogId: m['item_catalog_id'] as String? ?? ic?['id'] as String?,
       name: ic?['name'] as String? ?? 'Item',
       category: ic?['category'] as String?,
       unit: m['unit'] as String? ?? 'pcs',
@@ -440,6 +441,31 @@ class StockRow {
     );
   }
   bool get low => quantity <= threshold;
+}
+
+/// A Store → Procurement reorder request for a general essential (not tied to a
+/// project). Store raises it; Procurement fulfils it with a general PO.
+class StockRequest {
+  final String id, itemName;
+  final String? itemCatalogId, note, status;
+  final int qty;
+  final DateTime? createdAt;
+  StockRequest({
+    required this.id, required this.itemName, required this.qty,
+    this.itemCatalogId, this.note, this.status, this.createdAt,
+  });
+  factory StockRequest.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    return StockRequest(
+      id: m['id'] as String,
+      itemCatalogId: m['item_catalog_id'] as String?,
+      itemName: ic?['name'] as String? ?? 'Item',
+      qty: (m['qty'] as num?)?.toInt() ?? 1,
+      note: m['note'] as String?,
+      status: m['status'] as String?,
+      createdAt: DateTime.tryParse(m['created_at']?.toString() ?? ''),
+    );
+  }
 }
 
 /// A truck affected by a recall (Hero #2).
