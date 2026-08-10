@@ -266,10 +266,15 @@ class ProjectsRepo {
   }
 
   /// Change a project's target delivery date, then re-run backward scheduling.
+  ///
+  /// A delivery-date change is a full re-plan, so it also re-baselines each
+  /// stage's committed (assigned) dates to the new plan — otherwise a stage
+  /// could still read "Due" after the new delivery date. (0015)
   Future<void> setDeliveryDate(String projectId, DateTime date) async {
     await sb.from('projects')
         .update({'target_delivery_date': date.toIso8601String().split('T').first}).eq('id', projectId);
-    await sb.rpc('fn_recompute_schedule', params: {'p_project': projectId});
+    await sb.rpc('fn_recompute_schedule',
+        params: {'p_project': projectId, 'p_rebaseline_assigned': true});
   }
 
   /// Hand the truck over: the build becomes 'delivered' and enters after-sales,
