@@ -2572,15 +2572,18 @@ create index if not exists stock_requests_po_idx     on public.stock_requests (p
 alter table public.stock_requests enable row level security;
 
 -- Read: any staff member (procurement acts on them, store/pm/admin see status).
+drop policy if exists stock_requests_read on public.stock_requests;
 create policy stock_requests_read on public.stock_requests
   for select using (public.has_role(array['admin','procurement','store','pm']));
 
 -- Insert: store (or admin) raises the request. fn_request_stock is the intended
 -- path, but this keeps a direct insert honest too.
+drop policy if exists stock_requests_insert on public.stock_requests;
 create policy stock_requests_insert on public.stock_requests
   for insert with check (public.has_role(array['admin','store']));
 
 -- Update: procurement (or admin) links a PO / advances status.
+drop policy if exists stock_requests_update on public.stock_requests;
 create policy stock_requests_update on public.stock_requests
   for update using (public.has_role(array['admin','procurement']))
   with check (public.has_role(array['admin','procurement']));
