@@ -127,7 +127,18 @@ class PoDetailScreen extends ConsumerWidget {
     if (status == 'ordered') {
       return PrimaryButton('Mark as dispatched', icon: Icons.local_shipping_rounded,
         bg: BT.ink, fg: BT.card,
-        onTap: () => run(() => repo.markDispatched(poId), 'PO marked dispatched.'));
+        onTap: () async {
+          // ETA is required to dispatch — you can't receive a PO until it's
+          // dispatched, and this date drives the Receive tab.
+          final now = DateTime.now();
+          final eta = await showDatePicker(context: context,
+            initialDate: now.add(const Duration(days: 7)),
+            firstDate: now, lastDate: now.add(const Duration(days: 365)),
+            helpText: 'Expected arrival date');
+          if (eta == null) return; // cancelled → not dispatched
+          await run(() => repo.markDispatched(poId, expectedDate: eta),
+            'PO dispatched · arriving ${_fmt.format(eta)}');
+        });
     }
     if (status == 'received') {
       return Container(

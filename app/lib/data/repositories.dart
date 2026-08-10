@@ -397,8 +397,14 @@ class ProcurementRepo {
   }
 
   /// Advance a PO to 'dispatched' (Procurement marks this when the vendor ships).
-  Future<void> markDispatched(String poId) async {
-    await sb.from('purchase_orders').update({'status': 'dispatched'}).eq('id', poId);
+  /// Advance a PO to 'dispatched'. An expected arrival date (ETA) is required —
+  /// "dispatched" with no idea when it lands isn't useful, and the Receive tab
+  /// shows this date. Receiving is then gated on this status by fn_receive_po.
+  Future<void> markDispatched(String poId, {required DateTime expectedDate}) async {
+    await sb.from('purchase_orders').update({
+      'status': 'dispatched',
+      'expected_date': expectedDate.toIso8601String().split('T').first,
+    }).eq('id', poId);
   }
 
   /// Item catalog options (for building a PO manually).
