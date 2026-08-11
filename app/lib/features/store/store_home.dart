@@ -156,6 +156,12 @@ class _StockTabState extends ConsumerState<_StockTab> {
           const SizedBox(width: 8),
           _chip('Low', _lowOnly, () => setState(() => _lowOnly = true)),
         ]),
+        const SizedBox(height: 12),
+        // Ask procurement to order any catalogue item — works even when the
+        // inventory is empty (nothing to tap yet). Stock never changes from
+        // here; it only moves on a real receive. This just raises the request.
+        PrimaryButton('Request from procurement', icon: Icons.add_shopping_cart_rounded,
+          onTap: () => _openRequest()),
         const SizedBox(height: 14),
         stock.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 40),
@@ -285,6 +291,141 @@ class _StockTabState extends ConsumerState<_StockTab> {
       ),
     ]),
   );
+
+  // General "raise a request" — Store picks any catalogue item (or adds a new
+  // one) and asks procurement to order it. Unlike _openReorder (which starts
+  // from an existing stock row), this works with an empty inventory.
+  Future<void> _openRequest() async {
+    final base = ref.read(itemsProvider).valueOrNull ?? <OptRef>[];
+    final extra = <OptRef>[];
+    String? itemId;
+    final qtyCtl = TextEditingController(text: '1');
+    final noteCtl = TextEditingController();
+    var sending = false;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => StatefulBuilder(builder: (sheetCtx, setSheet) {
+        final items = {for (final o in [...base, ...extra]) o.id: o}.values.toList();
+        return Padding(
+          padding: EdgeInsets.only(bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+            decoration: const BoxDecoration(color: BT.bg,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 40, height: 4,
+                decoration: BoxDecoration(color: BT.line, borderRadius: BorderRadius.circular(999)))),
+              const SizedBox(height: 16),
+              const Text('REQUEST FROM PROCUREMENT',
+                style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text('Ask procurement to order an item', style: display(21, w: FontWeight.w600)),
+              const SizedBox(height: 16),
+              _sheetLabel('ITEM'),
+              _sheetDropdown(itemId, items, (v) async {
+                if (v == '__add__') {
+                  final created = await _promptNewItem(sheetCtx);
+                  if (created != null) {
+                    setSheet(() { extra.add(created); itemId = created.id; });
+                    ref.invalidate(itemsProvider);
+                  }
+                } else {
+                  setSheet(() => itemId = v);
+                }
+              }),
+              const SizedBox(height: 11),
+              _sheetField('QUANTITY NEEDED', qtyCtl, hint: 'e.g. 20', number: true),
+              const SizedBox(height: 11),
+              _sheetField('NOTE (OPTIONAL)', noteCtl, hint: 'Why / for which builds'),
+              const SizedBox(height: 20),
+              PrimaryButton(sending ? 'Sending…' : 'Send to procurement', icon: Icons.send_rounded,
+                onTap: sending ? null : () async {
+                  if (itemId == null) {
+                    ScaffoldMessenger.of(sheetCtx).showSnackBar(const SnackBar(
+                      backgroundColor: BT.coral, content: Text('Pick an item first.')));
+                    return;
+                  }
+                  final qty = int.tryParse(qtyCtl.text.trim()) ?? 0;
+                  if (qty <= 0) {
+                    ScaffoldMessenger.of(sheetCtx).showSnackBar(const SnackBar(
+                      backgroundColor: BT.coral, content: Text('Enter a quantity greater than zero.')));
+                    return;
+                  }
+                  setSheet(() => sending = true);
+                  try {
+                    await ref.read(storeRepoProvider).requestStock(
+                      itemId: itemId!, qty: qty, note: noteCtl.text);
+                    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        backgroundColor: BT.ink, content: Text('Request sent to procurement.')));
+                    }
+                  } catch (e) {
+                    setSheet(() => sending = false);
+                    if (sheetCtx.mounted) {
+                      ScaffoldMessenger.of(sheetCtx).showSnackBar(SnackBar(
+                        backgroundColor: BT.coral, content: Text('Failed: $e')));
+                    }
+                  }
+                }),
+            ]),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _sheetLabel(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 6),
+    child: Text(t, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)));
+
+  Widget _sheetDropdown(String? value, List<OptRef> items, ValueChanged<String?> onChanged) => Container(
+    height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+    child: DropdownButtonHideUnderline(child: DropdownButton<String>(
+      value: value, isExpanded: true,
+      hint: const Text('Select item', style: TextStyle(color: BT.mut2, fontSize: 14, fontWeight: FontWeight.w500)),
+      icon: const Icon(Icons.expand_more_rounded, color: BT.mut),
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
+      dropdownColor: BT.card,
+      items: [
+        for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
+        const DropdownMenuItem(value: '__add__', child: Row(children: [
+          Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
+          Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
+        ])),
+      ],
+      onChanged: onChanged,
+    )),
+  );
+
+  Future<OptRef?> _promptNewItem(BuildContext ctx) {
+    final nameC = TextEditingController();
+    String? e;
+    return showDialog<OptRef>(context: ctx, builder: (dctx) => StatefulBuilder(builder: (dctx, setD) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('New item', style: display(18, w: FontWeight.w600)),
+      content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: TextField(controller: nameC, decoration: const InputDecoration(hintText: 'Item name', border: InputBorder.none)),
+        ),
+        if (e != null) Padding(padding: const EdgeInsets.only(top: 8),
+          child: Text(e!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () async {
+          if (nameC.text.trim().isEmpty) { setD(() => e = 'Name required'); return; }
+          final created = await ref.read(procurementRepoProvider).createItem(name: nameC.text.trim());
+          if (dctx.mounted) Navigator.pop(dctx, created);
+        }, child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+      ],
+    )));
+  }
 }
 
 // ───────────────────────────────────────────────────────────── PARTS
