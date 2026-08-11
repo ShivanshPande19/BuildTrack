@@ -598,10 +598,63 @@ class StoreRepo {
     return (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  /// On-hand inventory — the *truthful* count.
+  ///
+  /// Two kinds of item live side by side:
+  ///  • Bulk / consumable items (item_catalog.serialized = false) — screws,
+  ///    sheet, wire. Their on-hand is the running quantity in stock_items.
+  ///  • Serialized items (serialized = true) — LED screens, inverters. Each
+  ///    physical unit is a component_instance with a serial, so on-hand is
+  ///    simply how many of them are still 'in_stock'. Installing one flips it
+  ///    to 'installed', so the count drops on its own — no manual decrement.
+  ///
+  /// stock_items is deliberately ignored for serialized items: fn_receive_po
+  /// tops it up on receipt, but Store also logs each unit as a component, so
+  /// trusting both would double-count. The component ledger is the source of
+  /// truth for anything serialized.
   Future<List<StockRow>> stock() async {
-    final d = await sb.from('stock_items')
-        .select('quantity,unit,item_catalog_id,item_catalog(id,name,category,low_stock_threshold)');
-    return (d as List).map((e) => StockRow.fromMap(e as Map<String, dynamic>)).toList();
+    final si = await sb.from('stock_items').select(
+        'quantity,unit,item_catalog_id,item_catalog(id,name,category,low_stock_threshold,serialized)');
+    final comps = await sb.from('component_instances')
+        .select('status,item_catalog_id,item_catalog(id,name,category,low_stock_threshold,serialized,unit)');
+
+    final rows = <StockRow>[];
+
+    // Bulk items straight from stock_items (skip any serialized rows here).
+    for (final e in (si as List)) {
+      final m = e as Map<String, dynamic>;
+      final ic = m['item_catalog'] as Map<String, dynamic>?;
+      if ((ic?['serialized'] as bool?) ?? true) continue;
+      rows.add(StockRow.fromMap(m));
+    }
+
+    // Serialized items: count in-stock units per catalog item. Keep the item
+    // in the list even when the count is 0 (all installed) so it stays visible.
+    final meta = <String, Map<String, dynamic>>{};
+    final onHand = <String, int>{};
+    for (final e in (comps as List)) {
+      final m = e as Map<String, dynamic>;
+      final id = m['item_catalog_id'] as String?;
+      if (id == null) continue;
+      final ic = m['item_catalog'] as Map<String, dynamic>?;
+      if (!((ic?['serialized'] as bool?) ?? true)) continue;
+      meta[id] = ic ?? const {};
+      onHand[id] = (onHand[id] ?? 0) + (m['status'] == 'in_stock' ? 1 : 0);
+    }
+    onHand.forEach((id, qty) {
+      final ic = meta[id]!;
+      rows.add(StockRow(
+        itemCatalogId: id,
+        name: ic['name'] as String? ?? 'Item',
+        category: ic['category'] as String?,
+        unit: ic['unit'] as String? ?? 'pcs',
+        quantity: qty,
+        threshold: (ic['low_stock_threshold'] as num?)?.toInt() ?? 0,
+      ));
+    });
+
+    rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return rows;
   }
 
   /// Raise a reorder request to Procurement for a general essential (wheels,
