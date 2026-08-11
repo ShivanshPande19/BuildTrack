@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/barcode_scanner.dart';
 import '../../shared/photo_picker.dart';
 import '../../shared/widgets.dart';
 
@@ -26,7 +27,18 @@ class _LogComponentState extends ConsumerState<LogComponent> {
 
   static final _fmt = DateFormat('d MMM yyyy');
 
-  Future<void> _save() async {
+  // Scan the vendor's barcode/QR straight into the serial field. Most
+  // serialized parts (LED screens, inverters) ship with a unique serial label,
+  // so this is the fast, typo-free path at intake.
+  Future<void> _scanSerial() async {
+    final code = await Navigator.push<String>(context,
+      MaterialPageRoute(builder: (_) => const BarcodeScannerScreen(title: 'Scan serial')));
+    if (code != null && code.trim().isNotEmpty) {
+      setState(() => _serial.text = code.trim());
+    }
+  }
+
+  Future<void> _save({bool another = false}) async {
     if (_itemId == null || _serial.text.trim().isEmpty) {
       setState(() => _error = 'Item and serial number are required.');
       return;
@@ -41,14 +53,22 @@ class _LogComponentState extends ConsumerState<LogComponent> {
         billUrl = await repo.uploadBill(_bill!.bytes,
           filename: _bill!.filename, contentType: _bill!.contentType);
       }
+      final saved = _serial.text.trim();
       await repo.logComponent(
-        itemId: _itemId!, serial: _serial.text.trim(),
+        itemId: _itemId!, serial: saved,
         vendorId: _vendorId, warrantyEnd: _warrantyEnd, projectId: _projectId, billUrl: billUrl);
       ref.invalidate(componentsProvider);
-      if (mounted) {
+      if (!mounted) return;
+      if (another) {
+        // Receiving several units of the same item: keep item/vendor/warranty/
+        // bill, clear just the serial, and stay on the screen for the next scan.
+        setState(() => _serial.clear());
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.ink, content: Text('$saved logged · scan the next unit')));
+      } else {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.ink, content: Text('${_serial.text.trim()} logged to inventory')));
+          backgroundColor: BT.ink, content: Text('$saved logged to inventory')));
       }
     } catch (e) {
       setState(() => _error = '$e');
@@ -101,7 +121,17 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           const SizedBox(height: 11),
 
           _label('SERIAL NUMBER'),
-          _textField(_serial, 'SN-88213'),
+          Row(children: [
+            Expanded(child: _textField(_serial, 'SN-88213')),
+            const SizedBox(width: 10),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _scanSerial,
+              child: Container(width: 52, height: 52, alignment: Alignment.center,
+                decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(14)),
+                child: const Icon(Icons.qr_code_scanner_rounded, size: 22, color: BT.lime)),
+            ),
+          ]),
           const SizedBox(height: 11),
 
           _label('VENDOR (optional)'),
@@ -169,7 +199,21 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           const SizedBox(height: 20),
           _saving
             ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Save to inventory', icon: Icons.check, onTap: _save),
+            : Column(children: [
+                PrimaryButton('Save to inventory', icon: Icons.check, onTap: () => _save()),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _save(another: true),
+                  child: Container(height: 50, alignment: Alignment.center,
+                    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+                    child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                      Icon(Icons.add_rounded, size: 18, color: BT.ink),
+                      SizedBox(width: 8),
+                      Text('Save & log another', style: TextStyle(fontWeight: FontWeight.w600, color: BT.ink)),
+                    ])),
+                ),
+              ]),
         ],
       )),
     );
