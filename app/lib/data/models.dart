@@ -253,14 +253,40 @@ class AppNotification {
 }
 
 
+/// Tolerant numeric parse — Postgres `numeric` can arrive as num or as a string.
+double toMoney(dynamic v) =>
+    v == null ? 0 : (v is num ? v.toDouble() : double.tryParse(v.toString()) ?? 0);
+
 /// A purchase order row (list + detail header).
+///
+/// Carries two independent lifecycles:
+///   • `approvalStatus` — pending_pm → pending_final → approved / rejected
+///   • `status` (fulfilment) — ordered → dispatched → received — which only
+///     matters once the PO is approved.
 class PurchaseOrder {
   final String id, poNumber, status; // status: ordered | dispatched | received | partial
-  final String? vendorName, projectCode;
+  final String approvalStatus;       // pending_pm | pending_final | approved | rejected
+  final String? vendorName, vendorId, projectCode, pmId, shipTo, paymentTerms, notes, rejectionReason;
   final int itemCount;
-  final DateTime? orderDate, expectedDate;
-  PurchaseOrder({required this.id, required this.poNumber, required this.status,
-    this.vendorName, this.projectCode, this.itemCount = 0, this.orderDate, this.expectedDate});
+  final double amount, subtotal, taxTotal;
+  final DateTime? orderDate, expectedDate, deliveryDate, neededBy;
+  final DateTime? submittedAt, pmSignedAt, finalSignedAt, rejectedAt;
+  PurchaseOrder({
+    required this.id, required this.poNumber, required this.status,
+    this.approvalStatus = 'approved',
+    this.vendorName, this.vendorId, this.projectCode, this.pmId, this.shipTo, this.paymentTerms,
+    this.notes, this.rejectionReason,
+    this.itemCount = 0, this.amount = 0, this.subtotal = 0, this.taxTotal = 0,
+    this.orderDate, this.expectedDate, this.deliveryDate, this.neededBy,
+    this.submittedAt, this.pmSignedAt, this.finalSignedAt, this.rejectedAt,
+  });
+
+  bool get isApproved => approvalStatus == 'approved';
+  bool get isRejected => approvalStatus == 'rejected';
+  bool get isAwaitingPm => approvalStatus == 'pending_pm';
+  bool get isAwaitingFinal => approvalStatus == 'pending_final';
+  bool get isPendingApproval => isAwaitingPm || isAwaitingFinal;
+
   factory PurchaseOrder.fromMap(Map<String, dynamic> m) {
     final v = m['vendors'] as Map<String, dynamic>?;
     final p = m['projects'] as Map<String, dynamic>?;
@@ -269,35 +295,106 @@ class PurchaseOrder {
       id: m['id'] as String,
       poNumber: m['po_number'] as String? ?? '',
       status: m['status'] as String? ?? 'ordered',
+      approvalStatus: m['approval_status'] as String? ?? 'approved',
       vendorName: v?['name'] as String?,
+      vendorId: m['vendor_id'] as String?,
       projectCode: p?['code'] as String?,
+      pmId: m['pm_id'] as String?,
+      shipTo: m['ship_to'] as String?,
+      paymentTerms: m['payment_terms'] as String?,
+      notes: m['notes'] as String?,
+      rejectionReason: m['rejection_reason'] as String?,
       itemCount: lines is List ? lines.length : 0,
+      amount: toMoney(m['amount']),
+      subtotal: toMoney(m['subtotal']),
+      taxTotal: toMoney(m['tax_total']),
       orderDate: parseDate(m['order_date']),
       expectedDate: parseDate(m['expected_date']),
+      deliveryDate: parseDate(m['delivery_date']),
+      neededBy: parseDate(m['needed_by']),
+      submittedAt: parseDate(m['submitted_at']),
+      pmSignedAt: parseDate(m['pm_signed_at']),
+      finalSignedAt: parseDate(m['final_signed_at']),
+      rejectedAt: parseDate(m['rejected_at']),
     );
   }
 }
 
-/// A single line in a purchase order.
+/// A single line in a purchase order (now with rate + GST for a proper PO).
 class PoLineItem {
   final String name;
+  final String? itemCatalogId, hsnCode, description;
   final int qty, receivedQty;
-  PoLineItem({required this.name, required this.qty, required this.receivedQty});
+  final double unitPrice, taxRate; // taxRate = GST %
+  PoLineItem({required this.name, required this.qty, required this.receivedQty,
+    this.itemCatalogId, this.hsnCode, this.description, this.unitPrice = 0, this.taxRate = 0});
+  double get lineTotal => qty * unitPrice;
+  double get taxAmount => lineTotal * taxRate / 100.0;
   factory PoLineItem.fromMap(Map<String, dynamic> m) {
     final ic = m['item_catalog'] as Map<String, dynamic>?;
     return PoLineItem(
       name: ic?['name'] as String? ?? 'Item',
+      itemCatalogId: m['item_catalog_id'] as String?,
       qty: (m['qty'] as num?)?.toInt() ?? 1,
       receivedQty: (m['received_qty'] as num?)?.toInt() ?? 0,
+      unitPrice: toMoney(m['unit_price']),
+      taxRate: toMoney(m['tax_rate']),
+      hsnCode: m['hsn_code'] as String?,
+      description: m['description'] as String?,
     );
   }
 }
 
-/// PO header + its line items.
+/// One entry in a PO's approval trail (the delay log for approvals).
+class PoApprovalEvent {
+  final String event;            // created | pm_signed | final_signed | rejected
+  final String? note, actorName;
+  final DateTime? at;
+  PoApprovalEvent({required this.event, this.note, this.actorName, this.at});
+  factory PoApprovalEvent.fromMap(Map<String, dynamic> m) {
+    final actor = m['profiles'] as Map<String, dynamic>?;
+    return PoApprovalEvent(
+      event: m['event'] as String? ?? '',
+      note: m['note'] as String?,
+      actorName: actor?['full_name'] as String?,
+      at: parseDate(m['created_at']),
+    );
+  }
+}
+
+/// A PO awaiting a signature (row of v_po_pending_approvals) — the approvals
+/// inbox for PMs and the final approver, with how long it has been waiting.
+class PoApproval {
+  final String id, poNumber, approvalStatus;
+  final String? vendorName, projectCode, pmId;
+  final double amount, waitingHours;
+  final bool overdue;
+  final DateTime? neededBy;
+  PoApproval({required this.id, required this.poNumber, required this.approvalStatus,
+    this.vendorName, this.projectCode, this.pmId,
+    this.amount = 0, this.waitingHours = 0, this.overdue = false, this.neededBy});
+  bool get awaitingPm => approvalStatus == 'pending_pm';
+  bool get awaitingFinal => approvalStatus == 'pending_final';
+  factory PoApproval.fromMap(Map<String, dynamic> m) => PoApproval(
+    id: m['id'] as String,
+    poNumber: m['po_number'] as String? ?? '',
+    approvalStatus: m['approval_status'] as String? ?? '',
+    vendorName: m['vendor_name'] as String?,
+    projectCode: m['project_code'] as String?,
+    pmId: m['pm_id'] as String?,
+    amount: toMoney(m['amount']),
+    waitingHours: toMoney(m['waiting_hours']),
+    overdue: m['overdue'] == true,
+    neededBy: parseDate(m['needed_by']),
+  );
+}
+
+/// PO header + its line items + the approval trail.
 class PoDetail {
   final PurchaseOrder po;
   final List<PoLineItem> items;
-  PoDetail(this.po, this.items);
+  final List<PoApprovalEvent> events;
+  PoDetail(this.po, this.items, {this.events = const []});
 }
 
 /// A vendor row with reliability + lead time.

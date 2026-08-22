@@ -92,43 +92,47 @@ Widget _header(BuildContext context, String title, {int badge = 0}) => Row(
   ? (label: 'Order today', color: BT.coral)
   : (daysLeft <= 3 ? (label: '${daysLeft}d left', color: BT.amber) : (label: 'On time', color: BT.lime));
 
+/// Status pill for a PO — approval state comes first (it gates fulfilment),
+/// then the ordered → dispatched → received lifecycle once it's approved.
+({String label, Color color}) _poPill(PurchaseOrder o) {
+  if (o.isRejected)      return (label: 'Rejected', color: BT.coral);
+  if (o.isAwaitingPm)    return (label: 'Awaiting PM', color: BT.lav);
+  if (o.isAwaitingFinal) return (label: 'Awaiting approval', color: BT.amber);
+  return switch (o.status) {
+    'ordered'    => (label: 'Ordered', color: BT.sky),
+    'dispatched' => (label: 'Dispatched', color: BT.amber),
+    'received'   => (label: 'Received', color: BT.lime),
+    'partial'    => (label: 'Partial', color: BT.amber),
+    _            => (label: o.status, color: BT.mut2),
+  };
+}
+
+final _poMoney = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
+
 // ───────────────────────────────────────────────────────────── TO ORDER
 
 class _ToOrderTab extends ConsumerWidget {
   const _ToOrderTab();
 
-  Future<void> _createPO(BuildContext context, WidgetRef ref, OrderDue d) async {
-    try {
-      await ref.read(procurementRepoProvider).createPO(d);
-      ref.invalidate(toOrderProvider);
-      ref.invalidate(purchaseOrdersProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.ink, content: Text('PO created for ${d.itemName}')));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text('Failed: $e')));
-      }
-    }
+  // From a To-Order alert, open the PO form pre-filled with the project + item,
+  // so the buyer sets the rate/GST and it goes through approval like any PO.
+  void _createPO(BuildContext context, OrderDue d) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NewPoScreen(
+      initialProjectId: d.projectId,
+      initialItem: OptRef(d.itemCatalogId, d.itemName),
+      initialQty: d.qty,
+      requirementId: d.id,
+    )));
   }
 
-  Future<void> _orderStock(BuildContext context, WidgetRef ref, StockRequest r) async {
-    try {
-      await ref.read(procurementRepoProvider).orderStockRequest(r);
-      ref.invalidate(stockRequestsProvider);
-      ref.invalidate(purchaseOrdersProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.ink, content: Text('General PO created for ${r.itemName}')));
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text('Failed: $e')));
-      }
-    }
+  // From a Store reorder request, open the PO form as a general (no-project) PO.
+  void _orderStock(BuildContext context, StockRequest r) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => NewPoScreen(
+      generalOnly: true,
+      initialItem: r.itemCatalogId == null ? null : OptRef(r.itemCatalogId!, r.itemName),
+      initialQty: r.qty,
+      stockRequest: r,
+    )));
   }
 
   @override
@@ -201,7 +205,7 @@ class _ToOrderTab extends ConsumerWidget {
         ]),
         const SizedBox(height: 12),
         PrimaryButton('Order (general PO)', icon: Icons.add,
-          onTap: () => _orderStock(context, ref, r)),
+          onTap: () => _orderStock(context, r)),
       ]),
     ),
   );
@@ -230,7 +234,7 @@ class _ToOrderTab extends ConsumerWidget {
           style: const TextStyle(fontSize: 12.5, color: BT.mut)),
         const SizedBox(height: 14),
         PrimaryButton('Create Purchase Order', icon: Icons.add,
-          onTap: () => _createPO(context, ref, d)),
+          onTap: () => _createPO(context, d)),
       ]),
     );
   }
@@ -264,14 +268,6 @@ class _OrdersTab extends ConsumerStatefulWidget {
 class _OrdersTabState extends ConsumerState<_OrdersTab> {
   String _filter = 'all';
 
-  ({String label, Color color}) _pill(String s) => switch (s) {
-    'ordered'    => (label: 'Ordered', color: BT.sky),
-    'dispatched' => (label: 'Dispatched', color: BT.amber),
-    'received'   => (label: 'Received', color: BT.lime),
-    'partial'    => (label: 'Partial', color: BT.amber),
-    _            => (label: s, color: BT.mut2),
-  };
-
   @override
   Widget build(BuildContext context) {
     final orders = ref.watch(purchaseOrdersProvider);
@@ -281,8 +277,8 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
         _header(context, 'Orders'),
         const SizedBox(height: 14),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-          _chip('All', 'all'), _chip('Ordered', 'ordered'),
-          _chip('Dispatched', 'dispatched'), _chip('Received', 'received'),
+          _chip('All', 'all'), _chip('For approval', 'approval'),
+          _chip('Ordered', 'ordered'), _chip('Dispatched', 'dispatched'), _chip('Received', 'received'),
         ])),
         const SizedBox(height: 14),
         orders.when(
@@ -291,7 +287,13 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
           error: (e, _) => AppCard(child: Text('Could not load orders.\n$e',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
-            final filtered = _filter == 'all' ? list : list.where((o) => o.status == _filter).toList();
+            // 'ordered'/'dispatched'/'received' only make sense for approved POs,
+            // so those filters exclude ones still in approval.
+            final filtered = switch (_filter) {
+              'all'      => list,
+              'approval' => list.where((o) => o.isPendingApproval || o.isRejected).toList(),
+              _          => list.where((o) => o.isApproved && o.status == _filter).toList(),
+            };
             if (filtered.isEmpty) {
               return const EmptyState(icon: Icons.receipt_long_rounded, tint: BT.sky,
                 title: 'No orders here', subtitle: 'Create a PO from the To Order tab.');
@@ -319,7 +321,7 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
   }
 
   Widget _orderRow(PurchaseOrder o) {
-    final p = _pill(o.status);
+    final p = _poPill(o);
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
@@ -328,7 +330,13 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(o.poNumber, style: display(15, w: FontWeight.w600)),
+            Row(children: [
+              Text(o.poNumber, style: display(15, w: FontWeight.w600)),
+              if (o.amount > 0) ...[
+                const SizedBox(width: 8),
+                Text(_poMoney.format(o.amount), style: const TextStyle(color: BT.mut, fontSize: 12.5, fontWeight: FontWeight.w600)),
+              ],
+            ]),
             const SizedBox(height: 2),
             Text('${o.vendorName ?? 'Vendor'} · ${o.itemCount} item${o.itemCount == 1 ? '' : 's'}${o.projectCode != null ? ' · ${o.projectCode}' : ''}',
               style: const TextStyle(color: BT.mut, fontSize: 12)),
@@ -364,9 +372,11 @@ class _ReceiveTab extends ConsumerWidget {
           error: (e, _) => AppCard(child: Text('Could not load.\n$e',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
+            // Only approved POs can move — a PO in approval isn't an order yet.
+            final approved = list.where((o) => o.isApproved).toList();
             // A PO must be dispatched before it can be received.
-            final ready    = list.where((o) => o.status == 'dispatched' || o.status == 'partial').toList();
-            final awaiting  = list.where((o) => o.status == 'ordered').toList();
+            final ready    = approved.where((o) => o.status == 'dispatched' || o.status == 'partial').toList();
+            final awaiting  = approved.where((o) => o.status == 'ordered').toList();
             if (ready.isEmpty && awaiting.isEmpty) {
               return const Padding(padding: EdgeInsets.only(top: 20), child: EmptyState(
                 icon: Icons.local_shipping_outlined, tint: BT.amber,

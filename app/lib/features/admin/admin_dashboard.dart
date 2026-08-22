@@ -10,6 +10,7 @@ import 'add_member.dart';
 import 'project_detail.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
+import '../procurement/po_approvals.dart';
 
 /// Admin shell — one Scaffold, a fixed floating PillNav, and an IndexedStack
 /// body so tapping the nav swaps the *content* in place (no new sheet slides in).
@@ -176,6 +177,25 @@ class _HomeTab extends ConsumerWidget {
           _statusTrack('Delayed', f.delayed, f.total, BT.coral, _Tex.plain),
         ]),
       ),
+      // Purchase orders waiting for the owner's final sign-off — a late
+      // signature here is a common way an order (and a build) slips.
+      Consumer(builder: (context, ref, __) {
+        final n = ref.watch(poApprovalsProvider).valueOrNull?.where((a) => a.awaitingFinal).length ?? 0;
+        return Padding(padding: const EdgeInsets.only(top: 16), child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PoApprovalsScreen())),
+          child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+            Container(width: 40, height: 40, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.request_quote_rounded, size: 20, color: BT.ink)),
+            const SizedBox(width: 12),
+            const Expanded(child: Text('PO approvals', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+            StatusPill(n == 0 ? 'None' : '$n to approve', color: n == 0 ? BT.mut2 : BT.sky),
+            const SizedBox(width: 6),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+          ])),
+        ));
+      }),
       const SectionLabel('Needs attention'),
       if (f.urgent.isEmpty)
         const EmptyState(
