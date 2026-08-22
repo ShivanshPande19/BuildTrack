@@ -377,7 +377,11 @@ class ProcurementRepo {
   }
 
   static const _poSelect =
-      'id,po_number,status,order_date,expected_date,vendors(name),projects(code),po_lines(id)';
+      'id,po_number,status,approval_status,amount,order_date,expected_date,vendors(name),projects(code),po_lines(id)';
+  static const _poDetailSelect =
+      'id,po_number,status,approval_status,amount,subtotal,tax_total,order_date,expected_date,'
+      'delivery_date,needed_by,ship_to,payment_terms,notes,pm_id,submitted_at,pm_signed_at,'
+      'final_signed_at,rejected_at,rejection_reason,vendors(name),projects(code)';
 
   /// All purchase orders (newest first).
   Future<List<PurchaseOrder>> purchaseOrders() async {
@@ -385,14 +389,19 @@ class ProcurementRepo {
     return (d as List).map((e) => PurchaseOrder.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// One PO with its line items.
+  /// One PO with its line items and its approval trail.
   Future<PoDetail> poDetail(String id) async {
-    final po = await sb.from('purchase_orders').select(_poSelect).eq('id', id).single();
+    final po = await sb.from('purchase_orders').select(_poDetailSelect).eq('id', id).single();
     final lines = await sb.from('po_lines')
-        .select('qty,received_qty,item_catalog(name)').eq('po_id', id);
+        .select('qty,received_qty,unit_price,tax_rate,hsn_code,description,item_catalog(name)')
+        .eq('po_id', id);
+    final events = await sb.from('po_approval_events')
+        .select('event,note,from_status,to_status,created_at,profiles(full_name)')
+        .eq('po_id', id).order('created_at', ascending: true);
     return PoDetail(
       PurchaseOrder.fromMap(po),
       (lines as List).map((e) => PoLineItem.fromMap(e as Map<String, dynamic>)).toList(),
+      events: (events as List).map((e) => PoApprovalEvent.fromMap(e as Map<String, dynamic>)).toList(),
     );
   }
 
@@ -421,24 +430,50 @@ class ProcurementRepo {
     return OptRef(d['id'] as String, d['name'] as String);
   }
 
-  /// Create a purchase order manually (project + vendor + line items).
-  Future<void> createManualPo({
-    String? projectId, required String vendorId,
-    required DateTime orderDate, DateTime? expectedDate,
-    required List<({String itemId, int qty})> lines,
+  /// Raise a purchase order through fn_create_po, which enters it into the
+  /// approval chain (PM sign → final approval) — a PO can no longer be inserted
+  /// directly. Captures per-line rate + GST so the header totals (and the PO
+  /// document) are real. Optionally links the requirement / stock request it
+  /// fulfils, which parks that demand off the To-Order list until approved.
+  Future<String> createPo({
+    String? projectId, String? vendorId,
+    DateTime? deliveryDate, String? paymentTerms, String? notes, String? shipTo,
+    String? requirementId, String? stockRequestId,
+    required List<({String itemId, int qty, double unitPrice, double taxRate})> lines,
   }) async {
-    final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
-    final po = await sb.from('purchase_orders').insert({
-      'po_number': poNum, 'vendor_id': vendorId, 'project_id': projectId, 'status': 'ordered',
-      'order_date': orderDate.toIso8601String().split('T').first,
-      'expected_date': expectedDate?.toIso8601String().split('T').first,
-    }).select('id').single();
-    final poId = po['id'] as String;
-    if (lines.isNotEmpty) {
-      await sb.from('po_lines').insert([
-        for (final l in lines) {'po_id': poId, 'item_catalog_id': l.itemId, 'qty': l.qty},
-      ]);
-    }
+    final id = await sb.rpc('fn_create_po', params: {
+      'p_vendor': vendorId,
+      'p_project': projectId,
+      'p_delivery_date': deliveryDate?.toIso8601String().split('T').first,
+      'p_lines': [
+        for (final l in lines)
+          {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate},
+      ],
+      'p_notes': notes,
+      'p_payment_terms': paymentTerms,
+      'p_ship_to': shipTo,
+      'p_requirement': requirementId,
+      'p_stock_request': stockRequestId,
+    });
+    return id as String;
+  }
+
+  /// PM signs a project PO (moves it to final approval).
+  Future<void> pmSignPo(String poId, {String? note}) =>
+      sb.rpc('fn_pm_sign_po', params: {'p_po': poId, 'p_note': note});
+
+  /// Final approver (admin / owner) signs off — the order is now placed.
+  Future<void> finalApprovePo(String poId, {String? note}) =>
+      sb.rpc('fn_final_approve_po', params: {'p_po': poId, 'p_note': note});
+
+  /// Reject a PO with a reason (frees the demand back onto To-Order).
+  Future<void> rejectPo(String poId, String reason) =>
+      sb.rpc('fn_reject_po', params: {'p_po': poId, 'p_reason': reason});
+
+  /// POs awaiting a signature — the approvals inbox (PM + final approver).
+  Future<List<PoApproval>> poApprovals() async {
+    final d = await sb.from('v_po_pending_approvals').select();
+    return (d as List).map((e) => PoApproval.fromMap(e as Map<String, dynamic>)).toList();
   }
 
   /// Pending stock reorder requests raised by Store (general essentials, no
@@ -448,22 +483,6 @@ class ProcurementRepo {
         .select('id,qty,note,status,created_at,item_catalog_id,item_catalog(name)')
         .eq('status', 'pending').order('created_at', ascending: true);
     return (d as List).map((e) => StockRequest.fromMap(e as Map<String, dynamic>)).toList();
-  }
-
-  /// Order a Store reorder request: cut a general PO (project_id null) for the
-  /// item, then link + mark the request 'ordered'. Vendor is optional here —
-  /// same as createPO — Procurement can attach one from the PO later.
-  Future<void> orderStockRequest(StockRequest r, {String? vendorId}) async {
-    final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
-    final today = DateTime.now().toIso8601String().split('T').first;
-    final po = await sb.from('purchase_orders').insert({
-      'po_number': poNum, 'vendor_id': vendorId, 'project_id': null,
-      'status': 'ordered', 'order_date': today,
-    }).select('id').single();
-    await sb.from('po_lines').insert({
-      'po_id': po['id'], 'item_catalog_id': r.itemCatalogId, 'qty': r.qty,
-    });
-    await sb.from('stock_requests').update({'status': 'ordered', 'po_id': po['id']}).eq('id', r.id);
   }
 
   /// Add a new vendor.
@@ -490,19 +509,6 @@ class ProcurementRepo {
     return (d as List).map((e) => VendorRow.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// Create a PO for a due requirement + mark it ordered.
-  Future<void> createPO(OrderDue d) async {
-    final poNum = 'PO-${DateTime.now().millisecondsSinceEpoch % 100000}';
-    final today = DateTime.now().toIso8601String().split('T').first;
-    final po = await sb.from('purchase_orders').insert({
-      'po_number': poNum, 'project_id': d.projectId, 'status': 'ordered', 'order_date': today,
-    }).select().single();
-    await sb.from('po_lines').insert({
-      'po_id': po['id'], 'item_catalog_id': d.itemCatalogId, 'qty': d.qty,
-    });
-    await sb.from('procurement_requirements')
-        .update({'status': 'ordered', 'po_id': po['id']}).eq('id', d.id);
-  }
 }
 
 // ---- Riverpod providers ----
@@ -536,6 +542,13 @@ final allProjectsProvider = FutureProvider<List<Project>>(
     (ref) => ref.read(projectsRepoProvider).all());
 final itemsProvider = FutureProvider<List<OptRef>>(
     (ref) => ref.read(procurementRepoProvider).items());
+
+/// POs awaiting a signature — feeds the PM's and the final approver's inbox.
+/// (Distinct from `pendingApprovalsProvider`, which is stage-completion approvals.)
+final poApprovalsProvider = FutureProvider<List<PoApproval>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(procurementRepoProvider).poApprovals();
+});
 
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(

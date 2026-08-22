@@ -9,6 +9,7 @@ import '../../shared/widgets.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../admin/project_detail.dart';
+import '../procurement/po_approvals.dart';
 import 'approvals.dart';
 import 'assign_work.dart';
 
@@ -108,6 +109,7 @@ class _HomeTab extends ConsumerWidget {
       onRefresh: () async {
         ref.invalidate(stagesToAssignProvider);
         ref.invalidate(pendingApprovalsProvider);
+        ref.invalidate(poApprovalsProvider);
         return ref.refresh(pmDashboardProvider.future);
       },
       child: ListView(padding: _pad, children: [
@@ -182,6 +184,26 @@ class _HomeTab extends ConsumerWidget {
                   Consumer(builder: (_, r, __) {
                     final n = r.watch(pendingApprovalsProvider).valueOrNull?.length ?? 0;
                     return StatusPill(n == 0 ? 'None' : '$n pending', color: n == 0 ? BT.mut2 : BT.amber);
+                  }),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+                ])),
+              )),
+              // Purchase orders on my builds waiting for my signature.
+              Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PoApprovalsScreen())),
+                child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+                  Container(width: 40, height: 40, alignment: Alignment.center,
+                    decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.request_quote_rounded, size: 20, color: BT.ink)),
+                  const SizedBox(width: 12),
+                  const Expanded(child: Text('PO approvals', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+                  Consumer(builder: (_, r, __) {
+                    final uid = sb.auth.currentUser?.id;
+                    final n = r.watch(poApprovalsProvider).valueOrNull
+                        ?.where((a) => a.awaitingPm && a.pmId == uid).length ?? 0;
+                    return StatusPill(n == 0 ? 'None' : '$n to sign', color: n == 0 ? BT.mut2 : BT.sky);
                   }),
                   const SizedBox(width: 6),
                   const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
