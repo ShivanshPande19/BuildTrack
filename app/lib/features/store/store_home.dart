@@ -296,7 +296,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
   // one) and asks procurement to order it. Unlike _openReorder (which starts
   // from an existing stock row), this works with an empty inventory.
   Future<void> _openRequest() async {
-    final base = ref.read(itemsProvider).valueOrNull ?? <OptRef>[];
+    final base = ref.read(essentialItemsProvider).valueOrNull ?? <OptRef>[];
     final extra = <OptRef>[];
     String? itemId;
     final qtyCtl = TextEditingController(text: '1');
@@ -329,7 +329,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
                   final created = await _promptNewItem(sheetCtx);
                   if (created != null) {
                     setSheet(() { extra.add(created); itemId = created.id; });
-                    ref.invalidate(itemsProvider);
+                    ref.invalidate(essentialItemsProvider);
                   }
                 } else {
                   setSheet(() => itemId = v);
@@ -420,7 +420,9 @@ class _StockTabState extends ConsumerState<_StockTab> {
         TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel', style: TextStyle(color: BT.mut))),
         TextButton(onPressed: () async {
           if (nameC.text.trim().isEmpty) { setD(() => e = 'Name required'); return; }
-          final created = await ref.read(procurementRepoProvider).createItem(name: nameC.text.trim());
+          // A new item added here is a Store essential, and essentials are bulk.
+          final created = await ref.read(procurementRepoProvider)
+              .createItem(name: nameC.text.trim(), essential: true, serialized: false);
           if (dctx.mounted) Navigator.pop(dctx, created);
         }, child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
