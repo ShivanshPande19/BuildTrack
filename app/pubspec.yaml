@@ -18,6 +18,8 @@ dependencies:
   file_picker: ^8.1.6           # designer picks .glb / preview from device
   image_picker: ^1.2.3          # workshop site photos + client ticket photos (camera/gallery)
   mobile_scanner: ^7.4.0        # scan a part's QR/barcode to install it (Hero #2)
+  pdf: ^3.11.1                  # generate the office-level purchase-order document
+  printing: ^5.13.3             # preview / print / share the PO PDF
 
 dev_dependencies:
   flutter_test:                 # was missing entirely — no test could compile
