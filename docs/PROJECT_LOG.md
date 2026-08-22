@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **30 Jul 2026**
+Last updated: **22 Aug 2026**
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: **30 Jul 2026**
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0011` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0020` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
 | **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
@@ -151,6 +151,47 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 22 Aug 2026 — Multi-level PO approval chain + delay trail (migration `0020`)
+
+Purchase orders used to go live the instant Procurement created them — a bare
+`INSERT` with status `ordered`, nobody signing anything. That is not how the
+business actually buys: Procurement raises a PO (with clarity from the PM), the
+**PM signs** it, and then it reaches an **owner/admin (Puneet / Shelly mam) for
+final approval** before the order is placed. When a signature is late the order
+slips, and there was no record of where it was held up.
+
+**Backend (`0020_po_approvals.sql`)** — a separate approval lifecycle
+(`pending_pm → pending_final → approved / rejected`) that gates the existing
+fulfilment lifecycle (`ordered → dispatched → received`):
+- `fn_create_po` — the only way a PO is raised now (direct inserts are blocked
+  by RLS). Computes header totals from per-line rate + GST, routes project POs
+  to the PM and general/stock POs straight to final approval, and parks the
+  requirement / stock request it fulfils.
+- `fn_pm_sign_po` · `fn_final_approve_po` · `fn_reject_po` (reason mandatory;
+  rejection frees the demand back onto To-Order).
+- `po_approval_events` — an immutable, timestamped trail of every signature and
+  rejection (who, when): **the delay log for approvals**.
+- A guard trigger refuses to dispatch/receive a PO until it is approved.
+- `v_po_pending_approvals` — the approvals queue with waiting time + an overdue
+  flag against the order-by date.
+- Money + tax + HSN on the lines, buyer identity (`company_settings`) and vendor
+  GSTIN/address were added too, for the office-level PO document (rendered in a
+  follow-up).
+- RLS: PO costs are now kept off the shop floor (workshop/design/service/client
+  can't read POs). 111 backend assertions pass; migration is idempotent.
+
+**App** — the New PO form captures per-line rate + GST + delivery/payment terms
+and shows a live total; it is the single path a PO is raised through (To-Order
+alerts and Store reorders open it pre-filled). PO detail shows the approval
+stepper, the signature trail, the amount + GST breakdown, and the right action
+for the viewer (PM signs, admin approves, either rejects with a reason). A
+role-aware **PO Approvals** inbox is surfaced on the PM home and the admin
+dashboard, flagging how long each PO has waited and which are overdue.
+
+**Watch out when deploying:** run `0020_po_approvals.sql`. Existing POs are
+grandfathered to `approved`. From this migration on, a PO must be raised through
+`fn_create_po` — an old app build doing a direct insert will be refused by RLS.
 
 ### 30 Jul 2026 — Real photos and real barcode scanning (migration `0011`)
 

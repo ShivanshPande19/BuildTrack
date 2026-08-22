@@ -36,7 +36,13 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Receive** (incoming POs, Receive & verify)
 - ✅ **Vendors** (reliability score + lead time)
 - ✅ **Notifications · Profile** (shared `common/` screens, reused)
-- ⬜ Vendor detail (pr7) · manual New PO (pr4) — round 2
+- ⬜ Vendor detail (pr7) — round 2
+- ✅ **Multi-level PO approval** (migration 0020) — Procurement raises (rate + GST + terms) →
+  **PM signs** (project POs) → **owner/admin final approval** → order placed. General/stock POs skip
+  the PM. Guard trigger blocks dispatch/receive until approved. `po_approval_events` = timestamped
+  delay trail (who signed when); `v_po_pending_approvals` = waiting-time queue. **PO Approvals** inbox
+  on PM home + admin dashboard. New PO is the single raise-path (To-Order/Store reorders open it
+  pre-filled). *(Office-level PO PDF — GST breakup, HSN, signatory — follows in a second PR.)*
 
 ## Shared / common
 - ✅ `common/notifications.dart`, `common/profile.dart` — reused across roles
