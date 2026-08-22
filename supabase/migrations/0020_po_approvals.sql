@@ -345,11 +345,16 @@ begin
 end $$;
 
 
--- Reject at either step, with a mandatory reason. Frees the demand it parked so
--- it reappears in To-Order and Procurement can raise a fresh PO.
+-- Reject at either step, with a mandatory reason. This is a rework loop, not a
+-- dead end: the PO goes back to whoever raised it (with the remark) so they can
+-- fix and resubmit it (fn_resubmit_po). The requirement it fulfils stays parked
+-- against it — the PO is being reworked, not abandoned.
+--   • Whoever rejects, procurement (the raiser) is put on the hook to fix it.
+--   • When the *admin* rejects, the PM is also told — they had signed it, and
+--     their signature is undone (a resubmit will come back to them).
 create or replace function public.fn_reject_po(p_po uuid, p_reason text)
 returns void language plpgsql security definer set search_path = public as $$
-declare v_pm uuid; v_appr po_approval_status; v_num text; v_sub uuid;
+declare v_pm uuid; v_appr po_approval_status; v_num text; v_sub uuid; v_admin_rejected boolean;
 begin
   if nullif(btrim(coalesce(p_reason, '')), '') is null then
     raise exception 'A reason is required to reject a purchase order.';
@@ -367,23 +372,128 @@ begin
     raise exception 'You are not allowed to reject this purchase order.' using errcode = '42501';
   end if;
 
+  v_admin_rejected := (v_appr = 'pending_final');   -- only the admin can reject at that step
+
   update purchase_orders
      set approval_status = 'rejected', rejected_by = auth.uid(), rejected_at = now(),
          rejection_reason = btrim(p_reason)
    where id = p_po;
 
-  -- Put the demand back on the To-Order list.
-  update procurement_requirements set status = 'pending', po_id = null where po_id = p_po;
-  update stock_requests          set status = 'pending', po_id = null where po_id = p_po;
-
   insert into po_approval_events (po_id, event, from_status, to_status, actor_id, note)
   values (p_po, 'rejected', v_appr, 'rejected', auth.uid(), btrim(p_reason));
 
+  -- Back to procurement to fix and resubmit.
   perform public.fn_notify(v_sub, 'po_rejected',
-    v_num || ' was rejected',
-    'Reason: ' || btrim(p_reason), 'purchase_order', p_po);
+    v_num || ' was sent back',
+    'Reason: ' || btrim(p_reason) || ' — fix it and resubmit.', 'purchase_order', p_po);
+
+  -- The admin overruled a PO the PM had already signed → keep the PM in the loop.
+  if v_admin_rejected and v_pm is not null
+     and v_pm <> coalesce(v_sub, '00000000-0000-0000-0000-000000000000') then
+    perform public.fn_notify(v_pm, 'po_rejected',
+      v_num || ' was rejected by the owner',
+      'The purchase order you signed on your build was rejected. Reason: ' || btrim(p_reason),
+      'purchase_order', p_po);
+  end if;
 
   perform public.fn_audit('reject_po', 'purchase_order', p_po);
+end $$;
+
+
+-- Fix a rejected PO and send it round again. Procurement (or admin) only, and
+-- only while it is rejected. If new lines are supplied they replace the old ones
+-- and the totals are recomputed; vendor / delivery / terms are updated too. The
+-- signatures are wiped and it re-enters the chain from the top — a project PO
+-- goes back to its PM, a general PO straight to final approval — so a changed
+-- price or vendor is re-verified, not waved through on the old signature.
+create or replace function public.fn_resubmit_po(
+  p_po            uuid,
+  p_vendor        uuid    default null,
+  p_delivery_date date    default null,
+  p_lines         jsonb   default null,
+  p_notes         text    default null,
+  p_payment_terms text    default null,
+  p_ship_to       text    default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_appr po_approval_status; v_sub uuid; v_project uuid; v_pm uuid; v_num text; v_next po_approval_status;
+  v_subtotal numeric := 0; v_tax numeric := 0; v_line jsonb; v_qty int; v_price numeric; v_rate numeric; v_lt numeric;
+begin
+  if not public.has_role(array['admin','procurement']) then
+    raise exception 'Only procurement or an admin can resubmit a purchase order.' using errcode = '42501';
+  end if;
+
+  select approval_status, submitted_by, project_id, po_number into v_appr, v_sub, v_project, v_num
+    from purchase_orders where id = p_po;
+  if not found then raise exception 'Purchase order not found.'; end if;
+  if v_appr <> 'rejected' then
+    raise exception 'Only a rejected purchase order can be resubmitted.';
+  end if;
+
+  if v_project is not null then
+    select pm_id into v_pm from projects where id = v_project;
+  end if;
+  v_next := case when v_pm is not null then 'pending_pm' else 'pending_final' end;
+
+  -- Replace the lines + recompute totals when a new set is supplied.
+  if p_lines is not null then
+    for v_line in select * from jsonb_array_elements(p_lines) loop
+      v_qty   := coalesce((v_line->>'qty')::int, 1);
+      v_price := coalesce((v_line->>'unit_price')::numeric, 0);
+      v_rate  := coalesce((v_line->>'tax_rate')::numeric, 0);
+      v_lt    := v_qty * v_price;
+      v_subtotal := v_subtotal + v_lt;
+      v_tax      := v_tax + (v_lt * v_rate / 100.0);
+    end loop;
+
+    delete from po_lines where po_id = p_po;
+    for v_line in select * from jsonb_array_elements(p_lines) loop
+      insert into po_lines (po_id, item_catalog_id, qty, unit_price, tax_rate, hsn_code, description)
+      values (
+        p_po,
+        (v_line->>'item_catalog_id')::uuid,
+        coalesce((v_line->>'qty')::int, 1),
+        coalesce((v_line->>'unit_price')::numeric, 0),
+        coalesce((v_line->>'tax_rate')::numeric, 0),
+        nullif(btrim(coalesce(v_line->>'hsn_code', '')), ''),
+        nullif(btrim(coalesce(v_line->>'description', '')), ''));
+    end loop;
+
+    update purchase_orders
+       set vendor_id     = coalesce(p_vendor, vendor_id),
+           delivery_date = coalesce(p_delivery_date, delivery_date),
+           payment_terms = nullif(btrim(coalesce(p_payment_terms, '')), ''),
+           notes         = nullif(btrim(coalesce(p_notes, '')), ''),
+           ship_to       = nullif(btrim(coalesce(p_ship_to, '')), ''),
+           subtotal = v_subtotal, tax_total = v_tax, amount = v_subtotal + v_tax
+     where id = p_po;
+  end if;
+
+  -- Wipe the signatures and re-enter the chain from the top.
+  update purchase_orders
+     set approval_status = v_next, pm_id = v_pm,
+         pm_signed_by = null, pm_signed_at = null,
+         final_signed_by = null, final_signed_at = null,
+         rejected_by = null, rejected_at = null, rejection_reason = null,
+         submitted_by = auth.uid(), submitted_at = now()
+   where id = p_po;
+
+  insert into po_approval_events (po_id, event, from_status, to_status, actor_id)
+  values (p_po, 'resubmitted', 'rejected', v_next, auth.uid());
+
+  if v_next = 'pending_pm' then
+    perform public.fn_notify(v_pm, 'po_approval',
+      v_num || ' was revised — please sign',
+      'Procurement addressed the feedback and resubmitted this purchase order.',
+      'purchase_order', p_po);
+  else
+    perform public.fn_notify_role(array['admin'], 'po_approval',
+      v_num || ' was revised — needs approval',
+      'A rejected purchase order has been revised and resubmitted.',
+      'purchase_order', p_po, auth.uid());
+  end if;
+
+  perform public.fn_audit('resubmit_po', 'purchase_order', p_po);
 end $$;
 
 

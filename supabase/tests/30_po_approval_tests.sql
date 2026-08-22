@@ -153,13 +153,7 @@ select t_assert((select pm_id from purchase_orders where id = :'po2') is null,
                 'PO7 a general PO has no PM to sign');
 
 \echo ''
-\echo '=== G · rejection frees the demand + needs a reason ==============='
-
--- raise a fresh project PO against the (now pending again? no — ordered) requirement.
--- Re-point the requirement to pending so we can link it, mirroring a re-order.
-reset role; set test.uid = '';
-update procurement_requirements set status = 'pending', po_id = null where id = :'reqid';
-set role authenticated;
+\echo '=== G · rejection is a rework loop, not a dead end ================'
 
 set test.uid = 'aa000000-0000-0000-0000-000000000001';        -- procurement
 select public.fn_create_po(
@@ -178,21 +172,52 @@ set test.uid = 'b0000000-0000-0000-0000-000000000002';        -- the build's PM
 select t_expect_error(format($$select public.fn_reject_po(%L, '')$$, :'po3'),
   'PO8 a rejection needs a reason');
 
+-- PM sends it back with a remark
 select public.fn_reject_po(:'po3', 'Vendor quote is too high — get a second one.');
 select t_assert((select approval_status from purchase_orders where id = :'po3') = 'rejected',
-                'PO8 the PO is rejected');
-select t_assert((select status from procurement_requirements where id = :'reqid') = 'pending',
-                'PO8 the requirement is freed back onto the To-Order list');
+                'PO8 the PM sends the PO back');
+select t_assert((select status from procurement_requirements where id = :'reqid') = 'ordered',
+                'PO8 the requirement stays parked — the PO is being reworked, not abandoned');
 reset role;
 select t_assert((select count(*) from notifications
                   where user_id = 'aa000000-0000-0000-0000-000000000001' and type = 'po_rejected') >= 1,
-                'PO8 procurement is told why it was rejected');
+                'PO8 procurement is told what to fix');
 set role authenticated;
 
--- a rejected PO can't then be approved
+-- a rejected PO can't jump straight to approved
 set test.uid = 'a0000000-0000-0000-0000-000000000001';
 select t_expect_error(format($$select public.fn_final_approve_po(%L)$$, :'po3'),
-  'PO8 a rejected PO cannot be approved');
+  'PO8 a rejected PO cannot be approved without a resubmit');
+
+-- procurement fixes the price and resubmits → back to the PM
+set test.uid = 'aa000000-0000-0000-0000-000000000001';
+select public.fn_resubmit_po(:'po3',
+  p_vendor => '22222222-0000-0000-0000-000000000002',
+  p_lines  => jsonb_build_array(
+    jsonb_build_object('item_catalog_id','33333333-0000-0000-0000-000000000002','qty',1,'unit_price',900,'tax_rate',18)));
+select t_assert((select approval_status from purchase_orders where id = :'po3') = 'pending_pm',
+                'PO9 resubmitting a project PO sends it back to the PM');
+select t_assert((select pm_signed_at from purchase_orders where id = :'po3') is null
+            and (select rejection_reason from purchase_orders where id = :'po3') is null,
+                'PO9 the old signature + rejection are wiped on resubmit');
+select t_assert((select amount from purchase_orders where id = :'po3') = 1062,
+                'PO9 the revised price recomputes the total (900 + 18% = 1062)');
+select t_assert((select count(*) from po_approval_events where po_id = :'po3' and event = 'resubmitted') = 1,
+                'PO9 the resubmit is on the record');
+
+-- PM signs the revision, admin rejects it → both procurement AND the PM hear about it
+set test.uid = 'b0000000-0000-0000-0000-000000000002';
+select public.fn_pm_sign_po(:'po3');
+set test.uid = 'a0000000-0000-0000-0000-000000000001';
+select public.fn_reject_po(:'po3', 'Hold this until next quarter.');
+reset role;
+select t_assert((select count(*) from notifications
+                  where user_id = 'aa000000-0000-0000-0000-000000000001' and type = 'po_rejected') >= 2,
+                'PO10 procurement is told when the owner rejects');
+select t_assert((select count(*) from notifications
+                  where user_id = 'b0000000-0000-0000-0000-000000000002' and type = 'po_rejected') >= 1,
+                'PO10 the PM is kept in the loop when the owner overrules their signature');
+set role authenticated;
 
 \echo ''
 \echo '=== H · costs stay off the shop floor ============================='

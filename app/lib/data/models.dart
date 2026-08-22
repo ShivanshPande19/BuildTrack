@@ -266,7 +266,7 @@ double toMoney(dynamic v) =>
 class PurchaseOrder {
   final String id, poNumber, status; // status: ordered | dispatched | received | partial
   final String approvalStatus;       // pending_pm | pending_final | approved | rejected
-  final String? vendorName, projectCode, pmId, shipTo, paymentTerms, notes, rejectionReason;
+  final String? vendorName, vendorId, projectCode, pmId, shipTo, paymentTerms, notes, rejectionReason;
   final int itemCount;
   final double amount, subtotal, taxTotal;
   final DateTime? orderDate, expectedDate, deliveryDate, neededBy;
@@ -274,7 +274,7 @@ class PurchaseOrder {
   PurchaseOrder({
     required this.id, required this.poNumber, required this.status,
     this.approvalStatus = 'approved',
-    this.vendorName, this.projectCode, this.pmId, this.shipTo, this.paymentTerms,
+    this.vendorName, this.vendorId, this.projectCode, this.pmId, this.shipTo, this.paymentTerms,
     this.notes, this.rejectionReason,
     this.itemCount = 0, this.amount = 0, this.subtotal = 0, this.taxTotal = 0,
     this.orderDate, this.expectedDate, this.deliveryDate, this.neededBy,
@@ -297,6 +297,7 @@ class PurchaseOrder {
       status: m['status'] as String? ?? 'ordered',
       approvalStatus: m['approval_status'] as String? ?? 'approved',
       vendorName: v?['name'] as String?,
+      vendorId: m['vendor_id'] as String?,
       projectCode: p?['code'] as String?,
       pmId: m['pm_id'] as String?,
       shipTo: m['ship_to'] as String?,
@@ -322,17 +323,18 @@ class PurchaseOrder {
 /// A single line in a purchase order (now with rate + GST for a proper PO).
 class PoLineItem {
   final String name;
-  final String? hsnCode, description;
+  final String? itemCatalogId, hsnCode, description;
   final int qty, receivedQty;
   final double unitPrice, taxRate; // taxRate = GST %
   PoLineItem({required this.name, required this.qty, required this.receivedQty,
-    this.hsnCode, this.description, this.unitPrice = 0, this.taxRate = 0});
+    this.itemCatalogId, this.hsnCode, this.description, this.unitPrice = 0, this.taxRate = 0});
   double get lineTotal => qty * unitPrice;
   double get taxAmount => lineTotal * taxRate / 100.0;
   factory PoLineItem.fromMap(Map<String, dynamic> m) {
     final ic = m['item_catalog'] as Map<String, dynamic>?;
     return PoLineItem(
       name: ic?['name'] as String? ?? 'Item',
+      itemCatalogId: m['item_catalog_id'] as String?,
       qty: (m['qty'] as num?)?.toInt() ?? 1,
       receivedQty: (m['received_qty'] as num?)?.toInt() ?? 0,
       unitPrice: toMoney(m['unit_price']),

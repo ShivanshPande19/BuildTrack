@@ -380,7 +380,7 @@ class ProcurementRepo {
       'id,po_number,status,approval_status,amount,order_date,expected_date,vendors(name),projects(code),po_lines(id)';
   static const _poDetailSelect =
       'id,po_number,status,approval_status,amount,subtotal,tax_total,order_date,expected_date,'
-      'delivery_date,needed_by,ship_to,payment_terms,notes,pm_id,submitted_at,pm_signed_at,'
+      'delivery_date,needed_by,ship_to,payment_terms,notes,pm_id,vendor_id,submitted_at,pm_signed_at,'
       'final_signed_at,rejected_at,rejection_reason,vendors(name),projects(code)';
 
   /// All purchase orders (newest first).
@@ -393,7 +393,7 @@ class ProcurementRepo {
   Future<PoDetail> poDetail(String id) async {
     final po = await sb.from('purchase_orders').select(_poDetailSelect).eq('id', id).single();
     final lines = await sb.from('po_lines')
-        .select('qty,received_qty,unit_price,tax_rate,hsn_code,description,item_catalog(name)')
+        .select('qty,received_qty,unit_price,tax_rate,hsn_code,description,item_catalog_id,item_catalog(name)')
         .eq('po_id', id);
     final events = await sb.from('po_approval_events')
         .select('event,note,from_status,to_status,created_at,profiles(full_name)')
@@ -466,9 +466,28 @@ class ProcurementRepo {
   Future<void> finalApprovePo(String poId, {String? note}) =>
       sb.rpc('fn_final_approve_po', params: {'p_po': poId, 'p_note': note});
 
-  /// Reject a PO with a reason (frees the demand back onto To-Order).
+  /// Reject a PO with a reason — sends it back to procurement to fix & resubmit.
   Future<void> rejectPo(String poId, String reason) =>
       sb.rpc('fn_reject_po', params: {'p_po': poId, 'p_reason': reason});
+
+  /// Fix a rejected PO and send it round the approval chain again. Replaces the
+  /// lines + vendor/terms and re-enters at the PM (project PO) or final approval.
+  Future<void> resubmitPo(String poId, {
+    String? vendorId, DateTime? deliveryDate, String? paymentTerms, String? notes, String? shipTo,
+    required List<({String itemId, int qty, double unitPrice, double taxRate})> lines,
+  }) =>
+      sb.rpc('fn_resubmit_po', params: {
+        'p_po': poId,
+        'p_vendor': vendorId,
+        'p_delivery_date': deliveryDate?.toIso8601String().split('T').first,
+        'p_lines': [
+          for (final l in lines)
+            {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate},
+        ],
+        'p_notes': notes,
+        'p_payment_terms': paymentTerms,
+        'p_ship_to': shipTo,
+      });
 
   /// POs awaiting a signature — the approvals inbox (PM + final approver).
   Future<List<PoApproval>> poApprovals() async {

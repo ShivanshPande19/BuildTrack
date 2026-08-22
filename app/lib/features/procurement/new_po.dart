@@ -26,7 +26,12 @@ class NewPoScreen extends ConsumerStatefulWidget {
     this.requirementId,
     this.stockRequest,
     this.generalOnly = false,
+    this.editPo,
   });
+
+  /// When set, the screen edits a rejected PO and resubmits it (fn_resubmit_po)
+  /// instead of raising a new one.
+  final PoDetail? editPo;
 
   /// Pre-fill: the project this PO is for (null = general / stock PO).
   final String? initialProjectId;
@@ -65,9 +70,33 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   static final _fmt = DateFormat('d MMM');
   static final _money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
+  bool get _isEdit => widget.editPo != null;
+
   @override
   void initState() {
     super.initState();
+    if (_isEdit) {
+      // Re-open a rejected PO with everything it had, ready to fix.
+      final po = widget.editPo!.po;
+      _vendorId = po.vendorId;
+      _delivery = po.deliveryDate;
+      _termsC.text = po.paymentTerms ?? '';
+      for (final it in widget.editPo!.items) {
+        final line = _Line()
+          ..itemId = it.itemCatalogId
+          ..qty = it.qty < 1 ? 1 : it.qty
+          ..taxRate = _gstRates.contains(it.taxRate) ? it.taxRate : 18;
+        if (it.unitPrice > 0) {
+          line.price.text = it.unitPrice % 1 == 0
+              ? it.unitPrice.toInt().toString()
+              : it.unitPrice.toString();
+        }
+        if (it.itemCatalogId != null) _extraItems.add(OptRef(it.itemCatalogId!, it.name));
+        _lines.add(line);
+      }
+      if (_lines.isEmpty) _lines.add(_Line());
+      return;
+    }
     _projectId = widget.generalOnly ? null : widget.initialProjectId;
     final l = _Line();
     if (widget.initialItem != null) {
@@ -92,7 +121,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
 
   Future<void> _submit() async {
     final valid = _lines.where((l) => l.itemId != null).toList();
-    if (_vendorId == null) {
+    if (!_isEdit && _vendorId == null) {
       setState(() => _error = 'Pick a vendor.');
       return;
     }
@@ -101,28 +130,33 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
       return;
     }
     setState(() { _saving = true; _error = null; });
+    final lines = [
+      for (final l in valid)
+        (itemId: l.itemId!, qty: l.qty, unitPrice: _priceOf(l), taxRate: l.taxRate),
+    ];
+    final terms = _termsC.text.trim().isEmpty ? null : _termsC.text.trim();
     try {
-      await ref.read(procurementRepoProvider).createPo(
-        projectId: _projectId,
-        vendorId: _vendorId,
-        deliveryDate: _delivery,
-        paymentTerms: _termsC.text.trim().isEmpty ? null : _termsC.text.trim(),
-        requirementId: widget.requirementId,
-        stockRequestId: widget.stockRequest?.id,
-        lines: [
-          for (final l in valid)
-            (itemId: l.itemId!, qty: l.qty, unitPrice: _priceOf(l), taxRate: l.taxRate),
-        ],
-      );
-      // Refresh everything the new PO touches.
+      final repo = ref.read(procurementRepoProvider);
+      if (_isEdit) {
+        await repo.resubmitPo(widget.editPo!.po.id,
+          vendorId: _vendorId, deliveryDate: _delivery, paymentTerms: terms, lines: lines);
+        ref.invalidate(poDetailProvider(widget.editPo!.po.id));
+      } else {
+        await repo.createPo(
+          projectId: _projectId, vendorId: _vendorId, deliveryDate: _delivery, paymentTerms: terms,
+          requirementId: widget.requirementId, stockRequestId: widget.stockRequest?.id, lines: lines);
+      }
+      // Refresh everything the PO touches.
       ref.invalidate(purchaseOrdersProvider);
       ref.invalidate(poApprovalsProvider);
       ref.invalidate(toOrderProvider);
       ref.invalidate(stockRequestsProvider);
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: BT.ink, content: Text('Purchase order raised — sent for approval.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.ink, content: Text(_isEdit
+            ? 'Resubmitted — sent for approval.'
+            : 'Purchase order raised — sent for approval.')));
       }
     } catch (e) {
       setState(() => _error = friendlyError(e));
@@ -220,14 +254,36 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
             ),
           ]),
           const SizedBox(height: 14),
-          Text('New PO', style: display(29, w: FontWeight.w500)),
+          Text(_isEdit ? 'Edit PO' : 'New PO', style: display(29, w: FontWeight.w500)),
           const SizedBox(height: 4),
-          const Text('Goes to the PM to sign, then for final approval.',
-            style: TextStyle(color: BT.mut, fontSize: 12.5)),
-          const SizedBox(height: 18),
+          Text(_isEdit
+            ? 'Fix what was flagged and send it round again.'
+            : 'Goes to the PM to sign, then for final approval.',
+            style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+          const SizedBox(height: 16),
+
+          // Why it came back — so procurement fixes the right thing.
+          if (_isEdit && (widget.editPo!.po.rejectionReason?.isNotEmpty ?? false)) ...[
+            Container(
+              padding: const EdgeInsets.all(13),
+              decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(13)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.undo_rounded, size: 18, color: BT.coral),
+                const SizedBox(width: 9),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const Text('Sent back', style: TextStyle(fontWeight: FontWeight.w700, color: BT.coral, fontSize: 13.5)),
+                  const SizedBox(height: 3),
+                  Text(widget.editPo!.po.rejectionReason!, style: const TextStyle(fontSize: 12.5, height: 1.3)),
+                ])),
+              ]),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           _label('PROJECT'),
-          if (locked)
+          if (_isEdit)
+            _staticField(widget.editPo!.po.projectCode ?? 'General stock')
+          else if (locked)
             _staticField('General stock — no project')
           else
             _dropdown<String?>(
@@ -239,11 +295,13 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
               ],
               onChanged: (v) => setState(() => _projectId = v),
             ),
-          const SizedBox(height: 6),
-          Text(_projectId == null
-            ? 'A general PO skips the PM and goes straight to final approval.'
-            : 'A project PO is signed by the build\'s PM first.',
-            style: const TextStyle(color: BT.mut2, fontSize: 11.5)),
+          if (!_isEdit) ...[
+            const SizedBox(height: 6),
+            Text(_projectId == null
+              ? 'A general PO skips the PM and goes straight to final approval.'
+              : 'A project PO is signed by the build\'s PM first.',
+              style: const TextStyle(color: BT.mut2, fontSize: 11.5)),
+          ],
 
           const SizedBox(height: 12),
           _label('VENDOR'),
@@ -305,7 +363,8 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
           const SizedBox(height: 20),
           _saving
             ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Raise & send for approval', icon: Icons.send_rounded, onTap: _submit),
+            : PrimaryButton(_isEdit ? 'Resubmit for approval' : 'Raise & send for approval',
+                icon: Icons.send_rounded, onTap: _submit),
         ],
       )),
     );

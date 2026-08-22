@@ -291,7 +291,7 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
             // so those filters exclude ones still in approval.
             final filtered = switch (_filter) {
               'all'      => list,
-              'approval' => list.where((o) => o.isPendingApproval).toList(),
+              'approval' => list.where((o) => o.isPendingApproval || o.isRejected).toList(),
               _          => list.where((o) => o.isApproved && o.status == _filter).toList(),
             };
             if (filtered.isEmpty) {

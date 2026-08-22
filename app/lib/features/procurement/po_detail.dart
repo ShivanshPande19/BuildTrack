@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import 'new_po.dart';
 
 /// Procurement / PM / Admin — PO detail (pr3).
 ///
@@ -257,6 +258,11 @@ class PoDetailScreen extends ConsumerWidget {
             ])),
         ),
       ),
+      // A sent-back PO is procurement's to fix and resubmit — the rework loop.
+      if (po.isRejected && (role == 'procurement' || role == 'admin'))
+        PrimaryButton('Fix & resubmit', icon: Icons.edit_rounded, bg: BT.ink, fg: BT.card,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => NewPoScreen(editPo: d)))),
       if (!canPmSign && !canFinal && !canReject && po.isPendingApproval)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),

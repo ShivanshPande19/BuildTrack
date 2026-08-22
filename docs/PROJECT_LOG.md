@@ -168,8 +168,11 @@ fulfilment lifecycle (`ordered → dispatched → received`):
   by RLS). Computes header totals from per-line rate + GST, routes project POs
   to the PM and general/stock POs straight to final approval, and parks the
   requirement / stock request it fulfils.
-- `fn_pm_sign_po` · `fn_final_approve_po` · `fn_reject_po` (reason mandatory;
-  rejection frees the demand back onto To-Order).
+- `fn_pm_sign_po` · `fn_final_approve_po` · `fn_reject_po` · `fn_resubmit_po`.
+  Rejection is a **rework loop, not a dead end**: the PO goes back to
+  procurement with the remark (the requirement stays parked), they fix it and
+  resubmit, and it re-enters the chain from the top. When the *owner* rejects a
+  PO the PM had signed, the PM is kept in the loop too.
 - `po_approval_events` — an immutable, timestamped trail of every signature and
   rejection (who, when): **the delay log for approvals**.
 - A guard trigger refuses to dispatch/receive a PO until it is approved.
