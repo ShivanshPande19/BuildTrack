@@ -42,7 +42,12 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
   the PM. Guard trigger blocks dispatch/receive until approved. `po_approval_events` = timestamped
   delay trail (who signed when); `v_po_pending_approvals` = waiting-time queue. **PO Approvals** inbox
   on PM home + admin dashboard. New PO is the single raise-path (To-Order/Store reorders open it
-  pre-filled). *(Office-level PO PDF — GST breakup, HSN, signatory — follows in a second PR.)*
+  pre-filled). Rejection is a **rework loop** (fix & resubmit), not a dead end.
+- ✅ **Office-level PO document** (`pdf` + `printing`) — a proper GST purchase order: buyer + supplier
+  with GSTIN, line items with HSN/SAC + rate, **CGST/SGST (same state) or IGST (inter-state)** split,
+  grand total **in words**, terms, and an **authorised-signatory block filled from the approval trail**
+  (prepared / checked by PM / approved, with dates). View · print · share from PO detail. Buyer identity
+  is set in Admin → Team → **Company details**; vendor GSTIN/state captured when adding a vendor.
 
 ## Shared / common
 - ✅ `common/notifications.dart`, `common/profile.dart` — reused across roles

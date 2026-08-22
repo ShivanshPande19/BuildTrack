@@ -456,7 +456,7 @@ class ProcurementRepo {
     String? projectId, String? vendorId,
     DateTime? deliveryDate, String? paymentTerms, String? notes, String? shipTo,
     String? requirementId, String? stockRequestId,
-    required List<({String itemId, int qty, double unitPrice, double taxRate})> lines,
+    required List<({String itemId, int qty, double unitPrice, double taxRate, String? hsnCode})> lines,
   }) async {
     final id = await sb.rpc('fn_create_po', params: {
       'p_vendor': vendorId,
@@ -464,7 +464,7 @@ class ProcurementRepo {
       'p_delivery_date': deliveryDate?.toIso8601String().split('T').first,
       'p_lines': [
         for (final l in lines)
-          {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate},
+          {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate, 'hsn_code': l.hsnCode},
       ],
       'p_notes': notes,
       'p_payment_terms': paymentTerms,
@@ -491,7 +491,7 @@ class ProcurementRepo {
   /// lines + vendor/terms and re-enters at the PM (project PO) or final approval.
   Future<void> resubmitPo(String poId, {
     String? vendorId, DateTime? deliveryDate, String? paymentTerms, String? notes, String? shipTo,
-    required List<({String itemId, int qty, double unitPrice, double taxRate})> lines,
+    required List<({String itemId, int qty, double unitPrice, double taxRate, String? hsnCode})> lines,
   }) =>
       sb.rpc('fn_resubmit_po', params: {
         'p_po': poId,
@@ -499,7 +499,7 @@ class ProcurementRepo {
         'p_delivery_date': deliveryDate?.toIso8601String().split('T').first,
         'p_lines': [
           for (final l in lines)
-            {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate},
+            {'item_catalog_id': l.itemId, 'qty': l.qty, 'unit_price': l.unitPrice, 'tax_rate': l.taxRate, 'hsn_code': l.hsnCode},
         ],
         'p_notes': notes,
         'p_payment_terms': paymentTerms,
@@ -521,11 +521,44 @@ class ProcurementRepo {
     return (d as List).map((e) => StockRequest.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// Add a new vendor.
-  Future<void> addVendor({required String name, String? category, int avgLead = 0}) async {
+  /// Add a new vendor, with the tax identity a PO document needs.
+  Future<void> addVendor({required String name, String? category, int avgLead = 0,
+      String? gstin, String? address, String? state, String? email}) async {
     await sb.from('vendors').insert({
       'name': name, 'category': category, 'avg_lead_time_days': avgLead, 'reliability_score': 100,
+      'gstin': gstin, 'address': address, 'state': state, 'email': email,
     });
+  }
+
+  /// One vendor with full detail (for the PO document's supplier block).
+  Future<VendorRow?> vendorById(String id) async {
+    final d = await sb.from('vendors')
+        .select('id,name,category,gstin,address,state,email,avg_lead_time_days,reliability_score')
+        .eq('id', id).maybeSingle();
+    return d == null ? null : VendorRow.fromMap(d);
+  }
+
+  /// The buyer identity shown at the top of a PO document.
+  Future<CompanySettings> companySettings() async {
+    final d = await sb.from('company_settings').select().limit(1).maybeSingle();
+    return CompanySettings.fromMap(d ?? const <String, dynamic>{});
+  }
+
+  /// Save the buyer identity (admin only, enforced by RLS).
+  Future<void> saveCompanySettings({required String name, String? address,
+      String? gstin, String? state, String? phone, String? email}) async {
+    await sb.from('company_settings').update({
+      'name': name, 'address': address, 'gstin': gstin, 'state': state,
+      'phone': phone, 'email': email, 'updated_at': DateTime.now().toIso8601String(),
+    }).eq('only_one', true);
+  }
+
+  /// Everything needed to render a PO document: buyer + supplier + the PO.
+  Future<PoDocData> poDocData(String poId) async {
+    final detail = await poDetail(poId);
+    final company = await companySettings();
+    final vendor = detail.po.vendorId == null ? null : await vendorById(detail.po.vendorId!);
+    return PoDocData(company: company, vendor: vendor, detail: detail);
   }
 
   /// Mark a PO received: status→received, lines fully received, GRN logged,
@@ -540,7 +573,7 @@ class ProcurementRepo {
   /// Vendors with reliability + lead time.
   Future<List<VendorRow>> vendors() async {
     final d = await sb.from('vendors')
-        .select('id,name,category,avg_lead_time_days,reliability_score')
+        .select('id,name,category,gstin,address,state,email,avg_lead_time_days,reliability_score')
         .order('name', ascending: true);
     return (d as List).map((e) => VendorRow.fromMap(e as Map<String, dynamic>)).toList();
   }
@@ -587,6 +620,16 @@ final poApprovalsProvider = FutureProvider<List<PoApproval>>((ref) {
   ref.watch(authStateProvider);
   return ref.read(procurementRepoProvider).poApprovals();
 });
+
+/// The buyer identity for the PO document (and the Company Settings screen).
+final companySettingsProvider = FutureProvider<CompanySettings>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(procurementRepoProvider).companySettings();
+});
+
+/// Everything needed to render a PO document, keyed by PO id.
+final poDocProvider = FutureProvider.family<PoDocData, String>(
+    (ref, id) => ref.read(procurementRepoProvider).poDocData(id));
 
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
