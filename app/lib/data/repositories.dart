@@ -422,10 +422,27 @@ class ProcurementRepo {
     return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
   }
 
-  /// Add a new catalog item inline (from the New PO flow) and return it.
-  Future<OptRef> createItem({required String name, String? category, int leadTimeDays = 0}) async {
+  /// Essentials only — general stock the Store keeps (sheets, metal, wheels),
+  /// not project-specific parts. Feeds the Store's "Request from procurement"
+  /// picker so a project item like an LED screen never shows up there.
+  Future<List<OptRef>> essentials() async {
+    final d = await sb.from('item_catalog').select('id,name')
+        .eq('is_essential', true).order('name', ascending: true);
+    return (d as List).map((e) => OptRef(e['id'] as String, (e['name'] ?? '') as String)).toList();
+  }
+
+  /// Add a new catalog item inline (from the New PO flow, or as a Store
+  /// essential). Essentials the Store reorders are bulk by default, so callers
+  /// creating one pass essential: true, serialized: false.
+  Future<OptRef> createItem({
+    required String name, String? category, int leadTimeDays = 0,
+    bool essential = false, bool serialized = true,
+  }) async {
     final d = await sb.from('item_catalog')
-        .insert({'name': name, 'category': category, 'lead_time_days': leadTimeDays})
+        .insert({
+          'name': name, 'category': category, 'lead_time_days': leadTimeDays,
+          'is_essential': essential, 'serialized': serialized,
+        })
         .select('id,name').single();
     return OptRef(d['id'] as String, d['name'] as String);
   }
@@ -594,6 +611,8 @@ final allProjectsProvider = FutureProvider<List<Project>>(
     (ref) => ref.read(projectsRepoProvider).all());
 final itemsProvider = FutureProvider<List<OptRef>>(
     (ref) => ref.read(procurementRepoProvider).items());
+final essentialItemsProvider = FutureProvider<List<OptRef>>(
+    (ref) => ref.read(procurementRepoProvider).essentials());
 
 /// POs awaiting a signature — feeds the PM's and the final approver's inbox.
 /// (Distinct from `pendingApprovalsProvider`, which is stage-completion approvals.)
