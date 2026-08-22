@@ -53,6 +53,7 @@ class _Line {
   String? itemId;
   int qty = 1;
   final TextEditingController price = TextEditingController();
+  final TextEditingController hsn = TextEditingController();
   double taxRate = 18; // GST %; most goods here sit at 18%
 }
 
@@ -91,6 +92,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
               ? it.unitPrice.toInt().toString()
               : it.unitPrice.toString();
         }
+        if (it.hsnCode != null) line.hsn.text = it.hsnCode!;
         if (it.itemCatalogId != null) _extraItems.add(OptRef(it.itemCatalogId!, it.name));
         _lines.add(line);
       }
@@ -110,7 +112,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   @override
   void dispose() {
     _termsC.dispose();
-    for (final l in _lines) { l.price.dispose(); }
+    for (final l in _lines) { l.price.dispose(); l.hsn.dispose(); }
     super.dispose();
   }
 
@@ -132,7 +134,8 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     setState(() { _saving = true; _error = null; });
     final lines = [
       for (final l in valid)
-        (itemId: l.itemId!, qty: l.qty, unitPrice: _priceOf(l), taxRate: l.taxRate),
+        (itemId: l.itemId!, qty: l.qty, unitPrice: _priceOf(l), taxRate: l.taxRate,
+         hsnCode: l.hsn.text.trim().isEmpty ? null : l.hsn.text.trim()),
     ];
     final terms = _termsC.text.trim().isEmpty ? null : _termsC.text.trim();
     try {
@@ -472,12 +475,24 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
               )),
             ),
           ]),
-          if (_priceOf(l) > 0) Padding(
-            padding: const EdgeInsets.only(top: 8),
-            child: Align(alignment: Alignment.centerRight, child: Text(
+          const SizedBox(height: 8),
+          Row(children: [
+            // HSN / SAC — optional, but it's what makes the PO GST-compliant.
+            SizedBox(width: 132, child: Container(
+              height: 40, padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(10)),
+              child: Center(child: TextField(
+                controller: l.hsn,
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: BT.ink),
+                decoration: const InputDecoration(border: InputBorder.none, isDense: true,
+                  hintText: 'HSN / SAC', hintStyle: TextStyle(color: BT.mut2, fontWeight: FontWeight.w500, fontSize: 13)),
+              )),
+            )),
+            const Spacer(),
+            if (_priceOf(l) > 0) Text(
               '${_money.format(l.qty * _priceOf(l))} + ${l.taxRate.toInt()}% GST',
-              style: const TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600))),
-          ),
+              style: const TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600)),
+          ]),
         ]),
       ),
     );

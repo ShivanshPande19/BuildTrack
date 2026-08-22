@@ -397,20 +397,51 @@ class PoDetail {
   PoDetail(this.po, this.items, {this.events = const []});
 }
 
-/// A vendor row with reliability + lead time.
+/// A vendor row with reliability + lead time, plus the tax identity a proper
+/// purchase-order document needs (GSTIN, address, state for CGST/SGST vs IGST).
 class VendorRow {
   final String id, name;
-  final String? category;
+  final String? category, gstin, address, state, email;
   final int avgLead, reliability;
   VendorRow({required this.id, required this.name, this.category,
+    this.gstin, this.address, this.state, this.email,
     this.avgLead = 0, this.reliability = 100});
   factory VendorRow.fromMap(Map<String, dynamic> m) => VendorRow(
     id: m['id'] as String,
     name: m['name'] as String? ?? '',
     category: m['category'] as String?,
+    gstin: m['gstin'] as String?,
+    address: m['address'] as String?,
+    state: m['state'] as String?,
+    email: m['email'] as String?,
     avgLead: (m['avg_lead_time_days'] as num?)?.toInt() ?? 0,
     reliability: (m['reliability_score'] as num?)?.toInt() ?? 100,
   );
+}
+
+/// The buyer's identity for the top of a PO document (single-row settings).
+class CompanySettings {
+  final String name;
+  final String? address, gstin, state, phone, email, logoUrl;
+  CompanySettings({required this.name, this.address, this.gstin, this.state,
+    this.phone, this.email, this.logoUrl});
+  factory CompanySettings.fromMap(Map<String, dynamic> m) => CompanySettings(
+    name: m['name'] as String? ?? 'Azimuth Business on Wheels',
+    address: m['address'] as String?,
+    gstin: m['gstin'] as String?,
+    state: m['state'] as String?,
+    phone: m['phone'] as String?,
+    email: m['email'] as String?,
+    logoUrl: m['logo_url'] as String?,
+  );
+}
+
+/// Everything needed to render a purchase-order document.
+class PoDocData {
+  final CompanySettings company;
+  final VendorRow? vendor;
+  final PoDetail detail;
+  PoDocData({required this.company, required this.vendor, required this.detail});
 }
 
 

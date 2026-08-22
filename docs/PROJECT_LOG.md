@@ -184,6 +184,13 @@ fulfilment lifecycle (`ordered → dispatched → received`):
 - RLS: PO costs are now kept off the shop floor (workshop/design/service/client
   can't read POs). 111 backend assertions pass; migration is idempotent.
 
+**Office-level PO document (app-only follow-up)** — a proper GST purchase order is generated on
+device with `pdf` + `printing`: buyer + supplier (GSTIN), line items with HSN/SAC + rate, the
+CGST/SGST (same state) or IGST (inter-state) split, the grand total in words, terms, and an
+authorised-signatory block filled from the approval trail. View / print / share from the PO detail.
+Buyer identity lives in Admin → Team → Company details; vendor GSTIN + state are captured on the
+vendor form. New deps: `pdf`, `printing`.
+
 **App** — the New PO form captures per-line rate + GST + delivery/payment terms
 and shows a live total; it is the single path a PO is raised through (To-Order
 alerts and Store reorders open it pre-filled). PO detail shows the approval

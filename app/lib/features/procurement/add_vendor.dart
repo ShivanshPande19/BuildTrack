@@ -15,6 +15,10 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
   final _name = TextEditingController();
   final _category = TextEditingController();
   final _lead = TextEditingController();
+  final _gstin = TextEditingController();
+  final _address = TextEditingController();
+  final _state = TextEditingController();
+  final _email = TextEditingController();
   bool _saving = false;
   String? _error;
 
@@ -25,10 +29,15 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
     }
     setState(() { _saving = true; _error = null; });
     try {
+      String? t(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
       await ref.read(procurementRepoProvider).addVendor(
         name: _name.text.trim(),
-        category: _category.text.trim().isEmpty ? null : _category.text.trim(),
+        category: t(_category),
         avgLead: int.tryParse(_lead.text.trim()) ?? 0,
+        gstin: t(_gstin),
+        address: t(_address),
+        state: t(_state),
+        email: t(_email),
       );
       ref.invalidate(vendorsProvider);
       if (mounted) {
@@ -66,6 +75,18 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
           _field('CATEGORY', _category, hint: 'Electronics / Fabrication …'),
           const SizedBox(height: 11),
           _field('AVERAGE LEAD TIME (DAYS)', _lead, hint: '4', number: true),
+          const SizedBox(height: 11),
+          _field('GSTIN', _gstin, hint: '27ABCDE1234F1Z5'),
+          const SizedBox(height: 11),
+          _field('ADDRESS', _address, hint: 'Street, city, PIN'),
+          const SizedBox(height: 11),
+          _field('STATE', _state, hint: 'Maharashtra'),
+          const SizedBox(height: 6),
+          const Padding(padding: EdgeInsets.only(left: 4),
+            child: Text('State decides the tax split on the PO — same state as us = CGST + SGST, otherwise IGST.',
+              style: TextStyle(color: BT.mut2, fontSize: 11))),
+          const SizedBox(height: 11),
+          _field('EMAIL', _email, hint: 'orders@vendor.com'),
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 14),
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
           const SizedBox(height: 22),
