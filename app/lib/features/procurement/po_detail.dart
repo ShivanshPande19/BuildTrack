@@ -367,7 +367,7 @@ class PoDetailScreen extends ConsumerWidget {
             initialDate: now.add(const Duration(days: 7)),
             firstDate: now, lastDate: now.add(const Duration(days: 365)),
             helpText: 'Expected arrival date');
-          if (eta == null) return;
+          if (eta == null || !context.mounted) return;
           await _run(context, ref, () => repo.markDispatched(poId, expectedDate: eta),
             'PO dispatched · arriving ${_fmt.format(eta)}');
         });
