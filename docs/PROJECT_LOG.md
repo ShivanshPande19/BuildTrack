@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **22 Aug 2026** (project dossier)
+Last updated: **22 Aug 2026** (truck record)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: **22 Aug 2026** (project dossier)
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0022` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0023` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
 | **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
@@ -151,6 +151,26 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 22 Aug 2026 — Per-truck complete record (migration `0023`)
+
+Phase 3 of the ops backbone. Every part fitted to a build already lived in
+`component_instances` (serial, bill, warranty, the stage it went into, who
+installed it — Hero #2); this surfaces it as one screen — the truck's digital
+twin — so a warranty claim, an audit or a handover pack never means hunting
+stage by stage.
+
+- **`v_truck_components`** (migration `0023`) — every installed component for a
+  build joined to its item, vendor, stage and installer. Read model, no new
+  tables; stays off the client via RLS.
+- **Truck Record** screen (Admin → dossier → *Truck record*): a dark summary
+  (parts tracked + warranties **in-warranty / expiring / expired**), the
+  components **grouped by the stage they were fitted in** — each with serial,
+  vendor, install date + installer, a warranty badge and its **bill** (tap to
+  view) — and the build's documents.
+
+**Watch out when deploying:** run `0023_truck_record.sql` (view granted to
+`authenticated`).
 
 ### 22 Aug 2026 — Project dossier: full pipeline + delay attribution (migration `0022`)
 
