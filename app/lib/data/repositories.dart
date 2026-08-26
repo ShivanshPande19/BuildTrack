@@ -107,6 +107,16 @@ class ProjectsRepo {
     );
   }
 
+  /// Every delay logged across a build (v_project_delays) — which stage, who,
+  /// why, how many days. Powers the dossier's delay-attribution section.
+  Future<List<ProjectDelay>> projectDelays(String projectId) async {
+    final d = await sb.from('v_project_delays')
+        .select()
+        .eq('project_id', projectId)
+        .order('created_at', ascending: true);
+    return (d as List).map((e) => ProjectDelay.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   // ── Hero #1: project requirements (customizable) ──────────────────
   Future<List<Requirement>> requirements(String projectId) async {
     final d = await sb.from('procurement_requirements')
@@ -646,6 +656,10 @@ final poDocProvider = FutureProvider.family<PoDocData, String>(
 /// Project detail (project + stages), keyed by project id.
 final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
     (ref, id) => ref.read(projectsRepoProvider).detail(id));
+
+/// Delays logged across a build (dossier attribution), keyed by project id.
+final projectDelaysProvider = FutureProvider.family<List<ProjectDelay>, String>(
+    (ref, id) => ref.read(projectsRepoProvider).projectDelays(id));
 
 /// A build's documents, staff view (keyed by project id).
 final projectDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
