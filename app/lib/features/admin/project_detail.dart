@@ -8,6 +8,7 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'stage_detail.dart';
 import 'project_requirements.dart';
+import 'project_dossier.dart';
 import '../client/truck_3d.dart';
 
 /// Admin / PM — Project detail (a4): progress, delivery date, who owns the build,
@@ -171,6 +172,31 @@ class ProjectDetailScreen extends ConsumerWidget {
           ]),
         ),
       ),
+      // Admin's read-only dossier: the whole pipeline + delay attribution.
+      if (canAssignPm) ...[
+        const SizedBox(height: 12),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => ProjectDossierScreen(projectId: projectId, code: d.project.code))),
+          child: AppCard(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+            child: Row(children: [
+              Container(width: 40, height: 40, alignment: Alignment.center,
+                decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.timeline_rounded, size: 20, color: BT.ink)),
+              const SizedBox(width: 13),
+              const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('Pipeline & delays', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                SizedBox(height: 2),
+                Text('Full stage history · who · where it slipped', style: TextStyle(color: BT.mut, fontSize: 12)),
+              ])),
+              const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+            ]),
+          ),
+        ),
+      ],
+
       // Tag why a build slipped, and optionally push the delivery date by the
       // same number of days (which re-runs backward scheduling — the cascade).
       if (canEditTimeline && d.project.status != 'delivered' && d.stages.isNotEmpty) ...[

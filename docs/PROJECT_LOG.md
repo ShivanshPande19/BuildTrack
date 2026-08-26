@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **22 Aug 2026** (ops command center)
+Last updated: **22 Aug 2026** (project dossier)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: **22 Aug 2026** (ops command center)
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0021` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0022` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
 | **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
@@ -151,6 +151,30 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 22 Aug 2026 — Project dossier: full pipeline + delay attribution (migration `0022`)
+
+Phase 2 of the ops backbone. The command center says *which* builds need a look;
+the dossier tells the whole story of one build in a single read-only screen, so
+the owner never has to drill stage by stage or ask who held what.
+
+- **`v_project_delays`** (migration `0022`) — joins each `delay_log` to its stage,
+  the person who logged it, and the stage's assignee. Read model only; no new
+  tables. RLS still keeps delays off the client.
+- **Project Dossier** screen (Admin → Command Center → tap a build · or Project
+  detail → *Pipeline & delays*):
+  - **Where it is / who has it** — the current stage, the assignee **+ sub-team**,
+    progress, total delay days, delivery date, in one dark summary card.
+  - **Delay ledger** — every slip with the stage, reason, days, the note, and who
+    logged it, plus a running total.
+  - **The pipeline** — every stage read-only: assignee (+ sub-team), discipline,
+    **planned vs actual** dates (late finishes flagged), status, and an inline
+    "slipped N days · reason" badge on the stages that lost time.
+- Command-center rows now open the dossier (the natural drill-down); the dossier
+  has an *Open build controls* link back to the action screen.
+
+**Watch out when deploying:** run `0022_project_delays.sql` (the view is granted
+to `authenticated`).
 
 ### 22 Aug 2026 — Ops command center: sub-teams, PO priority, factory board (migration `0021`)
 

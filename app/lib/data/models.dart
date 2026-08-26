@@ -260,6 +260,31 @@ class StageDelay {
     (m['days_delayed'] as num?)?.toInt() ?? 0, m['note'] as String?);
 }
 
+/// A delay attributed across a build (row of v_project_delays) — which stage
+/// slipped, who logged it, whose stage it was, why, and for how many days.
+class ProjectDelay {
+  final String stageId, stageName;
+  final String? discipline, note, loggedByName, assigneeName;
+  final String reasonCode;   // raw enum, e.g. workshop_capacity
+  final int days;
+  final DateTime? at;
+  ProjectDelay({required this.stageId, required this.stageName, required this.reasonCode,
+    required this.days, this.discipline, this.note, this.loggedByName, this.assigneeName, this.at});
+  /// Human label, e.g. "workshop capacity".
+  String get reason => reasonCode.replaceAll('_', ' ');
+  factory ProjectDelay.fromMap(Map<String, dynamic> m) => ProjectDelay(
+    stageId: m['stage_id'] as String,
+    stageName: m['stage_name'] as String? ?? '',
+    reasonCode: m['reason_code'] as String? ?? 'other',
+    days: (m['days_delayed'] as num?)?.toInt() ?? 0,
+    discipline: m['discipline'] as String?,
+    note: m['note'] as String?,
+    loggedByName: m['logged_by_name'] as String?,
+    assigneeName: m['assignee_name'] as String?,
+    at: parseDate(m['created_at']),
+  );
+}
+
 /// Everything the Stage detail screen shows for one stage.
 class StageBundle {
   final String? assignee;
