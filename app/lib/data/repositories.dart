@@ -117,6 +117,12 @@ class ProjectsRepo {
     return (d as List).map((e) => ProjectDelay.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  /// Recompute every build's status against today's date (delayed / at-risk /
+  /// on-track drift with the calendar, not only with edits). Cheap for the
+  /// fleet sizes here; the dashboards call it so the owner always sees the truth
+  /// even without the daily cron scheduled.
+  Future<void> refreshStatuses() => sb.rpc('fn_refresh_all_statuses');
+
   /// Every component installed on a build (v_truck_components) — the truck's
   /// complete physical record: parts, serials, vendors, bills, warranties.
   Future<List<TruckComponent>> truckComponents(String projectId) async {
@@ -620,6 +626,7 @@ final procurementRepoProvider = Provider<ProcurementRepo>((ref) => ProcurementRe
 final fleetProvider = FutureProvider<FleetData>((ref) async {
   ref.watch(authStateProvider);
   final repo = ref.read(projectsRepoProvider);
+  await repo.refreshStatuses(); // statuses drift with the calendar, so refresh on load
   final projects = await repo.all();
   final due = await repo.orderDue();
   return FleetData(projects, due);
@@ -1489,6 +1496,7 @@ final myProjectsProvider = FutureProvider<List<Project>>((ref) {
 });
 final pmDashboardProvider = FutureProvider<({List<Project> projects, List<ActiveStage> stages})>((ref) async {
   ref.watch(authStateProvider);
+  await ref.read(projectsRepoProvider).refreshStatuses(); // statuses drift with the calendar
   final repo = ref.read(pmRepoProvider);
   final projects = await repo.myProjects();
   final stages = await repo.activeStages(projects);
@@ -1510,7 +1518,12 @@ final membersProvider   = FutureProvider<List<Member>>((ref) { ref.watch(authSta
 final subTeamsProvider  = FutureProvider<List<SubTeam>>((ref) { ref.watch(authStateProvider); return ref.read(adminRepoProvider).subTeams(); });
 
 /// The factory board for the admin command center.
-final opsBoardProvider  = FutureProvider<List<OpsRow>>((ref) { ref.watch(authStateProvider); return ref.read(projectsRepoProvider).opsBoard(); });
+final opsBoardProvider  = FutureProvider<List<OpsRow>>((ref) async {
+  ref.watch(authStateProvider);
+  final repo = ref.read(projectsRepoProvider);
+  await repo.refreshStatuses(); // keep the board honest as the calendar moves
+  return repo.opsBoard();
+});
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
