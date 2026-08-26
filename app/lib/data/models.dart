@@ -83,13 +83,66 @@ class ApprovalItem {
 /// A team member (profiles row).
 class Member {
   final String id, name, email, role, status;
-  Member({required this.id, required this.name, required this.email, required this.role, required this.status});
-  factory Member.fromMap(Map<String, dynamic> m) => Member(
+  final String? subTeamId, subTeamName;   // team within the department (optional)
+  Member({required this.id, required this.name, required this.email, required this.role,
+    required this.status, this.subTeamId, this.subTeamName});
+  factory Member.fromMap(Map<String, dynamic> m) {
+    final st = m['sub_teams'] as Map<String, dynamic>?;
+    return Member(
+      id: m['id'] as String,
+      name: m['full_name'] as String? ?? '',
+      email: m['email'] as String? ?? '',
+      role: m['role'] as String? ?? '',
+      status: m['status'] as String? ?? 'active',
+      subTeamId: m['sub_team_id'] as String?,
+      subTeamName: st?['name'] as String?,
+    );
+  }
+}
+
+/// A team within a department (e.g. Workshop → Welding). Departments without
+/// sub-teams (Design) simply have none.
+class SubTeam {
+  final String id, role, name;
+  SubTeam({required this.id, required this.role, required this.name});
+  factory SubTeam.fromMap(Map<String, dynamic> m) => SubTeam(
     id: m['id'] as String,
-    name: m['full_name'] as String? ?? '',
-    email: m['email'] as String? ?? '',
     role: m['role'] as String? ?? '',
-    status: m['status'] as String? ?? 'active',
+    name: m['name'] as String? ?? '',
+  );
+}
+
+/// One active build on the factory board (row of v_ops_board): where it is,
+/// which department + team + person is on it, and for how long.
+class OpsRow {
+  final String projectId, code, name, status;
+  final int progressPct;
+  final String? pmName, currentStageName, currentDiscipline, currentStageStatus,
+      assigneeName, assigneeRole, subTeamName;
+  final int? daysInStage;
+  final DateTime? stageDue, nextOrderBy;
+  OpsRow({required this.projectId, required this.code, required this.name, required this.status,
+    this.progressPct = 0, this.pmName, this.currentStageName, this.currentDiscipline,
+    this.currentStageStatus, this.assigneeName, this.assigneeRole, this.subTeamName,
+    this.daysInStage, this.stageDue, this.nextOrderBy});
+  bool get isUnassigned => assigneeName == null || assigneeName!.isEmpty;
+  bool get isIdle => currentStageName == null;
+  factory OpsRow.fromMap(Map<String, dynamic> m) => OpsRow(
+    projectId: m['project_id'] as String,
+    code: m['code'] as String? ?? '',
+    name: m['name'] as String? ?? '',
+    status: m['status'] as String? ?? 'on_track',
+    progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
+    pmName: m['pm_name'] as String?,
+    currentStageName: m['current_stage_name'] as String?,
+    currentDiscipline: m['current_discipline'] as String?,
+    currentStageStatus: m['current_stage_status'] as String?,
+    assigneeName: m['assignee_name'] as String?,
+    assigneeRole: m['assignee_role'] as String?,
+    subTeamName: m['sub_team_name'] as String?,
+    daysInStage: (m['days_in_stage'] as num?)?.toInt(),
+    stageDue: parseDate(m['stage_due']),
+    nextOrderBy: parseDate(m['next_order_by']),
   );
 }
 
@@ -370,9 +423,12 @@ class PoApproval {
   final double amount, waitingHours;
   final bool overdue;
   final DateTime? neededBy;
+  final String priority;      // critical | high | medium | low
+  final int priorityRank;     // 0=critical … 3=low (for sorting)
   PoApproval({required this.id, required this.poNumber, required this.approvalStatus,
     this.vendorName, this.projectCode, this.pmId,
-    this.amount = 0, this.waitingHours = 0, this.overdue = false, this.neededBy});
+    this.amount = 0, this.waitingHours = 0, this.overdue = false, this.neededBy,
+    this.priority = 'medium', this.priorityRank = 2});
   bool get awaitingPm => approvalStatus == 'pending_pm';
   bool get awaitingFinal => approvalStatus == 'pending_final';
   factory PoApproval.fromMap(Map<String, dynamic> m) => PoApproval(
@@ -386,6 +442,8 @@ class PoApproval {
     waitingHours: toMoney(m['waiting_hours']),
     overdue: m['overdue'] == true,
     neededBy: parseDate(m['needed_by']),
+    priority: m['priority'] as String? ?? 'medium',
+    priorityRank: (m['priority_rank'] as num?)?.toInt() ?? 2,
   );
 }
 

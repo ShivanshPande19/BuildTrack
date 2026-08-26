@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **22 Aug 2026**
+Last updated: **22 Aug 2026** (ops command center)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: **22 Aug 2026**
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0020` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0021` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
 | **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
@@ -151,6 +151,32 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 22 Aug 2026 — Ops command center: sub-teams, PO priority, factory board (migration `0021`)
+
+The owner wanted to stop walking the floor asking "which build is where, who's on
+it, what needs signing first". Phase 1 of the operations backbone:
+
+- **Sub-teams.** A department (role) like Workshop splits into teams — Welding,
+  Paint, Electrical, Fitter — while small departments (Design) have none. New
+  `sub_teams` table (department → team) + `profiles.sub_team_id`. Add Member gains
+  a department-aware team picker with inline "new team"; admin manages the list.
+- **PO approval priority.** Many POs land at once; the owner should sign the one
+  that unblocks the soonest delivery first. Priority is derived deterministically
+  from the item's order-by date — overdue = **critical**, ≤3 days = **high**,
+  ≤7 days = **medium**, later = **low**, a general PO with no date = medium — with
+  an **admin override** (`fn_set_po_priority`). The approvals inbox sorts by it and
+  shows a priority stripe + badge; admin taps the badge to bump/clear it.
+- **Command center** (`v_ops_board` → Admin → Home → *Command Center*). One live
+  screen: active builds count + on-track/at-risk/delayed, a **by-department** strip
+  (how many builds each department is on right now), a **needs-attention** list
+  (delayed / at-risk / stuck > 7 days in a stage / order-by passed), and the full
+  board — each build's current stage + department + assignee **+ sub-team** + how
+  long it's sat there + progress + next order-by. Delivered builds drop off.
+
+**Watch out when deploying:** run `0021_ops_command_center.sql`. Sub-teams seed
+Workshop's four; other departments start empty (add via Add Member). Views are
+`grant`ed to `authenticated` in the migration.
 
 ### 22 Aug 2026 — Multi-level PO approval chain + delay trail (migration `0020`)
 

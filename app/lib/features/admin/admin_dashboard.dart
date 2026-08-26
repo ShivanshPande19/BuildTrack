@@ -9,6 +9,7 @@ import 'onboard_project.dart';
 import 'add_member.dart';
 import 'project_detail.dart';
 import 'company_settings.dart';
+import 'ops_center.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../procurement/po_approvals.dart';
@@ -108,6 +109,8 @@ class _HomeTab extends ConsumerWidget {
             ),
           ]),
           const SizedBox(height: 20),
+          _commandCenterCard(context),
+          const SizedBox(height: 4),
           fleet.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 80),
               child: Center(child: CircularProgressIndicator(color: BT.ink))),
@@ -150,6 +153,40 @@ class _HomeTab extends ConsumerWidget {
         child: Text(initial, style: display(15, w: FontWeight.w600, c: const Color(0xFF2A2438)))),
     );
   }
+
+  // ── the owner's command center entry ──────────────────────────
+  Widget _commandCenterCard(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OpsCenterScreen())),
+    child: Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: BT.ink,
+        borderRadius: BorderRadius.circular(BT.radiusCard),
+        boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 28, offset: Offset(0, 14))],
+      ),
+      child: Row(children: [
+        Container(width: 46, height: 46, alignment: Alignment.center,
+          decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(14)),
+          child: const Icon(Icons.hub_rounded, size: 24, color: BT.ink)),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Text('COMMAND CENTER',
+              style: TextStyle(fontSize: 10, letterSpacing: 1.4, color: Color(0xFF918B7C), fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            Container(width: 6, height: 6, decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle)),
+          ]),
+          const SizedBox(height: 3),
+          Text('The whole floor, live', style: display(19, w: FontWeight.w600, c: Colors.white)),
+          const SizedBox(height: 2),
+          const Text('Who\'s on what · which stage · what needs you',
+            style: TextStyle(color: Color(0xFFB4AE9E), fontSize: 12)),
+        ])),
+        const Icon(Icons.arrow_forward_rounded, size: 20, color: Colors.white),
+      ]),
+    ),
+  );
 
   // ── body ──────────────────────────────────────────────────────
   Widget _homeContent(FleetData f) => Column(
