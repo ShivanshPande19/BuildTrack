@@ -20,6 +20,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
   final _password = TextEditingController();
   final _business = TextEditingController();
   String _role = 'procurement';
+  String? _subTeamId;
   bool _saving = false;
   bool _showPass = false;
   String? _error;
@@ -49,7 +50,8 @@ class _AddMemberState extends ConsumerState<AddMember> {
       await ref.read(adminRepoProvider).createMember(
         fullName: _name.text.trim(), email: _email.text.trim(),
         phone: null, role: _role, password: _password.text,
-        businessName: _business.text.trim().isEmpty ? null : _business.text.trim());
+        businessName: _business.text.trim().isEmpty ? null : _business.text.trim(),
+        subTeamId: _subTeamId);
       ref.invalidate(membersProvider);
       if (_role == 'client') ref.invalidate(clientsProvider);
       if (!mounted) return;
@@ -136,6 +138,9 @@ class _AddMemberState extends ConsumerState<AddMember> {
           const SectionLabel('Assign role'),
           Wrap(spacing: 9, runSpacing: 9, children: _roles.map(_roleChip).toList()),
 
+          // Sub-team within the department (optional — small departments have none).
+          if (_role != 'client' && _role != 'admin') _subTeamSection(),
+
           if (_role == 'client') ...[
             const SizedBox(height: 14),
             _field('BUSINESS NAME', _business, hint: 'Chai Point'),
@@ -154,11 +159,95 @@ class _AddMemberState extends ConsumerState<AddMember> {
     );
   }
 
+  String _deptLabel(String role) =>
+      _roles.firstWhere((r) => r[0] == role, orElse: () => [role, role])[1];
+
+  Widget _subTeamSection() {
+    final all = ref.watch(subTeamsProvider).valueOrNull ?? [];
+    final teams = all.where((t) => t.role == _role).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const SectionLabel('Team (optional)'),
+      Padding(padding: const EdgeInsets.only(left: 4, bottom: 10),
+        child: Text('Sub-team within ${_deptLabel(_role)} — e.g. Welding, Paint. Skip if there are none.',
+          style: const TextStyle(color: BT.mut, fontSize: 12, height: 1.35))),
+      Wrap(spacing: 9, runSpacing: 9, children: [
+        for (final t in teams) _subTeamChip(t.id, t.name),
+        _addTeamChip(),
+      ]),
+    ]);
+  }
+
+  Widget _subTeamChip(String id, String name) {
+    final on = _subTeamId == id;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => _subTeamId = on ? null : id),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: on ? BT.lime : BT.card,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: on ? Colors.transparent : BT.line),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Container(width: 8, height: 8,
+            decoration: BoxDecoration(color: on ? BT.ink : BT.mut2, shape: BoxShape.circle)),
+          const SizedBox(width: 8),
+          Text(name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: BT.ink)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _addTeamChip() => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: _addSubTeamDialog,
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: BT.line)),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.add_rounded, size: 16, color: BT.ink), SizedBox(width: 6),
+        Text('New team', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: BT.ink)),
+      ]),
+    ),
+  );
+
+  Future<void> _addSubTeamDialog() async {
+    final c = TextEditingController();
+    final name = await showDialog<String>(context: context, builder: (dctx) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('New team in ${_deptLabel(_role)}', style: display(18, w: FontWeight.w600)),
+      content: Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: TextField(controller: c, autofocus: true,
+          decoration: const InputDecoration(hintText: 'e.g. Welding', border: InputBorder.none))),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx),
+          child: const Text('Cancel', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, c.text.trim()),
+          child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+      ],
+    ));
+    if (name == null || name.isEmpty) return;
+    try {
+      final created = await ref.read(adminRepoProvider).createSubTeam(_role, name);
+      ref.invalidate(subTeamsProvider);
+      if (mounted) setState(() => _subTeamId = created.id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text('Could not add team: $e')));
+      }
+    }
+  }
+
   Widget _roleChip(List<String> r) {
     final on = _role == r[0];
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() { _role = r[0]; _error = null; }),
+      onTap: () => setState(() { _role = r[0]; _subTeamId = null; _error = null; }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(

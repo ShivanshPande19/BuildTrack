@@ -84,6 +84,13 @@ class ProjectsRepo {
     return (data as List).map((e) => OrderDue.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  /// The factory board (v_ops_board): every active build with where it is, which
+  /// department/team + person is on it, and how long it's been there.
+  Future<List<OpsRow>> opsBoard() async {
+    final data = await sb.from('v_ops_board').select();
+    return (data as List).map((e) => OpsRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   /// A single project + its ordered build stages (Project detail screen).
   Future<ProjectDetailData> detail(String id) async {
     final p = await sb.from('projects')
@@ -506,11 +513,16 @@ class ProcurementRepo {
         'p_ship_to': shipTo,
       });
 
-  /// POs awaiting a signature — the approvals inbox (PM + final approver).
+  /// POs awaiting a signature — the approvals inbox (PM + final approver),
+  /// already carrying a deterministic priority + sort rank.
   Future<List<PoApproval>> poApprovals() async {
     final d = await sb.from('v_po_pending_approvals').select();
     return (d as List).map((e) => PoApproval.fromMap(e as Map<String, dynamic>)).toList();
   }
+
+  /// Admin sets or clears a PO's approval priority (null → back to the auto rule).
+  Future<void> setPoPriority(String poId, String? priority) =>
+      sb.rpc('fn_set_po_priority', params: {'p_po': poId, 'p_priority': priority});
 
   /// Pending stock reorder requests raised by Store (general essentials, no
   /// project). These sit alongside project order-by alerts in "To Order".
@@ -1174,17 +1186,36 @@ class AdminRepo {
     return OptRef(tid, name);
   }
 
-  /// List all team members.
+  /// List all team members (with their sub-team, if any).
   Future<List<Member>> members() async {
-    final d = await sb.from('profiles').select('id,full_name,email,role,status').order('full_name', ascending: true);
+    final d = await sb.from('profiles')
+        .select('id,full_name,email,role,status,sub_team_id,sub_teams(name)')
+        .order('full_name', ascending: true);
     return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// The sub-teams (department → team). Used by Add Member + the ops rollups.
+  Future<List<SubTeam>> subTeams() async {
+    final d = await sb.from('sub_teams').select('id,role,name').order('name', ascending: true);
+    return (d as List).map((e) => SubTeam.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Create a new sub-team under a department (admin only, enforced by RLS).
+  Future<SubTeam> createSubTeam(String role, String name) async {
+    final d = await sb.from('sub_teams')
+        .insert({'role': role, 'name': name}).select('id,role,name').single();
+    return SubTeam.fromMap(d);
   }
 
   /// Create a member via the admin-create-member Edge Function (server-side, secure).
   /// If [password] is given → direct create (no email needed); else → email invite.
+  /// [subTeamId] (optional) places them in a team within their department; it is
+  /// set here as a follow-up profile update (admin RLS allows it), so the Edge
+  /// Function doesn't need redeploying.
   Future<void> createMember({
     required String fullName, required String email,
     String? phone, required String role, String? businessName, String? password,
+    String? subTeamId,
   }) async {
     final res = await sb.functions.invoke('admin-create-member', body: {
       'full_name': fullName, 'email': email,
@@ -1195,6 +1226,10 @@ class AdminRepo {
     final data = res.data;
     if (res.status != 200 || (data is Map && data['error'] != null)) {
       throw Exception(data is Map && data['error'] != null ? data['error'] : 'Failed (${res.status})');
+    }
+    final uid = data is Map ? data['user_id'] as String? : null;
+    if (subTeamId != null && uid != null) {
+      await sb.from('profiles').update({'sub_team_id': subTeamId}).eq('id', uid);
     }
   }
 
@@ -1443,6 +1478,10 @@ final workloadProvider = FutureProvider<Map<String, int>>((ref) {
 
 final adminRepoProvider = Provider<AdminRepo>((ref) => AdminRepo());
 final membersProvider   = FutureProvider<List<Member>>((ref) { ref.watch(authStateProvider); return ref.read(adminRepoProvider).members(); });
+final subTeamsProvider  = FutureProvider<List<SubTeam>>((ref) { ref.watch(authStateProvider); return ref.read(adminRepoProvider).subTeams(); });
+
+/// The factory board for the admin command center.
+final opsBoardProvider  = FutureProvider<List<OpsRow>>((ref) { ref.watch(authStateProvider); return ref.read(projectsRepoProvider).opsBoard(); });
 final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
 final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
 final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
