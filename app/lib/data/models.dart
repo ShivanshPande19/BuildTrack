@@ -633,6 +633,42 @@ class ComponentRow {
   bool get hasBill => billUrl != null;
 }
 
+/// One component on a truck's complete record (row of v_truck_components):
+/// what it is, its serial + vendor + bill, its warranty, and where/by whom it
+/// was fitted.
+class TruckComponent {
+  final String id, itemName, serial, status;
+  final String? model, vendorName, billUrl, stageName, stageDiscipline, installedByName;
+  final DateTime? warrantyStart, warrantyEnd, installDate;
+  TruckComponent({required this.id, required this.itemName, required this.serial, required this.status,
+    this.model, this.vendorName, this.billUrl, this.stageName, this.stageDiscipline,
+    this.installedByName, this.warrantyStart, this.warrantyEnd, this.installDate});
+  bool get hasBill => billUrl != null && billUrl!.isNotEmpty;
+  /// none | active | expiring | expired
+  String get warrantyState {
+    if (warrantyEnd == null) return 'none';
+    final now = DateTime.now();
+    if (warrantyEnd!.isBefore(now)) return 'expired';
+    if (warrantyEnd!.isBefore(now.add(const Duration(days: 30)))) return 'expiring';
+    return 'active';
+  }
+  factory TruckComponent.fromMap(Map<String, dynamic> m) => TruckComponent(
+    id: m['id'] as String,
+    itemName: m['item_name'] as String? ?? 'Component',
+    serial: m['serial_number'] as String? ?? '—',
+    status: m['status'] as String? ?? 'installed',
+    model: m['model'] as String?,
+    vendorName: m['vendor_name'] as String?,
+    billUrl: (m['bill_url'] as String?)?.trim().isEmpty ?? true ? null : (m['bill_url'] as String?),
+    stageName: m['stage_name'] as String?,
+    stageDiscipline: m['stage_discipline'] as String?,
+    installedByName: m['installed_by_name'] as String?,
+    warrantyStart: parseDate(m['warranty_start']),
+    warrantyEnd: parseDate(m['warranty_end']),
+    installDate: parseDate(m['install_date']),
+  );
+}
+
 /// A stock line (Store inventory).
 class StockRow {
   final String name, unit;
