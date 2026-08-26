@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'project_detail.dart';
+import 'truck_record.dart';
 
 /// Admin — the project dossier: a read-oriented, accountability view of one
 /// build. Where it is right now and who has it, the full stage pipeline with
@@ -104,6 +105,29 @@ class ProjectDossierScreen extends ConsumerWidget {
       const SizedBox(height: 16),
 
       _summary(context, d, current, members, totalDelay),
+
+      const SizedBox(height: 12),
+      // The truck's complete physical record — parts, serials, warranty, bills.
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => TruckRecordScreen(projectId: projectId, code: d.project.code, name: d.project.name))),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(children: [
+            Container(width: 40, height: 40, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.mint, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.inventory_2_rounded, size: 20, color: BT.ink)),
+            const SizedBox(width: 13),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Truck record', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+              SizedBox(height: 2),
+              Text('Parts · serials · warranty · bills', style: TextStyle(color: BT.mut, fontSize: 12)),
+            ])),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+          ]),
+        ),
+      ),
 
       if (delays.isNotEmpty) ...[
         SectionLabel('Delays · ${delays.length} logged · $totalDelay day${totalDelay == 1 ? '' : 's'} total'),

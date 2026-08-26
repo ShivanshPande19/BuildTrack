@@ -117,6 +117,17 @@ class ProjectsRepo {
     return (d as List).map((e) => ProjectDelay.fromMap(e as Map<String, dynamic>)).toList();
   }
 
+  /// Every component installed on a build (v_truck_components) — the truck's
+  /// complete physical record: parts, serials, vendors, bills, warranties.
+  Future<List<TruckComponent>> truckComponents(String projectId) async {
+    final d = await sb.from('v_truck_components')
+        .select()
+        .eq('project_id', projectId)
+        .order('stage_ord', ascending: true)
+        .order('install_date', ascending: true);
+    return (d as List).map((e) => TruckComponent.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
   // ── Hero #1: project requirements (customizable) ──────────────────
   Future<List<Requirement>> requirements(String projectId) async {
     final d = await sb.from('procurement_requirements')
@@ -660,6 +671,10 @@ final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
 /// Delays logged across a build (dossier attribution), keyed by project id.
 final projectDelaysProvider = FutureProvider.family<List<ProjectDelay>, String>(
     (ref, id) => ref.read(projectsRepoProvider).projectDelays(id));
+
+/// Every component installed on a build (truck record), keyed by project id.
+final truckComponentsProvider = FutureProvider.family<List<TruckComponent>, String>(
+    (ref, id) => ref.read(projectsRepoProvider).truckComponents(id));
 
 /// A build's documents, staff view (keyed by project id).
 final projectDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
