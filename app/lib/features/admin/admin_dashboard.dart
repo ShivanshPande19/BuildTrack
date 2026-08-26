@@ -8,6 +8,7 @@ import '../../shared/widgets.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
 import 'project_detail.dart';
+import 'company_settings.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../procurement/po_approvals.dart';
@@ -481,6 +482,25 @@ class _TeamTab extends ConsumerWidget {
               Text('${list.length} members · $roles roles',
                 style: const TextStyle(color: BT.mut, fontSize: 12.5)),
               const SizedBox(height: 18),
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const CompanySettingsScreen())),
+                child: Padding(padding: const EdgeInsets.only(bottom: 14),
+                  child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+                    Container(width: 40, height: 40, alignment: Alignment.center,
+                      decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+                      child: const Icon(Icons.business_rounded, size: 20, color: BT.ink)),
+                    const SizedBox(width: 12),
+                    const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text('Company details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                      SizedBox(height: 2),
+                      Text('Buyer identity on every purchase order', style: TextStyle(color: BT.mut, fontSize: 12)),
+                    ])),
+                    const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+                  ])),
+                ),
+              ),
               if (list.isEmpty)
                 const EmptyState(
                   icon: Icons.people_outline_rounded, tint: BT.lav,

@@ -7,6 +7,7 @@ import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import 'new_po.dart';
+import 'po_document.dart';
 
 /// Procurement / PM / Admin — PO detail (pr3).
 ///
@@ -166,8 +167,35 @@ class PoDetailScreen extends ConsumerWidget {
         const SizedBox(height: 18),
         _actionButton(context, ref, po.status),
       ],
+
+      // The printable PO document — for anyone allowed to see the costs.
+      if (role == 'procurement' || role == 'admin' || role == 'pm') ...[
+        const SizedBox(height: 12),
+        _docButton(context, ref),
+      ],
     ]);
   }
+
+  Widget _docButton(BuildContext context, WidgetRef ref) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () async {
+      try {
+        final data = await ref.read(procurementRepoProvider).poDocData(poId);
+        await printPoDocument(data);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.coral, content: Text(friendlyError(e))));
+        }
+      }
+    },
+    child: Container(height: 50, alignment: Alignment.center,
+      decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+      child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.picture_as_pdf_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
+        Text('View / print PO document', style: TextStyle(fontWeight: FontWeight.w600)),
+      ])),
+  );
 
   // ── Approval card: stepper + signature trail + the right action ─────────
   Widget _approvalCard(BuildContext context, WidgetRef ref, PoDetail d, String? role) {
