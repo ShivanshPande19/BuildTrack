@@ -66,7 +66,6 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   bool _saving = false;
   String? _error;
 
-  static const _addNew = '__add_new__';
   static const _gstRates = <double>[0, 5, 12, 18, 28];
   static final _fmt = DateFormat('d MMM');
   static final _money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
@@ -239,8 +238,8 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     final providerItems = ref.watch(itemsProvider).valueOrNull ?? [];
     final items = {for (final o in [...providerItems, ..._extraItems]) o.id: o}.values.toList();
     final locked = widget.generalOnly; // general/stock PO can't take a project
-    // A DropdownButton must not carry a non-null value that isn't in its items
-    // (asserts). While projects are still loading, fall back to null.
+    // While projects are still loading, an unknown _projectId falls back to the
+    // "General" (null) option rather than showing a stale value.
     final projValue = projects.any((p) => p.id == _projectId) ? _projectId : null;
 
     return Scaffold(
@@ -289,12 +288,12 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
           else if (locked)
             _staticField('General stock — no project')
           else
-            _dropdown<String?>(
-              value: projValue, hint: 'General (no project)',
-              items: [
-                const DropdownMenuItem<String?>(value: null, child: Text('General (no project)')),
+            AppSelectField<String?>(
+              value: projValue, hint: 'General (no project)', title: 'Project',
+              options: [
+                const SelectOption<String?>(null, 'General (no project)'),
                 for (final p in projects)
-                  DropdownMenuItem<String?>(value: p.id, child: Text('${p.code} · ${p.name}', overflow: TextOverflow.ellipsis)),
+                  SelectOption<String?>(p.id, '${p.code} · ${p.name}'),
               ],
               onChanged: (v) => setState(() => _projectId = v),
             ),
@@ -308,9 +307,9 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
 
           const SizedBox(height: 12),
           _label('VENDOR'),
-          _dropdown<String>(
-            value: _vendorId, hint: 'Select vendor',
-            items: [for (final v in vendors) DropdownMenuItem(value: v.id, child: Text(v.name))],
+          AppSelectField<String>(
+            value: _vendorId, hint: 'Select vendor', title: 'Vendor',
+            options: [for (final v in vendors) SelectOption(v.id, v.name)],
             onChanged: (v) => setState(() => _vendorId = v),
           ),
 
@@ -403,24 +402,16 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
         child: Column(children: [
           Row(children: [
-            Expanded(child: _dropdown<String>(
-              value: l.itemId, hint: 'Select item', dense: true,
-              items: [
-                for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
-                const DropdownMenuItem(value: _addNew, child: Row(children: [
-                  Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                  Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
-                ])),
-              ],
-              onChanged: (v) async {
-                if (v == _addNew) {
-                  final created = await _addItemSheet();
-                  if (created != null) setState(() { _extraItems.add(created); l.itemId = created.id; });
-                  ref.invalidate(itemsProvider);
-                } else {
-                  setState(() => l.itemId = v);
-                }
+            Expanded(child: AppSelectField<String>(
+              value: l.itemId, hint: 'Select item', dense: true, title: 'Item',
+              options: [for (final o in items) SelectOption(o.id, o.label)],
+              addLabel: 'Add new item',
+              onAdd: () async {
+                final created = await _addItemSheet();
+                if (created != null) setState(() { _extraItems.add(created); l.itemId = created.id; });
+                ref.invalidate(itemsProvider);
               },
+              onChanged: (v) => setState(() => l.itemId = v),
             )),
             if (_lines.length > 1) GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -462,18 +453,11 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
             )),
             const SizedBox(width: 8),
             // GST %
-            Container(
-              height: 46, padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-              child: DropdownButtonHideUnderline(child: DropdownButton<double>(
-                value: l.taxRate, isDense: true,
-                icon: const Icon(Icons.expand_more_rounded, size: 18, color: BT.mut2),
-                style: const TextStyle(color: BT.ink, fontSize: 13.5, fontWeight: FontWeight.w700),
-                items: [for (final r in _gstRates)
-                  DropdownMenuItem(value: r, child: Text('${r.toInt()}%'))],
-                onChanged: (v) => setState(() => l.taxRate = v ?? 18),
-              )),
-            ),
+            SizedBox(width: 96, child: AppSelectField<double>(
+              value: l.taxRate, hint: 'GST', dense: true, title: 'GST rate',
+              options: [for (final r in _gstRates) SelectOption(r, '${r.toInt()}%')],
+              onChanged: (v) => setState(() => l.taxRate = v),
+            )),
           ]),
           const SizedBox(height: 8),
           Row(children: [
@@ -505,19 +489,6 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   Widget _label(String t) => Padding(
     padding: const EdgeInsets.only(left: 4, bottom: 6),
     child: Text(t, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)));
-
-  Widget _dropdown<T>({required T? value, required String hint,
-      required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged, bool dense = false}) => Container(
-    height: dense ? 46 : 52, padding: const EdgeInsets.symmetric(horizontal: 14),
-    decoration: BoxDecoration(color: dense ? BT.card2 : BT.card, borderRadius: BorderRadius.circular(dense ? 12 : 14),
-      border: dense ? null : Border.all(color: BT.line)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<T>(
-      value: value, isExpanded: true, hint: Text(hint, style: const TextStyle(color: BT.mut2, fontSize: 14)),
-      icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-      style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-      items: items, onChanged: onChanged,
-    )),
-  );
 
   Widget _staticField(String text, {bool placeholder = false}) => Container(
     height: 52, alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 16),

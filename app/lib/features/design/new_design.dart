@@ -168,8 +168,9 @@ class _NewDesignState extends ConsumerState<NewDesign> {
                   'you a design stage before you can create a design.',
                   style: TextStyle(fontSize: 12.5, height: 1.35)),
               )),
-            _dropdown<String>(value: _projectId, hint: 'Select a truck',
-              items: [for (final p in projects) DropdownMenuItem(value: p.id, child: Text('${p.code} · ${p.name}', overflow: TextOverflow.ellipsis))],
+            AppSelectField<String>(
+              hint: 'Select a truck', title: 'Choose a build', value: _projectId,
+              options: [for (final p in projects) SelectOption(p.id, '${p.code} · ${p.name}')],
               onChanged: (v) => setState(() => _projectId = v)),
             const SizedBox(height: 14),
             _label('DESIGN TYPE'),
@@ -310,15 +311,4 @@ class _NewDesignState extends ConsumerState<NewDesign> {
   Widget _label(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 6),
     child: Text(t, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)));
 
-  Widget _dropdown<T>({required T? value, required String hint,
-      required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged}) => Container(
-    height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<T>(
-      value: value, isExpanded: true, hint: Text(hint, style: const TextStyle(color: BT.mut2, fontSize: 14)),
-      icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-      style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-      items: items, onChanged: onChanged,
-    )),
-  );
 }

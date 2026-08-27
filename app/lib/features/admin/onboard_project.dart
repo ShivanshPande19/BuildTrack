@@ -190,19 +190,22 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
 
   Widget _dropdown(String label, AsyncValue<List<OptRef>> options, OptRef? value, ValueChanged<OptRef?> onChanged) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
-    child: Container(
-      decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: options.when(
-        loading: () => const Padding(padding: EdgeInsets.all(14), child: Text('Loading…', style: TextStyle(color: BT.mut))),
-        error: (e, _) => Padding(padding: const EdgeInsets.all(14), child: Text('Error loading $label', style: const TextStyle(color: BT.coral))),
-        data: (list) => DropdownButtonHideUnderline(child: DropdownButton<OptRef>(
-          isExpanded: true, value: list.contains(value) ? value : null,
-          hint: Text(label, style: const TextStyle(color: BT.mut, fontSize: 14)),
-          items: list.map((r) => DropdownMenuItem(value: r, child: Text(r.label, overflow: TextOverflow.ellipsis))).toList(),
-          onChanged: onChanged)),
+    child: options.when(
+      loading: () => _fieldNote('Loading…'),
+      error: (e, _) => _fieldNote('Could not load $label', error: true),
+      data: (list) => AppSelectField<OptRef>(
+        hint: label, title: label,
+        value: list.contains(value) ? value : null,
+        options: [for (final r in list) SelectOption(r, r.label)],
+        onChanged: (v) => onChanged(v),
       ),
     ),
+  );
+
+  Widget _fieldNote(String text, {bool error = false}) => Container(
+    height: 54, alignment: Alignment.centerLeft, padding: const EdgeInsets.symmetric(horizontal: 16),
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
+    child: Text(text, style: TextStyle(color: error ? BT.coral : BT.mut, fontSize: 14)),
   );
 
   Widget _dateField() => Padding(

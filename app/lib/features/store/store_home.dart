@@ -324,17 +324,19 @@ class _StockTabState extends ConsumerState<_StockTab> {
               Text('Ask procurement to order an item', style: display(21, w: FontWeight.w600)),
               const SizedBox(height: 16),
               _sheetLabel('ITEM'),
-              _sheetDropdown(itemId, items, (v) async {
-                if (v == '__add__') {
+              AppSelectField<String>(
+                value: itemId, hint: 'Select item', title: 'Item',
+                options: [for (final o in items) SelectOption(o.id, o.label)],
+                addLabel: 'Add new item',
+                onAdd: () async {
                   final created = await _promptNewItem(sheetCtx);
                   if (created != null) {
                     setSheet(() { extra.add(created); itemId = created.id; });
                     ref.invalidate(essentialItemsProvider);
                   }
-                } else {
-                  setSheet(() => itemId = v);
-                }
-              }),
+                },
+                onChanged: (v) => setSheet(() => itemId = v),
+              ),
               const SizedBox(height: 11),
               _sheetField('QUANTITY NEEDED', qtyCtl, hint: 'e.g. 20', number: true),
               const SizedBox(height: 11),
@@ -379,26 +381,6 @@ class _StockTabState extends ConsumerState<_StockTab> {
 
   Widget _sheetLabel(String t) => Padding(padding: const EdgeInsets.only(left: 4, bottom: 6),
     child: Text(t, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)));
-
-  Widget _sheetDropdown(String? value, List<OptRef> items, ValueChanged<String?> onChanged) => Container(
-    height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-      value: value, isExpanded: true,
-      hint: const Text('Select item', style: TextStyle(color: BT.mut2, fontSize: 14, fontWeight: FontWeight.w500)),
-      icon: const Icon(Icons.expand_more_rounded, color: BT.mut),
-      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
-      dropdownColor: BT.card,
-      items: [
-        for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
-        const DropdownMenuItem(value: '__add__', child: Row(children: [
-          Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-          Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
-        ])),
-      ],
-      onChanged: onChanged,
-    )),
-  );
 
   Future<OptRef?> _promptNewItem(BuildContext ctx) {
     final nameC = TextEditingController();

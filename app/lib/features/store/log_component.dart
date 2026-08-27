@@ -105,19 +105,15 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           const SizedBox(height: 18),
 
           _label('ITEM'),
-          _dropdown<String>(value: _itemId, hint: 'Select item', items: [
-            for (final o in items) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
-            const DropdownMenuItem(value: '__add__', child: Row(children: [
-              Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-              Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
-            ])),
-          ], onChanged: (v) async {
-            if (v == '__add__') {
+          AppSelectField<String>(value: _itemId, hint: 'Select item', title: 'Item',
+            options: [for (final o in items) SelectOption(o.id, o.label)],
+            addLabel: 'Add new item',
+            onAdd: () async {
               final created = await _promptNewItem();
               if (created != null) setState(() { _extraItems.add(created); _itemId = created.id; });
               ref.invalidate(itemsProvider);
-            } else { setState(() => _itemId = v); }
-          }),
+            },
+            onChanged: (v) => setState(() => _itemId = v)),
           const SizedBox(height: 11),
 
           _label('SERIAL NUMBER'),
@@ -135,16 +131,16 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           const SizedBox(height: 11),
 
           _label('VENDOR (optional)'),
-          _dropdown<String>(value: _vendorId, hint: 'Select vendor',
-            items: [for (final v in vendors) DropdownMenuItem(value: v.id, child: Text(v.name))],
+          AppSelectField<String>(value: _vendorId, hint: 'Select vendor', title: 'Vendor',
+            options: [for (final v in vendors) SelectOption(v.id, v.name)],
             onChanged: (v) => setState(() => _vendorId = v)),
           const SizedBox(height: 11),
 
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               _label('ASSIGN TO BUILD (optional)'),
-              _dropdown<String>(value: _projectId, hint: 'In store',
-                items: [for (final p in projects) DropdownMenuItem(value: p.id, child: Text(p.code, overflow: TextOverflow.ellipsis))],
+              AppSelectField<String>(value: _projectId, hint: 'In store', title: 'Assign to build',
+                options: [for (final p in projects) SelectOption(p.id, p.code)],
                 onChanged: (v) => setState(() => _projectId = v)),
             ])),
             const SizedBox(width: 11),
@@ -259,17 +255,5 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
       decoration: InputDecoration(isDense: true, border: InputBorder.none,
         hintText: hint, hintStyle: const TextStyle(color: BT.mut2, fontWeight: FontWeight.w500))),
-  );
-
-  Widget _dropdown<T>({required T? value, required String hint,
-      required List<DropdownMenuItem<T>> items, required ValueChanged<T?> onChanged}) => Container(
-    height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<T>(
-      value: value, isExpanded: true, hint: Text(hint, style: const TextStyle(color: BT.mut2, fontSize: 14)),
-      icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-      style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-      items: items, onChanged: onChanged,
-    )),
   );
 }
