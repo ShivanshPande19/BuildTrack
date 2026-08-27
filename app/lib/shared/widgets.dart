@@ -81,9 +81,21 @@ class PillNav extends StatelessWidget {
   const PillNav({super.key, required this.icons, required this.active,
     required this.activeLabel, this.actionIcon = Icons.add, this.onTap, this.onAction});
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-    child: Row(children: [
+  Widget build(BuildContext context) {
+    // Grounded "dock" instead of a floating island: a rounded-top raised panel
+    // that runs to the bottom edge, so there's no dead band beneath the pill.
+    // The card2 surface fills past the pill to cover the device's safe-area
+    // inset, and a soft upward shadow lifts it off the scrolling content.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: BT.card2,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        border: Border(top: BorderSide(color: BT.line)),
+        boxShadow: [BoxShadow(color: Color(0x14695228), blurRadius: 22, offset: Offset(0, -6))],
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
+      child: Row(children: [
       Expanded(child: Container(
         height: 64, padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(BT.radiusPill),
@@ -117,7 +129,8 @@ class PillNav extends StatelessWidget {
           boxShadow: const [BoxShadow(color: Color(0x80AAB43C), blurRadius: 26, offset: Offset(0, 14))]),
         child: Icon(actionIcon, color: BT.ink, size: 26))),
     ]),
-  );
+    );
+  }
 }
 
 
