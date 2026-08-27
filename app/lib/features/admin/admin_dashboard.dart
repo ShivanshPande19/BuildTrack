@@ -485,8 +485,15 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 
 // ────────────────────────────────────────────────────────────────────── TEAM
 
-class _TeamTab extends ConsumerWidget {
+class _TeamTab extends ConsumerStatefulWidget {
   const _TeamTab();
+  @override
+  ConsumerState<_TeamTab> createState() => _TeamTabState();
+}
+
+class _TeamTabState extends ConsumerState<_TeamTab> {
+  // Active department filter. null = "All" (every department shown, grouped).
+  String? _dept;
 
   // Departments (the broad `role`), rendered in this order. Any role not listed
   // here still shows — it's appended after the known ones.
@@ -498,6 +505,11 @@ class _TeamTab extends ConsumerWidget {
     'procurement': 'Procurement', 'workshop': 'Workshop', 'store': 'Store',
     'service': 'Service', 'client': 'Clients',
   };
+  // Short labels for the filter pills (the section headers use the full names).
+  static const _deptShort = {
+    'admin': 'Admin', 'pm': 'PM', 'design': 'Design', 'procurement': 'Procurement',
+    'workshop': 'Workshop', 'store': 'Store', 'service': 'Service', 'client': 'Clients',
+  };
   static const _deptIcon = {
     'admin': Icons.shield_outlined, 'pm': Icons.engineering_outlined,
     'design': Icons.draw_outlined, 'procurement': Icons.shopping_cart_outlined,
@@ -506,7 +518,7 @@ class _TeamTab extends ConsumerWidget {
   };
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final members = ref.watch(membersProvider);
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(membersProvider.future),
@@ -524,6 +536,10 @@ class _TeamTab extends ConsumerWidget {
             ..._deptOrder.where(byDept.containsKey),
             ...byDept.keys.where((r) => !_deptOrder.contains(r)),
           ];
+          // If the filter points at a department that no longer has members
+          // (its last person was removed), quietly fall back to "All".
+          final active = (_dept != null && byDept.containsKey(_dept)) ? _dept : null;
+          final shown = active == null ? depts : [active];
 
           final children = <Widget>[
             Text('Team', style: display(29, w: FontWeight.w500)),
@@ -540,7 +556,9 @@ class _TeamTab extends ConsumerWidget {
               title: 'No members yet',
               subtitle: 'Tap + to invite your first team member.'));
           } else {
-            for (final role in depts) {
+            children.add(_deptFilter(depts, byDept, active));
+            children.add(const SizedBox(height: 16));
+            for (final role in shown) {
               final ms = byDept[role]!
                 ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
               children.add(_deptHeader(role, ms.length));
@@ -551,6 +569,56 @@ class _TeamTab extends ConsumerWidget {
           return ListView(padding: _pad, children: children);
         },
       ),
+    );
+  }
+
+  // Horizontal filter row: an "All" pill + one pill per department (icon +
+  // short name + count). Keeps the list readable once a department has many
+  // people — tap a pill to see just that department.
+  Widget _deptFilter(List<String> depts, Map<String, List<Member>> byDept, String? active) {
+    Widget pill({
+      required bool on, required IconData icon, required String label,
+      required int count, required Color fill, required Color onFg, required VoidCallback onTap,
+    }) {
+      final fg = on ? onFg : BT.mut;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: Container(
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.fromLTRB(12, 9, 13, 9),
+          decoration: BoxDecoration(
+            color: on ? fill : BT.card,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: on ? Colors.transparent : BT.line),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 15, color: fg),
+            const SizedBox(width: 6),
+            Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg)),
+            const SizedBox(width: 6),
+            Text('$count', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700,
+              color: on ? onFg.withValues(alpha: 0.75) : BT.mut2)),
+          ]),
+        ),
+      );
+    }
+
+    final total = byDept.values.fold<int>(0, (s, l) => s + l.length);
+    return SizedBox(
+      height: 38,
+      child: ListView(scrollDirection: Axis.horizontal, children: [
+        pill(
+          on: active == null, icon: Icons.groups_rounded, label: 'All', count: total,
+          fill: BT.ink, onFg: BT.lime,
+          onTap: () => setState(() => _dept = null)),
+        for (final r in depts)
+          pill(
+            on: active == r, icon: _deptIcon[r] ?? Icons.groups_outlined,
+            label: _deptShort[r] ?? _deptName[r] ?? r, count: byDept[r]!.length,
+            fill: roleColor(r), onFg: r == 'admin' ? BT.lime : BT.ink,
+            onTap: () => setState(() => _dept = r)),
+      ]),
     );
   }
 
