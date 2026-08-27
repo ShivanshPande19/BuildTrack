@@ -81,9 +81,14 @@ class PillNav extends StatelessWidget {
   const PillNav({super.key, required this.icons, required this.active,
     required this.activeLabel, this.actionIcon = Icons.add, this.onTap, this.onAction});
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
-    child: Row(children: [
+  Widget build(BuildContext context) {
+    // Option A: keep the floating pill, but hug the bottom edge — trim the dead
+    // band beneath it. Use only the device's real safe-area inset (so it clears
+    // a gesture bar) instead of a fixed 24px gap that read as empty space.
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(18, 8, 18, bottomInset > 0 ? bottomInset : 12),
+      child: Row(children: [
       Expanded(child: Container(
         height: 64, padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(BT.radiusPill),
@@ -117,7 +122,8 @@ class PillNav extends StatelessWidget {
           boxShadow: const [BoxShadow(color: Color(0x80AAB43C), blurRadius: 26, offset: Offset(0, 14))]),
         child: Icon(actionIcon, color: BT.ink, size: 26))),
     ]),
-  );
+    );
+  }
 }
 
 
