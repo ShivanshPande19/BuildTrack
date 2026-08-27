@@ -201,6 +201,18 @@ class Stage {
   bool get needsAssigning => assigneeId == null && status != 'done';
 }
 
+/// A build the signed-in person holds a stage on, with the dates that matter —
+/// powers the "Assigned to me" carousel (Design / Store / Service home).
+class AssignedBuild {
+  final String projectId, code, name, status;
+  final int progressPct;
+  final String? stageName;
+  final DateTime? due, targetDelivery;
+  AssignedBuild({required this.projectId, required this.code, required this.name,
+    required this.status, this.progressPct = 0, this.stageName, this.due, this.targetDelivery});
+  bool get isOverdue => due != null && status != 'delivered' && due!.isBefore(DateTime.now());
+}
+
 /// A stage the PM still has to hand out, with its build context — powers the
 /// "Assign work" screen.
 class AssignableStage {

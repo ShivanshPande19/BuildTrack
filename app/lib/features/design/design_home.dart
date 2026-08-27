@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../common/notifications.dart';
+import '../common/profile.dart';
 import 'new_design.dart';
 import 'design_detail.dart';
 
@@ -23,7 +24,24 @@ class DesignHome extends ConsumerStatefulWidget {
 class _DesignHomeState extends ConsumerState<DesignHome> {
   int _tab = 0;
   String _filter = 'all';
-  static const _labels = ['Studio', 'Designs', 'Approvals', 'Profile'];
+  int _buildsPage = 0;
+  final PageController _buildsCtrl = PageController(viewportFraction: 0.9);
+  static const _labels = ['Studio', 'Designs', 'Approvals'];
+  static final _fmt = DateFormat('d MMM');
+
+  @override
+  void dispose() {
+    _buildsCtrl.dispose();
+    super.dispose();
+  }
+
+  static ({String label, Color color}) projStatus(String s) => switch (s) {
+    'on_track'  => (label: 'On-track', color: BT.lime),
+    'at_risk'   => (label: 'At-risk', color: BT.amber),
+    'delayed'   => (label: 'Delayed', color: BT.coral),
+    'delivered' => (label: 'Delivered', color: BT.mint),
+    _           => (label: s, color: BT.mut2),
+  };
 
   static ({String label, Color color}) statusPill(String s) => switch (s) {
     'approved'         => (label: 'Approved', color: BT.lime),
@@ -56,10 +74,10 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: [
-        _studioTab(), _designsTab(), _approvalsTab(), _profileTab(),
+        _studioTab(), _designsTab(), _approvalsTab(),
       ])),
       bottomNavigationBar: PillNav(
-        icons: const [Icons.home_rounded, Icons.photo_library_rounded, Icons.verified_rounded, Icons.person_rounded],
+        icons: const [Icons.home_rounded, Icons.photo_library_rounded, Icons.verified_rounded],
         active: _tab, activeLabel: _labels[_tab],
         onTap: (i) => setState(() => _tab = i),
         onAction: _newDesign,
@@ -82,31 +100,51 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         const SizedBox(height: 2),
         Text(title, style: display(29, w: FontWeight.w500)),
       ]),
-      Padding(padding: const EdgeInsets.only(top: 4), child: _bell()),
+      Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
+        _bell(), const SizedBox(width: 10), _avatar(),
+      ])),
     ]);
+
+  Widget _avatar() {
+    final u = sb.auth.currentUser;
+    final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'D';
+    return GestureDetector(
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
+      child: Container(width: 42, height: 42, alignment: Alignment.center,
+        decoration: const BoxDecoration(shape: BoxShape.circle,
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+            colors: [Color(0xFFF3C3DD), Color(0xFFC4A5EC)])),
+        child: Text(nm.isNotEmpty ? nm[0].toUpperCase() : 'D',
+          style: display(15, w: FontWeight.w600, c: const Color(0xFF4A2438)))),
+    );
+  }
 
   // ── STUDIO (home) ─────────────────────────────────────────
   Widget _studioTab() {
     final designs = ref.watch(myDesignsProvider);
-    final assigned = ref.watch(assignedProjectsProvider);
+    final builds = ref.watch(myAssignedBuildsProvider);
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(assignedProjectsProvider);
+        ref.invalidate(myAssignedBuildsProvider);
         return ref.refresh(myDesignsProvider.future);
       },
       child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
         _header('DESIGN STUDIO', 'My work'),
         const SizedBox(height: 18),
 
-        // The builds a PM has put me on. This is the whole scope of my work —
-        // designers used to see (and could edit) every truck in the company.
-        ...assigned.when(
-          loading: () => const <Widget>[],
+        // The builds a PM has put me on — my whole scope of work, nearest due
+        // first, as a swipeable carousel.
+        ...builds.when(
+          loading: () => const <Widget>[
+            Padding(padding: EdgeInsets.symmetric(vertical: 26),
+              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+          ],
           error: (e, _) => <Widget>[
             AppCard(child: Text('Could not load your builds.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13))),
           ],
-          data: (builds) => builds.isEmpty
+          data: (list) => list.isEmpty
             ? const <Widget>[
                 EmptyState(icon: Icons.assignment_ind_outlined, tint: BT.pink,
                   title: 'No builds assigned yet',
@@ -114,22 +152,8 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
                             'truck shows up here and you can start uploading.'),
               ]
             : <Widget>[
-                const SectionLabel('Assigned to me'),
-                ...builds.map((p) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                  child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                    child: Row(children: [
-                      Container(width: 40, height: 40, alignment: Alignment.center,
-                        decoration: BoxDecoration(color: BT.pink.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.local_shipping_rounded, size: 19, color: Color(0xFF4A2438))),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text('${p.code} · ${p.name}',
-                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                      Text('${p.progressPct}%',
-                        style: const TextStyle(color: BT.mut, fontSize: 12, fontWeight: FontWeight.w600)),
-                    ]))),
-                ),
+                _assignedHeader(list),
+                _assignedCarousel(list),
               ],
         ),
         designs.when(
@@ -177,6 +201,145 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
       Text(label, style: const TextStyle(color: BT.mut, fontSize: 12.5, fontWeight: FontWeight.w600)),
     ]),
   );
+
+  // ── "Assigned to me" carousel ─────────────────────────────
+  Widget _assignedHeader(List<AssignedBuild> list) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      const Text('ASSIGNED TO ME',
+        style: TextStyle(fontSize: 11, letterSpacing: 1.6, fontWeight: FontWeight.w600, color: BT.mut)),
+      if (list.length > 1) GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _showAllBuilds(list),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Text('See all ${list.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: BT.ink)),
+          const Icon(Icons.chevron_right_rounded, size: 16, color: BT.ink),
+        ])),
+    ]),
+  );
+
+  Widget _assignedCarousel(List<AssignedBuild> list) {
+    if (list.length == 1) return _buildCard(list.first);
+    return Column(children: [
+      SizedBox(height: 178, child: PageView.builder(
+        controller: _buildsCtrl,
+        itemCount: list.length,
+        onPageChanged: (i) => setState(() => _buildsPage = i),
+        itemBuilder: (_, i) => Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: _buildCard(list[i])),
+      )),
+      const SizedBox(height: 12),
+      _dots(list.length),
+    ]);
+  }
+
+  Widget _buildCard(AssignedBuild b) {
+    final st = projStatus(b.status);
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFFF7E6F0), Color(0xFFFBF8F2)]),
+        borderRadius: BorderRadius.circular(BT.radiusCard),
+        border: Border.all(color: const Color(0xFFEFD6E6)),
+        boxShadow: const [BoxShadow(color: Color(0x11695228), blurRadius: 22, offset: Offset(0, 10))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Row(children: [
+          Container(width: 40, height: 40, alignment: Alignment.center,
+            decoration: BoxDecoration(color: BT.pink, borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.local_shipping_rounded, size: 20, color: Color(0xFF4A2438))),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(b.code, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Text(b.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: BT.mut, fontSize: 12)),
+          ])),
+          StatusPill(st.label, color: st.color),
+        ]),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('${b.progressPct}% complete',
+              style: const TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600)),
+            if (b.stageName != null) ...[
+              const Spacer(),
+              Flexible(child: Text(b.stageName!, textAlign: TextAlign.right, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: BT.mut2, fontSize: 11.5, fontWeight: FontWeight.w600))),
+            ],
+          ]),
+          const SizedBox(height: 6),
+          ClipRRect(borderRadius: BorderRadius.circular(5), child: LinearProgressIndicator(
+            value: b.progressPct.clamp(0, 100) / 100, minHeight: 7,
+            backgroundColor: BT.track, valueColor: AlwaysStoppedAnimation(st.color))),
+        ]),
+        Row(children: [
+          _dateChip(Icons.flag_rounded, 'Due', b.due, b.isOverdue ? BT.coral : BT.ink),
+          const SizedBox(width: 8),
+          _dateChip(Icons.local_shipping_outlined, 'Delivery', b.targetDelivery, BT.mut),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _dateChip(IconData icon, String label, DateTime? d, Color color) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: BT.line)),
+    child: Row(mainAxisSize: MainAxisSize.min, children: [
+      Icon(icon, size: 13, color: color),
+      const SizedBox(width: 5),
+      Text('$label ', style: const TextStyle(fontSize: 10.5, color: BT.mut, fontWeight: FontWeight.w600)),
+      Text(d == null ? '—' : _fmt.format(d), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+    ]),
+  );
+
+  Widget _dots(int count) => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+    for (int i = 0; i < count; i++) AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.symmetric(horizontal: 3),
+      width: i == _buildsPage ? 20 : 7, height: 7,
+      decoration: BoxDecoration(color: i == _buildsPage ? BT.ink : BT.mut2, borderRadius: BorderRadius.circular(999))),
+  ]);
+
+  void _showAllBuilds(List<AssignedBuild> list) {
+    showModalBottomSheet<void>(
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.7),
+        decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
+          Text('Assigned to me · ${list.length}', style: display(20, w: FontWeight.w600)),
+          const SizedBox(height: 4),
+          const Text('Soonest due first.', style: TextStyle(color: BT.mut, fontSize: 12.5)),
+          const SizedBox(height: 12),
+          Flexible(child: ListView(shrinkWrap: true, children: [
+            for (final b in list) Padding(padding: const EdgeInsets.only(bottom: 10),
+              child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('${b.code} · ${b.name}', maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 3),
+                    Row(children: [
+                      Icon(Icons.flag_rounded, size: 12, color: b.isOverdue ? BT.coral : BT.mut),
+                      const SizedBox(width: 4),
+                      Text(b.due == null ? 'No due date' : 'Due ${_fmt.format(b.due!)}',
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600,
+                          color: b.isOverdue ? BT.coral : BT.mut)),
+                      const Text('  ·  ', style: TextStyle(color: BT.mut2, fontSize: 11.5)),
+                      Text('${b.progressPct}%', style: const TextStyle(fontSize: 11.5, color: BT.mut, fontWeight: FontWeight.w600)),
+                    ]),
+                  ])),
+                  StatusPill(projStatus(b.status).label, color: projStatus(b.status).color),
+                ]))),
+          ])),
+        ]),
+      ),
+    );
+  }
 
   // ── DESIGNS (full library, filterable) ────────────────────
   Widget _designsTab() {
@@ -294,52 +457,4 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
     ));
   }
 
-  // ── PROFILE (inline) ──────────────────────────────────────
-  Widget _profileTab() {
-    final u = sb.auth.currentUser;
-    final name = (u?.userMetadata?['full_name'] as String?) ?? u?.email?.split('@').first ?? 'Designer';
-    final email = u?.email ?? '';
-    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'D';
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
-      Text('Profile', style: display(29, w: FontWeight.w500)),
-      const SizedBox(height: 18),
-      AppCard(padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20), child: Column(children: [
-        Container(width: 74, height: 74, alignment: Alignment.center,
-          decoration: const BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFFF3C3DD), Color(0xFFC4A5EC)])),
-          child: Text(initial, style: display(26, w: FontWeight.w600, c: const Color(0xFF4A2438)))),
-        const SizedBox(height: 14),
-        Text(name, style: display(20, w: FontWeight.w600)),
-        const SizedBox(height: 8),
-        const StatusPill('Design', color: BT.pink),
-        if (email.isNotEmpty) ...[const SizedBox(height: 10), Text(email, style: const TextStyle(color: BT.mut, fontSize: 12.5))],
-      ])),
-      const SectionLabel('Account'),
-      _setRow(Icons.notifications_none_rounded, 'Notifications', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
-      _setRow(Icons.person_outline_rounded, 'My details', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Account details — coming soon')))),
-      const SizedBox(height: 20),
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => sb.auth.signOut().then((_) { if (mounted) context.go('/login'); }),
-        child: Row(children: [
-          Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(12)),
-            child: const Icon(Icons.logout_rounded, size: 19, color: BT.coral)),
-          const SizedBox(width: 15),
-          const Text('Log out', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: BT.coral)),
-        ]),
-      ),
-    ]);
-  }
-
-  Widget _setRow(IconData icon, String label, VoidCallback onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque, onTap: onTap,
-    child: Container(padding: const EdgeInsets.symmetric(vertical: 14),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
-      child: Row(children: [
-        Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-          child: Icon(icon, size: 19, color: BT.ink)),
-        const SizedBox(width: 15),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
-        const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
-      ])),
-  );
 }
