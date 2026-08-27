@@ -98,19 +98,10 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
                 style: TextStyle(fontSize: 12.5, height: 1.35)),
             )
           else
-            Container(
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: BT.line)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-                isExpanded: true, value: _projectId,
-                hint: const Text('Select a truck', style: TextStyle(color: BT.mut, fontSize: 14)),
-                items: trucks.map((d) => DropdownMenuItem(
-                  value: d.project.id,
-                  child: Text('${d.project.code} · ${d.project.name}',
-                    overflow: TextOverflow.ellipsis))).toList(),
-                onChanged: (v) => setState(() => _projectId = v),
-              )),
+            AppSelectField<String>(
+              hint: 'Select a truck', title: 'Choose a truck', value: _projectId,
+              options: [for (final d in trucks) SelectOption(d.project.id, '${d.project.code} · ${d.project.name}')],
+              onChanged: (v) => setState(() => _projectId = v),
             ),
 
           const SectionLabel('Category'),

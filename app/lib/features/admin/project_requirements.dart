@@ -160,28 +160,20 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
               if (isEdit)
                 _readonlyField(itemName ?? 'Item')
               else
-                _sheetDropdown(
-                  value: itemId,
-                  items: [
-                    for (final o in catalog) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
-                    const DropdownMenuItem(value: '__add__', child: Row(children: [
-                      Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                      Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
-                    ])),
-                  ],
-                  onChanged: (v) async {
-                    if (v == '__add__') {
-                      final created = await _promptNewItem();
-                      if (created != null) {
-                        _extraItems.add(created);
-                        catalog.add(created);
-                        setS(() { itemId = created.id; itemName = created.label; });
-                        ref.invalidate(itemsProvider);
-                      }
-                    } else {
-                      setS(() => itemId = v);
+                AppSelectField<String>(
+                  value: itemId, hint: 'Select item', title: 'Item',
+                  options: [for (final o in catalog) SelectOption(o.id, o.label)],
+                  addLabel: 'Add new item',
+                  onAdd: () async {
+                    final created = await _promptNewItem();
+                    if (created != null) {
+                      _extraItems.add(created);
+                      catalog.add(created);
+                      setS(() { itemId = created.id; itemName = created.label; });
+                      ref.invalidate(itemsProvider);
                     }
                   },
+                  onChanged: (v) => setS(() => itemId = v),
                 ),
               const SizedBox(height: 14),
 
@@ -317,15 +309,4 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(14)),
     child: Text(text, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)));
 
-  Widget _sheetDropdown({required String? value, required List<DropdownMenuItem<String>> items,
-      required ValueChanged<String?> onChanged}) => Container(
-    height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-    child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-      value: value, isExpanded: true, hint: const Text('Select item', style: TextStyle(color: BT.mut2, fontSize: 14)),
-      icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-      style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-      items: items, onChanged: onChanged,
-    )),
-  );
 }

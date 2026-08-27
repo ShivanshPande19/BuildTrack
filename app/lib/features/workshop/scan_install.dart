@@ -156,19 +156,12 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
               child: Text('${widget.task!.projectCode} · ${widget.task!.stageName}',
                 style: const TextStyle(fontWeight: FontWeight.w600)))
           else
-            Container(
-              height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-              child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-                value: _target?.stageId, isExpanded: true,
-                hint: const Text('Select your task', style: TextStyle(color: BT.mut2, fontSize: 14)),
-                icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-                style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-                items: [for (final t in tasks) DropdownMenuItem(value: t.stageId, child: Text('${t.projectCode} · ${t.stageName}', overflow: TextOverflow.ellipsis))],
-                onChanged: (v) => setState(() {
-                  for (final t in tasks) { if (t.stageId == v) { _target = t; break; } }
-                }),
-              )),
+            AppSelectField<String>(
+              hint: 'Select your task', title: 'Your tasks', value: _target?.stageId,
+              options: [for (final t in tasks) SelectOption(t.stageId, '${t.projectCode} · ${t.stageName}')],
+              onChanged: (v) => setState(() {
+                for (final t in tasks) { if (t.stageId == v) { _target = t; break; } }
+              }),
             ),
 
           const SectionLabel('In-stock components'),

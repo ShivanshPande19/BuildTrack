@@ -214,33 +214,18 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
               decoration: BoxDecoration(color: BT.mut2, borderRadius: BorderRadius.circular(2)))),
             Text('Add item to stage', style: display(19, w: FontWeight.w600)),
             const SizedBox(height: 14),
-            Container(
-              height: 52, padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-              child: DropdownButtonHideUnderline(child: DropdownButton<String>(
-                value: itemId, isExpanded: true,
-                hint: const Text('Select item', style: TextStyle(color: BT.mut2, fontSize: 14)),
-                icon: const Icon(Icons.expand_more_rounded, color: BT.mut2),
-                style: const TextStyle(color: BT.ink, fontSize: 14, fontWeight: FontWeight.w600),
-                items: [
-                  for (final o in catalog) DropdownMenuItem(value: o.id, child: Text(o.label, overflow: TextOverflow.ellipsis)),
-                  const DropdownMenuItem(value: '__add__', child: Row(children: [
-                    Icon(Icons.add_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                    Text('Add new item', style: TextStyle(fontWeight: FontWeight.w700)),
-                  ])),
-                ],
-                onChanged: (v) async {
-                  if (v == '__add__') {
-                    final created = await _promptNewItem();
-                    if (created != null) {
-                      _extraItems.add(created); catalog.add(created);
-                      setS(() { itemId = created.id; itemLabel = created.label; });
-                    }
-                  } else {
-                    setS(() { itemId = v; itemLabel = catalog.firstWhere((o) => o.id == v).label; });
-                  }
-                },
-              )),
+            AppSelectField<String>(
+              value: itemId, hint: 'Select item', title: 'Item',
+              options: [for (final o in catalog) SelectOption(o.id, o.label)],
+              addLabel: 'Add new item',
+              onAdd: () async {
+                final created = await _promptNewItem();
+                if (created != null) {
+                  _extraItems.add(created); catalog.add(created);
+                  setS(() { itemId = created.id; itemLabel = created.label; });
+                }
+              },
+              onChanged: (v) => setS(() { itemId = v; itemLabel = catalog.firstWhere((o) => o.id == v).label; }),
             ),
             const SizedBox(height: 12),
             Row(children: [
