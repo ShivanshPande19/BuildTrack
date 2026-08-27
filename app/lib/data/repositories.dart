@@ -247,8 +247,10 @@ class ProjectsRepo {
   Future<List<Project>> myAssignedProjects() async {
     final uid = sb.auth.currentUser?.id;
     if (uid == null) return [];
+    // Disambiguate the embed: stages ↔ projects has two FKs (stages.project_id
+    // and projects.current_stage_id), so PostgREST needs the explicit one.
     final d = await sb.from('stages')
-        .select('project_id,projects($_projectSelect)')
+        .select('project_id,projects!stages_project_id_fkey($_projectSelect)')
         .eq('assignee_id', uid);
     final byId = <String, Project>{};
     for (final r in (d as List)) {
@@ -874,8 +876,9 @@ class WorkshopRepo {
   Future<List<WorkshopTask>> myTasks() async {
     final uid = _uid;
     if (uid == null) return [];
+    // Disambiguate: stages ↔ projects has two FKs, so name the one we mean.
     final d = await sb.from('stages')
-        .select('id,name,status,project_id,assigned_due,projects(code,name)')
+        .select('id,name,status,project_id,assigned_due,projects!stages_project_id_fkey(code,name)')
         .eq('assignee_id', uid).order('ord', ascending: true);
     final tasks = (d as List).map((e) => WorkshopTask.fromMap(e as Map<String, dynamic>)).toList();
     if (tasks.isEmpty) return tasks;
