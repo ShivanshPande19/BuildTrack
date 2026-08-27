@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **22 Aug 2026** (truck record)
+Last updated: **26 Aug 2026** (status vs delivery date fix)
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: **22 Aug 2026** (truck record)
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0023` |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0024` |
 | **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
 | **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
 | **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
@@ -151,6 +151,27 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 26 Aug 2026 — Build status now honours the delivery date (migration `0024`)
+
+Bug: a build whose promised delivery date had passed still showed **on-track**.
+`fn_recompute_status` only looked at per-stage `planned_end` dates — it never
+checked the project's own `target_delivery_date`. So a build with no/late stage
+dates but a blown delivery date stayed on_track. Two fixes:
+
+- **Logic** — not delivered + `target_delivery_date` in the past → **delayed**;
+  not delivered + delivery within 7 days with work still open → **at-risk**. (The
+  old stage-overrun / order-by / unstarted-stage rules still apply.) The migration
+  re-runs `fn_refresh_all_statuses()` so existing builds correct themselves on
+  deploy.
+- **Freshness** — statuses only recomputed when a stage was touched, so they went
+  stale as the calendar moved (there was no daily cron scheduled). The fleet
+  dashboard, command center and PM dashboard now call `fn_refresh_all_statuses()`
+  on load, so the owner always sees the truth. (A daily
+  `select fn_refresh_all_statuses();` cron is still recommended for good measure.)
+
+**Watch out when deploying:** run `0024_status_delivery_date.sql` — it recomputes
+every build's status immediately.
 
 ### 22 Aug 2026 — Per-truck complete record (migration `0023`)
 
