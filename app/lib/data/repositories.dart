@@ -261,6 +261,48 @@ class ProjectsRepo {
     return out;
   }
 
+  /// The builds I hold a stage on, with my stage's due date + the build's
+  /// delivery date — for the "Assigned to me" carousel. One row per build (the
+  /// nearest-due stage wins), soonest due first.
+  Future<List<AssignedBuild>> myAssignedBuilds() async {
+    final uid = sb.auth.currentUser?.id;
+    if (uid == null) return [];
+    final d = await sb.from('stages')
+        .select('name,assigned_due,planned_end,'
+            'projects!stages_project_id_fkey(id,code,name,status,progress_pct,target_delivery_date)')
+        .eq('assignee_id', uid);
+    final byId = <String, AssignedBuild>{};
+    for (final r in (d as List)) {
+      final m = r as Map<String, dynamic>;
+      final p = m['projects'] as Map<String, dynamic>?;
+      if (p == null) continue;
+      final pid = p['id'] as String;
+      final cand = AssignedBuild(
+        projectId: pid,
+        code: p['code'] as String? ?? '',
+        name: p['name'] as String? ?? '',
+        status: p['status'] as String? ?? 'on_track',
+        progressPct: (p['progress_pct'] as num?)?.toInt() ?? 0,
+        stageName: m['name'] as String?,
+        due: parseDate(m['assigned_due']) ?? parseDate(m['planned_end']),
+        targetDelivery: parseDate(p['target_delivery_date']),
+      );
+      final existing = byId[pid];
+      if (existing == null ||
+          (cand.due != null && (existing.due == null || cand.due!.isBefore(existing.due!)))) {
+        byId[pid] = cand;
+      }
+    }
+    final out = byId.values.toList()
+      ..sort((a, b) {
+        if (a.due == null && b.due == null) return a.code.compareTo(b.code);
+        if (a.due == null) return 1;
+        if (b.due == null) return -1;
+        return a.due!.compareTo(b.due!);
+      });
+    return out;
+  }
+
   /// Record why a build slipped, against the stage that slipped. delay_logs was
   /// read (stage detail shows delays) but nothing ever wrote it, so "tag the
   /// reason" did not exist. RLS lets admin/pm/workshop insert.
@@ -716,6 +758,13 @@ final assignableForDisciplineProvider =
 final assignedProjectsProvider = FutureProvider<List<Project>>((ref) {
   ref.watch(authStateProvider);
   return ref.read(projectsRepoProvider).myAssignedProjects();
+});
+
+/// Same builds, enriched with my stage's due date + the delivery date, soonest
+/// first — for the "Assigned to me" carousel.
+final myAssignedBuildsProvider = FutureProvider<List<AssignedBuild>>((ref) {
+  ref.watch(authStateProvider);
+  return ref.read(projectsRepoProvider).myAssignedBuilds();
 });
 
 /// Stages across the signed-in PM's builds that still need handing out.
