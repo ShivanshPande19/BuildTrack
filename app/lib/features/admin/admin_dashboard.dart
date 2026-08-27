@@ -488,14 +488,21 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 class _TeamTab extends ConsumerWidget {
   const _TeamTab();
 
-  static const _roleLabel = {
-    'admin': 'Admin', 'pm': 'PM', 'procurement': 'Procure', 'workshop': 'Workshop',
-    'store': 'Store', 'design': 'Design', 'service': 'Service', 'client': 'Client',
+  // Departments (the broad `role`), rendered in this order. Any role not listed
+  // here still shows — it's appended after the known ones.
+  static const _deptOrder = [
+    'admin', 'pm', 'design', 'procurement', 'workshop', 'store', 'service', 'client',
+  ];
+  static const _deptName = {
+    'admin': 'Admin / Owner', 'pm': 'Project Managers', 'design': 'Design',
+    'procurement': 'Procurement', 'workshop': 'Workshop', 'store': 'Store',
+    'service': 'Service', 'client': 'Clients',
   };
-  static const _roleDesc = {
-    'admin': 'Owner · Admin', 'pm': 'Project Manager', 'procurement': 'Procurement',
-    'workshop': 'Workshop Lead', 'store': 'Store / Inventory', 'design': 'Design',
-    'service': 'Service', 'client': 'Client',
+  static const _deptIcon = {
+    'admin': Icons.shield_outlined, 'pm': Icons.engineering_outlined,
+    'design': Icons.draw_outlined, 'procurement': Icons.shopping_cart_outlined,
+    'workshop': Icons.build_outlined, 'store': Icons.inventory_2_outlined,
+    'service': Icons.support_agent_outlined, 'client': Icons.person_outline_rounded,
   };
 
   @override
@@ -510,45 +517,81 @@ class _TeamTab extends ConsumerWidget {
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (list) {
-          final roles = list.map((m) => m.role).toSet().length;
-          return ListView(
-            padding: _pad,
-            children: [
-              Text('Team', style: display(29, w: FontWeight.w500)),
-              const SizedBox(height: 4),
-              Text('${list.length} members · $roles roles',
-                style: const TextStyle(color: BT.mut, fontSize: 12.5)),
-              const SizedBox(height: 18),
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CompanySettingsScreen())),
-                child: Padding(padding: const EdgeInsets.only(bottom: 14),
-                  child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
-                    Container(width: 40, height: 40, alignment: Alignment.center,
-                      decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-                      child: const Icon(Icons.business_rounded, size: 20, color: BT.ink)),
-                    const SizedBox(width: 12),
-                    const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text('Company details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-                      SizedBox(height: 2),
-                      Text('Buyer identity on every purchase order', style: TextStyle(color: BT.mut, fontSize: 12)),
-                    ])),
-                    const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
-                  ])),
-                ),
-              ),
-              if (list.isEmpty)
-                const EmptyState(
-                  icon: Icons.people_outline_rounded, tint: BT.lav,
-                  title: 'No members yet',
-                  subtitle: 'Tap + to invite your first team member.')
-              else
-                ...list.map((m) => _memberRow(context, ref, m)),
-            ],
-          );
+          // Group members by department, then order the departments sensibly.
+          final byDept = <String, List<Member>>{};
+          for (final m in list) { (byDept[m.role] ??= []).add(m); }
+          final depts = [
+            ..._deptOrder.where(byDept.containsKey),
+            ...byDept.keys.where((r) => !_deptOrder.contains(r)),
+          ];
+
+          final children = <Widget>[
+            Text('Team', style: display(29, w: FontWeight.w500)),
+            const SizedBox(height: 4),
+            Text('${list.length} members · ${depts.length} departments',
+              style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+            const SizedBox(height: 18),
+            _companyCard(context),
+          ];
+
+          if (list.isEmpty) {
+            children.add(const EmptyState(
+              icon: Icons.people_outline_rounded, tint: BT.lav,
+              title: 'No members yet',
+              subtitle: 'Tap + to invite your first team member.'));
+          } else {
+            for (final role in depts) {
+              final ms = byDept[role]!
+                ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+              children.add(_deptHeader(role, ms.length));
+              children.addAll(ms.map((m) => _memberRow(context, ref, m)));
+            }
+          }
+
+          return ListView(padding: _pad, children: children);
         },
       ),
+    );
+  }
+
+  // One-time company identity (buyer block + GST state on every PO).
+  Widget _companyCard(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () => Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CompanySettingsScreen())),
+    child: Padding(padding: const EdgeInsets.only(bottom: 20),
+      child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
+        Container(width: 40, height: 40, alignment: Alignment.center,
+          decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+          child: const Icon(Icons.business_rounded, size: 20, color: BT.ink)),
+        const SizedBox(width: 12),
+        const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Company details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+          SizedBox(height: 2),
+          Text('Buyer identity on every purchase order', style: TextStyle(color: BT.mut, fontSize: 12)),
+        ])),
+        const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+      ])),
+    ),
+  );
+
+  // Section header for a department: coloured icon + name + member count.
+  Widget _deptHeader(String role, int count) {
+    final rc = roleColor(role);
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 10, left: 2),
+      child: Row(children: [
+        Container(width: 26, height: 26, alignment: Alignment.center,
+          decoration: BoxDecoration(color: rc, borderRadius: BorderRadius.circular(8)),
+          child: Icon(_deptIcon[role] ?? Icons.groups_outlined, size: 15,
+            color: role == 'admin' ? BT.lime : BT.ink)),
+        const SizedBox(width: 10),
+        Text((_deptName[role] ?? role).toUpperCase(),
+          style: const TextStyle(fontSize: 11.5, letterSpacing: 1.1,
+            fontWeight: FontWeight.w700, color: BT.ink)),
+        const SizedBox(width: 8),
+        Text('$count', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: BT.mut2)),
+      ]),
     );
   }
 
@@ -556,6 +599,9 @@ class _TeamTab extends ConsumerWidget {
     final rc = roleColor(m.role);
     final isAdmin = m.role == 'admin';
     final isSelf = sb.auth.currentUser?.id == m.id;
+    // Within a department, the sub-team (Welding / Paint …) is the useful detail;
+    // fall back to the email when the department has no sub-teams.
+    final subtitle = m.subTeamName ?? m.email;
 
     final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
@@ -579,11 +625,14 @@ class _TeamTab extends ConsumerWidget {
           Text(m.name.isEmpty ? '(no name)' : m.name,
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
           const SizedBox(height: 2),
-          Text(_roleDesc[m.role] ?? m.email,
+          Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: BT.mut, fontSize: 12)),
         ])),
-        const SizedBox(width: 8),
-        StatusPill(_roleLabel[m.role] ?? m.role, color: rc, dark: isAdmin),
+        // Show the sub-team as a pill when the member belongs to one.
+        if (m.subTeamName != null) ...[
+          const SizedBox(width: 8),
+          StatusPill(m.subTeamName!, color: rc, dark: isAdmin),
+        ],
       ]),
     );
 
