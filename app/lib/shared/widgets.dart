@@ -82,19 +82,12 @@ class PillNav extends StatelessWidget {
     required this.activeLabel, this.actionIcon = Icons.add, this.onTap, this.onAction});
   @override
   Widget build(BuildContext context) {
-    // Grounded "dock" instead of a floating island: a rounded-top raised panel
-    // that runs to the bottom edge, so there's no dead band beneath the pill.
-    // The card2 surface fills past the pill to cover the device's safe-area
-    // inset, and a soft upward shadow lifts it off the scrolling content.
+    // Option A: keep the floating pill, but hug the bottom edge — trim the dead
+    // band beneath it. Use only the device's real safe-area inset (so it clears
+    // a gesture bar) instead of a fixed 24px gap that read as empty space.
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-    return Container(
-      decoration: const BoxDecoration(
-        color: BT.card2,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-        border: Border(top: BorderSide(color: BT.line)),
-        boxShadow: [BoxShadow(color: Color(0x14695228), blurRadius: 22, offset: Offset(0, -6))],
-      ),
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomInset),
+    return Padding(
+      padding: EdgeInsets.fromLTRB(18, 8, 18, bottomInset > 0 ? bottomInset : 12),
       child: Row(children: [
       Expanded(child: Container(
         height: 64, padding: const EdgeInsets.symmetric(horizontal: 10),
