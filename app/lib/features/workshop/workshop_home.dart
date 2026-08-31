@@ -26,6 +26,7 @@ class _WorkshopHomeState extends ConsumerState<WorkshopHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _TasksTab(), _PartsTab(), _WeekTab(),
       ][_tab])),
@@ -41,7 +42,7 @@ class _WorkshopHomeState extends ConsumerState<WorkshopHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 24);
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 
 Widget _wsHeader(BuildContext context, String title) => Row(
   crossAxisAlignment: CrossAxisAlignment.start,

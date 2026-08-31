@@ -37,6 +37,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(
         bottom: false,
         child: TabSwitcher(
@@ -62,7 +63,7 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 
 // ─────────────────────────────────────────────────────────── shared helpers
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 24);
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 
 ({String label, Color color}) _statusPill(String status) => switch (status) {
   'on_track' => (label: 'On-track', color: BT.lime),

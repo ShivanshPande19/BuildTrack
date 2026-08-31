@@ -30,6 +30,7 @@ class _ServiceHomeState extends ConsumerState<ServiceHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _TicketsTab(), _TrucksTab(), _WarrantyTab(), _ProfileTab(),
       ][_tab])),
@@ -48,7 +49,7 @@ class _ServiceHomeState extends ConsumerState<ServiceHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 24);
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 final _dayFmt = DateFormat('d MMM');
 
 Widget svHeader(BuildContext context, String title) => Row(

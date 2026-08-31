@@ -55,6 +55,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
   Widget build(BuildContext context) {
     final trucks = ref.watch(myTrucksProvider).valueOrNull ?? const <Project>[];
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: <Widget>[
         _trucksTab(), _supportTab(), _profileTab(),
       ][_tab])),
@@ -88,7 +89,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
     final trucks = ref.watch(myTrucksProvider);
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(myTrucksProvider.future),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('WELCOME BACK', style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
@@ -157,7 +158,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
     final tickets = ref.watch(myTicketsProvider);
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(myTicketsProvider.future),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
         Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('HELP', style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
@@ -290,7 +291,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
     final name = (u?.userMetadata?['full_name'] as String?) ?? u?.email?.split('@').first ?? 'Client';
     final email = u?.email ?? '';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'C';
-    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
       Text('Profile', style: display(29, w: FontWeight.w500)),
       const SizedBox(height: 18),
       AppCard(padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20), child: Column(children: [
