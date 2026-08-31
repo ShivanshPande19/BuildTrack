@@ -82,9 +82,10 @@ class PillNav extends StatelessWidget {
     required this.activeLabel, this.actionIcon = Icons.add, this.onTap, this.onAction});
   @override
   Widget build(BuildContext context) {
-    // Option A: keep the floating pill, but hug the bottom edge — trim the dead
-    // band beneath it. Use only the device's real safe-area inset (so it clears
-    // a gesture bar) instead of a fixed 24px gap that read as empty space.
+    // Floating pill: no border (an outline reads as flat/attached) — instead a
+    // soft, layered drop shadow so the white pill and green button clearly
+    // hover as their own elements above the warm background. Hugs the bottom
+    // edge using the device safe-area inset.
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     return Padding(
       padding: EdgeInsets.fromLTRB(18, 8, 18, bottomInset > 0 ? bottomInset : 12),
@@ -92,8 +93,10 @@ class PillNav extends StatelessWidget {
       Expanded(child: Container(
         height: 64, padding: const EdgeInsets.symmetric(horizontal: 10),
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(BT.radiusPill),
-          border: Border.all(color: BT.line),
-          boxShadow: const [BoxShadow(color: Color(0x1F695228), blurRadius: 30, offset: Offset(0, 14))]),
+          boxShadow: const [
+            BoxShadow(color: Color(0x33695228), blurRadius: 34, spreadRadius: -4, offset: Offset(0, 16)),
+            BoxShadow(color: Color(0x14000000), blurRadius: 8, offset: Offset(0, 3)),
+          ]),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(icons.length, (i) {
             final on = i == active;
