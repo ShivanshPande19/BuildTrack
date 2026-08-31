@@ -74,6 +74,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: <Widget>[
         _studioTab(), _designsTab(), _approvalsTab(),
       ][_tab])),
@@ -130,7 +131,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         ref.invalidate(myAssignedBuildsProvider);
         return ref.refresh(myDesignsProvider.future);
       },
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
         _header('DESIGN STUDIO', 'My work'),
         const SizedBox(height: 18),
 
@@ -351,7 +352,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
     ];
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(myDesignsProvider.future),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
         _header('LIBRARY', 'Designs'),
         const SizedBox(height: 14),
         SizedBox(height: 38, child: ListView(scrollDirection: Axis.horizontal, children: [
@@ -397,7 +398,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
     final designs = ref.watch(myDesignsProvider);
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(myDesignsProvider.future),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 24), children: [
+      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 100), children: [
         _header('CLIENT LOOP', 'Approvals'),
         const SizedBox(height: 16),
         designs.when(

@@ -29,6 +29,7 @@ class _PMHomeState extends ConsumerState<PMHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _HomeTab(), _ProjectsTab(), _ScheduleTab(), _TeamTab(),
       ][_tab])),
@@ -51,7 +52,7 @@ class _PMHomeState extends ConsumerState<PMHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 24);
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 
 Widget _pmHeader(BuildContext context, String title) => Row(
   crossAxisAlignment: CrossAxisAlignment.start,

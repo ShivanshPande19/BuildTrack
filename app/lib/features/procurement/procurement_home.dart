@@ -28,6 +28,7 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      extendBody: true,
       body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _ToOrderTab(), _OrdersTab(), _ReceiveTab(), _VendorsTab(),
       ][_tab])),
@@ -46,7 +47,7 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 24);
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 
 /// Shared header: eyebrow + title + bell + avatar (bell→notifications, avatar→profile).
 Widget _header(BuildContext context, String title, {int badge = 0}) => Row(
