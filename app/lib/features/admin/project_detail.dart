@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import 'stage_detail.dart';
 import 'project_requirements.dart';
 import 'project_dossier.dart';
@@ -115,7 +116,7 @@ class ProjectDetailScreen extends ConsumerWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.end, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text('${d.project.progressPct}', style: display(46, w: FontWeight.w600)),
+              CountUp(d.project.progressPct, style: display(46, w: FontWeight.w600)),
               Text('%', style: display(22, w: FontWeight.w600, c: BT.mut)),
             ]),
             GestureDetector(
@@ -225,8 +226,9 @@ class ProjectDetailScreen extends ConsumerWidget {
           subtitle: 'Stages generate from the workflow template when the project is onboarded.')
       else
         ...List.generate(d.stages.length,
-          (i) => _timelineTile(context, ref, d.stages[i], i == d.stages.length - 1,
-                               d.project, names)),
+          (i) => FadeSlideIn(delay: Motion.stagger(i),
+            child: _timelineTile(context, ref, d.stages[i], i == d.stages.length - 1,
+                               d.project, names))),
     ]);
   }
 
@@ -552,7 +554,10 @@ class ProjectDetailScreen extends ConsumerWidget {
           child: Align(alignment: Alignment.centerLeft,
             child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
               overflow: TextOverflow.ellipsis)))),
-        Positioned.fill(child: Align(alignment: Alignment(band.toDouble() * 2 - 1, 0),
+        Positioned.fill(child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: -1.0, end: band.toDouble() * 2 - 1),
+          duration: Motion.slow, curve: Curves.easeOutCubic,
+          builder: (_, a, child) => Align(alignment: Alignment(a, 0), child: child),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: pill, borderRadius: BorderRadius.circular(999),
@@ -560,7 +565,7 @@ class ProjectDetailScreen extends ConsumerWidget {
             child: Row(mainAxisSize: MainAxisSize.min, children: [
               Container(width: 6, height: 6, decoration: const BoxDecoration(color: BT.ink, shape: BoxShape.circle)),
               const SizedBox(width: 7),
-              Text('$pct%', style: display(13, w: FontWeight.w600)),
+              CountUp(pct, format: (v) => '${v.round()}%', style: display(13, w: FontWeight.w600)),
             ])))),
       ])),
     );

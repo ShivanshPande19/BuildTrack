@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import 'project_detail.dart';
 import 'truck_record.dart';
 
@@ -104,11 +105,11 @@ class ProjectDossierScreen extends ConsumerWidget {
       ]),
       const SizedBox(height: 16),
 
-      _summary(context, d, current, members, totalDelay),
+      FadeSlideIn(child: _summary(context, d, current, members, totalDelay)),
 
       const SizedBox(height: 12),
       // The truck's complete physical record — parts, serials, warranty, bills.
-      GestureDetector(
+      FadeSlideIn(delay: Motion.stagger(1), child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => TruckRecordScreen(projectId: projectId, code: d.project.code, name: d.project.name))),
@@ -127,11 +128,12 @@ class ProjectDossierScreen extends ConsumerWidget {
             const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
           ]),
         ),
-      ),
+      )),
 
       if (delays.isNotEmpty) ...[
         SectionLabel('Delays · ${delays.length} logged · $totalDelay day${totalDelay == 1 ? '' : 's'} total'),
-        ...delays.map(_delayRow),
+        ...delays.asMap().entries.map((e) =>
+          FadeSlideIn(delay: Motion.stagger(e.key), child: _delayRow(e.value))),
       ],
 
       const SectionLabel('The pipeline'),
@@ -139,12 +141,14 @@ class ProjectDossierScreen extends ConsumerWidget {
         const EmptyState(icon: Icons.timeline_rounded, tint: BT.amber,
           title: 'No stages yet', subtitle: 'Stages generate from the workflow template on onboarding.')
       else
-        ...List.generate(d.stages.length, (i) => _stageTile(
-          d.stages[i], i == d.stages.length - 1, members, delaysByStage[d.stages[i].id] ?? const [])),
+        ...List.generate(d.stages.length, (i) => FadeSlideIn(
+          delay: Motion.stagger(i),
+          child: _stageTile(
+            d.stages[i], i == d.stages.length - 1, members, delaysByStage[d.stages[i].id] ?? const []))),
 
       const SizedBox(height: 20),
       // For the admin who wants to act (assign PM, edit, deliver).
-      GestureDetector(
+      FadeSlideIn(delay: Motion.stagger(2), child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ProjectDetailScreen(projectId: projectId, initial: d.project, canAssignPm: true))),
@@ -154,7 +158,7 @@ class ProjectDossierScreen extends ConsumerWidget {
             Icon(Icons.tune_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
             Text('Open build controls', style: TextStyle(fontWeight: FontWeight.w600)),
           ])),
-      ),
+      )),
     ]);
   }
 
@@ -196,19 +200,22 @@ class ProjectDossierScreen extends ConsumerWidget {
         ]),
         const SizedBox(height: 16),
         Row(children: [
-          _sumStat('${d.project.progressPct}%', 'Progress', Colors.white),
+          _sumStat(CountUp(d.project.progressPct,
+            format: (v) => '${v.round()}%', style: display(19, w: FontWeight.w600, c: Colors.white)), 'Progress'),
           _sumDiv(),
-          _sumStat('$totalDelay', totalDelay == 1 ? 'Delay day' : 'Delay days',
-            totalDelay > 0 ? BT.coral : Colors.white),
+          _sumStat(CountUp(totalDelay,
+            style: display(19, w: FontWeight.w600, c: totalDelay > 0 ? BT.coral : Colors.white)),
+            totalDelay == 1 ? 'Delay day' : 'Delay days'),
           _sumDiv(),
-          _sumStat(_d(d.targetDelivery), 'Delivery', Colors.white),
+          _sumStat(Text(_d(d.targetDelivery), maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: display(19, w: FontWeight.w600, c: Colors.white)), 'Delivery'),
         ]),
       ]),
     );
   }
 
-  Widget _sumStat(String v, String l, Color c) => Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(v, style: display(19, w: FontWeight.w600, c: c), maxLines: 1, overflow: TextOverflow.ellipsis),
+  Widget _sumStat(Widget value, String l) => Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    value,
     Text(l, style: const TextStyle(color: Color(0xFF918B7C), fontSize: 11, fontWeight: FontWeight.w600)),
   ]));
   Widget _sumDiv() => Container(width: 1, height: 30, color: const Color(0xFF3A3833), margin: const EdgeInsets.symmetric(horizontal: 14));
