@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../shared/animations.dart';
 
 /// Equora design tokens — the same palette used across all 72 role screens.
 class BT {
@@ -50,6 +51,14 @@ ThemeData buildTheme() {
     appBarTheme: const AppBarTheme(
       backgroundColor: BT.bg, foregroundColor: BT.ink, elevation: 0,
     ),
+    // Every pushed route uses the same modern fade + subtle scale transition.
+    pageTransitionsTheme: const PageTransitionsTheme(builders: {
+      TargetPlatform.android: FadeThroughPageTransitionsBuilder(),
+      TargetPlatform.iOS: FadeThroughPageTransitionsBuilder(),
+      TargetPlatform.macOS: FadeThroughPageTransitionsBuilder(),
+      TargetPlatform.windows: FadeThroughPageTransitionsBuilder(),
+      TargetPlatform.linux: FadeThroughPageTransitionsBuilder(),
+    }),
   );
 }
 

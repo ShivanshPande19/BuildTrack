@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import '../admin/project_detail.dart';
@@ -28,9 +29,9 @@ class _PMHomeState extends ConsumerState<PMHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: const [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _HomeTab(), _ProjectsTab(), _ScheduleTab(), _TeamTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [
           Icons.home_rounded, Icons.grid_view_rounded,

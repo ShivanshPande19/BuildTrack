@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import 'raise_request.dart';
 import 'truck_3d.dart';
@@ -54,9 +55,9 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
   Widget build(BuildContext context) {
     final trucks = ref.watch(myTrucksProvider).valueOrNull ?? const <Project>[];
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: <Widget>[
         _trucksTab(), _supportTab(), _profileTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [Icons.local_shipping_rounded, Icons.headset_mic_rounded, Icons.person_rounded],
         active: _tab, activeLabel: _labels[_tab],

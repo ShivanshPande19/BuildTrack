@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
 import 'project_detail.dart';
@@ -38,9 +39,9 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
     return Scaffold(
       body: SafeArea(
         bottom: false,
-        child: IndexedStack(
+        child: TabSwitcher(
           index: _tab,
-          children: const [_HomeTab(), _ProjectsTab(), _TeamTab(), _InsightsTab()],
+          child: const <Widget>[_HomeTab(), _ProjectsTab(), _TeamTab(), _InsightsTab()][_tab],
         ),
       ),
       bottomNavigationBar: PillNav(
@@ -204,7 +205,7 @@ class _HomeTab extends ConsumerWidget {
           ]),
           const SizedBox(height: 10),
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('${f.total}', style: display(52, w: FontWeight.w600)),
+            CountUp(f.total, style: display(52, w: FontWeight.w600)),
             const SizedBox(width: 8),
             const Padding(padding: EdgeInsets.only(bottom: 9),
               child: Text('Active\nbuilds', style: TextStyle(color: BT.mut, fontSize: 14, height: 1.15))),
@@ -285,7 +286,11 @@ class _HomeTab extends ConsumerWidget {
               padding: const EdgeInsets.only(left: 18),
               child: Align(alignment: Alignment.centerLeft,
                 child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))))),
-            Positioned.fill(child: Align(alignment: Alignment(ax.toDouble(), 0), child: _pill(pct, pill))),
+            Positioned.fill(child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: -1.0, end: ax.toDouble()),
+              duration: Motion.slow, curve: Curves.easeOutCubic,
+              builder: (_, a, child) => Align(alignment: Alignment(a, 0), child: child),
+              child: _pill(pct, pill))),
           ]),
         ),
       ),
@@ -299,7 +304,7 @@ class _HomeTab extends ConsumerWidget {
     child: Row(mainAxisSize: MainAxisSize.min, children: [
       Container(width: 6, height: 6, decoration: const BoxDecoration(color: BT.ink, shape: BoxShape.circle)),
       const SizedBox(width: 7),
-      Text('$pct%', style: display(13, w: FontWeight.w600)),
+      CountUp(pct, format: (v) => '${v.round()}%', style: display(13, w: FontWeight.w600)),
     ]),
   );
 }
@@ -781,16 +786,16 @@ class _InsightsTab extends ConsumerWidget {
                 style: TextStyle(fontSize: 11, letterSpacing: 1.4, color: BT.mut, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                Text('$onTime', style: display(48, w: FontWeight.w500)),
+                CountUp(onTime, style: display(48, w: FontWeight.w500)),
                 Text('%', style: display(24, w: FontWeight.w500, c: BT.mut)),
               ]),
               const SizedBox(height: 16),
               Row(children: [
-                _statCard('${f.onTrack}', 'On-track', const Color(0xFF3D8A2F)),
+                _statCard(f.onTrack, 'On-track', const Color(0xFF3D8A2F)),
                 const SizedBox(width: 10),
-                _statCard('${f.atRisk}', 'At-risk', const Color(0xFFC78A1F)),
+                _statCard(f.atRisk, 'At-risk', const Color(0xFFC78A1F)),
                 const SizedBox(width: 10),
-                _statCard('${f.delayed}', 'Delayed', const Color(0xFFC65F3F)),
+                _statCard(f.delayed, 'Delayed', const Color(0xFFC65F3F)),
               ]),
               const SectionLabel('Fleet distribution'),
               _distBar('On-track', f.onTrack, f.total, BT.lime),
@@ -803,11 +808,11 @@ class _InsightsTab extends ConsumerWidget {
     );
   }
 
-  Widget _statCard(String value, String label, Color color) => Expanded(
+  Widget _statCard(int value, String label, Color color) => Expanded(
     child: AppCard(
       padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(children: [
-        Text(value, style: display(26, w: FontWeight.w600, c: color)),
+        CountUp(value, style: display(26, w: FontWeight.w600, c: color)),
         const SizedBox(height: 4),
         Text(label, style: const TextStyle(color: BT.mut, fontSize: 11.5)),
       ]),
@@ -824,18 +829,22 @@ class _InsightsTab extends ConsumerWidget {
           height: 44,
           decoration: BoxDecoration(color: BT.track, borderRadius: BorderRadius.circular(999)),
         ),
-        FractionallySizedBox(
-          widthFactor: frac.clamp(0.001, 1.0).toDouble(),
-          child: Container(
-            height: 44,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+        TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: frac.clamp(0.001, 1.0).toDouble()),
+          duration: Motion.slow, curve: Curves.easeOutCubic,
+          builder: (_, w, __) => FractionallySizedBox(
+            widthFactor: w,
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+            ),
           ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-            Text('$pct%', style: display(14, w: FontWeight.w600)),
+            CountUp(pct, format: (v) => '${v.round()}%', style: display(14, w: FontWeight.w600)),
           ]),
         ),
       ]),

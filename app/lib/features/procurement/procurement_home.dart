@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import 'po_detail.dart';
@@ -27,9 +28,9 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: const [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _ToOrderTab(), _OrdersTab(), _ReceiveTab(), _VendorsTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [
           Icons.home_rounded, Icons.receipt_long_rounded,

@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import 'new_ticket.dart';
 import 'ticket_detail.dart';
@@ -29,9 +30,9 @@ class _ServiceHomeState extends ConsumerState<ServiceHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: const [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _TicketsTab(), _TrucksTab(), _WarrantyTab(), _ProfileTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [
           Icons.headset_mic_rounded, Icons.local_shipping_rounded,

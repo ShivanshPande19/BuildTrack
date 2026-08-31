@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import 'new_design.dart';
@@ -73,9 +74,9 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: <Widget>[
         _studioTab(), _designsTab(), _approvalsTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [Icons.home_rounded, Icons.photo_library_rounded, Icons.verified_rounded],
         active: _tab, activeLabel: _labels[_tab],
