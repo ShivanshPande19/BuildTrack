@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'animations.dart';
 
 /// Reusable Equora-style components — the building blocks for all role screens.
 
@@ -57,16 +58,19 @@ class PrimaryButton extends StatelessWidget {
   final String label; final VoidCallback? onTap; final IconData? icon; final Color bg; final Color fg;
   const PrimaryButton(this.label, {super.key, this.onTap, this.icon, this.bg = BT.lime, this.fg = BT.ink});
   @override
-  Widget build(BuildContext context) => Material(
-    color: bg, borderRadius: BorderRadius.circular(16),
-    child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(16),
-      child: Container(height: 54, alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          if (icon != null) ...[Icon(icon, size: 19, color: fg), const SizedBox(width: 8)],
-          Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg))),
-        ]))),
+  Widget build(BuildContext context) => PressableScale(
+    onTap: onTap,
+    pressedScale: 0.97,
+    child: Container(
+      height: 54, alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (icon != null) ...[Icon(icon, size: 19, color: fg), const SizedBox(width: 8)],
+        Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: fg))),
+      ]),
+    ),
   );
 }
 
@@ -100,8 +104,7 @@ class PillNav extends StatelessWidget {
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(icons.length, (i) {
             final on = i == active;
-            final item = GestureDetector(
-              behavior: HitTestBehavior.opaque,
+            final item = PressableScale(
               onTap: () => onTap?.call(i),
               child: AnimatedContainer(duration: const Duration(milliseconds: 180),
                 height: 48, padding: EdgeInsets.symmetric(horizontal: on ? 14 : 12),
@@ -120,7 +123,7 @@ class PillNav extends StatelessWidget {
           }))),
       ),
       const SizedBox(width: 12),
-      GestureDetector(onTap: onAction, child: Container(width: 60, height: 60,
+      PressableScale(onTap: onAction, pressedScale: 0.92, child: Container(width: 60, height: 60,
         decoration: BoxDecoration(color: BT.lime, shape: BoxShape.circle,
           boxShadow: const [BoxShadow(color: Color(0x80AAB43C), blurRadius: 26, offset: Offset(0, 14))]),
         child: Icon(actionIcon, color: BT.ink, size: 26))),

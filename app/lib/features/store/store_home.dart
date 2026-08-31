@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import 'component_detail.dart';
@@ -24,9 +25,9 @@ class _StoreHomeState extends ConsumerState<StoreHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: const [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _InboxTab(), _StockTab(), _PartsTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [Icons.local_shipping_rounded, Icons.layers_rounded, Icons.inventory_2_rounded],
         active: _tab,

@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
 import 'task_detail.dart';
@@ -25,9 +26,9 @@ class _WorkshopHomeState extends ConsumerState<WorkshopHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(bottom: false, child: IndexedStack(index: _tab, children: const [
+      body: SafeArea(bottom: false, child: TabSwitcher(index: _tab, child: const <Widget>[
         _TasksTab(), _PartsTab(), _WeekTab(),
-      ])),
+      ][_tab])),
       bottomNavigationBar: PillNav(
         icons: const [Icons.checklist_rounded, Icons.inventory_2_rounded, Icons.calendar_today_rounded],
         active: _tab,
