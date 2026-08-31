@@ -32,13 +32,16 @@ class BuildTrackApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: buildTheme(),
     routerConfig: router,
-    // No safe-area insets anywhere: zero the padding / viewPadding the whole
-    // app sees, so every SafeArea becomes a no-op and content runs fully
-    // edge-to-edge. One switch to flip (or revert) app-wide.
+    // Keep the TOP safe-area inset (so content clears the status bar / notch)
+    // but run edge-to-edge at the BOTTOM — zero only the bottom padding so the
+    // nav sits flush against the bottom edge. Top-only safe area, app-wide.
     builder: (context, child) {
       final mq = MediaQuery.of(context);
       return MediaQuery(
-        data: mq.copyWith(padding: EdgeInsets.zero, viewPadding: EdgeInsets.zero),
+        data: mq.copyWith(
+          padding: mq.padding.copyWith(bottom: 0),
+          viewPadding: mq.viewPadding.copyWith(bottom: 0),
+        ),
         child: child ?? const SizedBox.shrink(),
       );
     },
