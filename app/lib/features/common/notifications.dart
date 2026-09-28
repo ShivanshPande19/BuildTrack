@@ -77,7 +77,7 @@ class NotificationsScreen extends ConsumerWidget {
               loading: () => const Padding(padding: EdgeInsets.only(top: 60),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
               error: (e, _) => Padding(padding: const EdgeInsets.only(top: 16),
-                child: AppCard(child: Text('Could not load notifications.\n$e',
+                child: AppCard(child: Text('Could not load notifications.\n${friendlyError(e)}',
                   style: const TextStyle(color: BT.coral, fontSize: 13)))),
               data: _list,
             ),

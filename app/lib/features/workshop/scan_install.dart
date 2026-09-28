@@ -168,7 +168,7 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
           inStock.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 30),
               child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load stock.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            error: (e, _) => AppCard(child: Text('Could not load stock.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: (list) => list.isEmpty
               ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.mint,
                   title: 'Nothing in stock', subtitle: 'Store logs components before they can be installed.')

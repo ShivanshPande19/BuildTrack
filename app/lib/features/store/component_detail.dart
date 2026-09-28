@@ -149,7 +149,7 @@ class RecallCheckScreen extends ConsumerWidget {
           recall.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 50),
               child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not run recall.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            error: (e, _) => AppCard(child: Text('Could not run recall.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: (rows) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Container(

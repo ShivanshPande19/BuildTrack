@@ -68,7 +68,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
       await _showCredentials(_email.text.trim(), _password.text);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = '${friendlyError(e)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -240,6 +240,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
           child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
     ));
+    c.dispose();
     if (name == null || name.isEmpty) return;
     try {
       final created = await ref.read(adminRepoProvider).createSubTeam(_role, name);
@@ -248,7 +249,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text('Could not add team: $e')));
+          backgroundColor: BT.coral, content: Text('Could not add team: ${friendlyError(e)}')));
       }
     }
   }

@@ -86,7 +86,11 @@ class _HomeTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fleet = ref.watch(fleetProvider);
-    final urgentCount = fleet.valueOrNull?.urgent.length ?? 0;
+    // The bell opens the notifications feed, so its badge should count UNREAD
+    // notifications — not urgent order-by items (which have their own
+    // "needs attention" section below).
+    final unread = ref.watch(notificationsProvider).valueOrNull
+        ?.where((n) => !n.read).length ?? 0;
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(fleetProvider.future),
       child: ListView(
@@ -104,7 +108,7 @@ class _HomeTab extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(children: [
-                _bell(context, urgentCount),
+                _bell(context, unread),
                 const SizedBox(width: 10),
                 _avatar(context),
               ]),
@@ -116,7 +120,7 @@ class _HomeTab extends ConsumerWidget {
           fleet.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 80),
               child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load fleet.\n$e',
+            error: (e, _) => AppCard(child: Text('Could not load fleet.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: _homeContent,
           ),
@@ -362,7 +366,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
       child: fleet.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load projects.\n$e',
+          AppCard(child: Text('Could not load projects.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (f) {
@@ -531,7 +535,7 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
       child: members.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load team.\n$e',
+          AppCard(child: Text('Could not load team.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (list) {
@@ -750,7 +754,7 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
           } catch (e) {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                backgroundColor: BT.coral, content: Text('Could not remove: $e')));
+                backgroundColor: BT.coral, content: Text('Could not remove: ${friendlyError(e)}')));
             }
             return false;
           }
@@ -773,7 +777,7 @@ class _InsightsTab extends ConsumerWidget {
       child: fleet.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load insights.\n$e',
+          AppCard(child: Text('Could not load insights.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (f) {

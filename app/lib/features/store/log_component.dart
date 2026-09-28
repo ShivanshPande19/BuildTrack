@@ -78,7 +78,7 @@ class _LogComponentState extends ConsumerState<LogComponent> {
           backgroundColor: BT.ink, content: Text('$saved logged to inventory')));
       }
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

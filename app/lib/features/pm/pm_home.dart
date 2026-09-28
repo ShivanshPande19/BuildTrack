@@ -120,7 +120,7 @@ class _HomeTab extends ConsumerWidget {
         dash.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (d) {
             final projects = d.projects;
@@ -270,7 +270,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
           _pmHeader(context, 'My Projects'), const SizedBox(height: 16),
-          AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (list) {
           final filtered = _filter == 'all' ? list : list.where((p) => p.status == _filter).toList();
@@ -499,7 +499,7 @@ class _TeamTab extends ConsumerWidget {
         members.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 40),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load team.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load team.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // PM's team = execution staff they assign build tasks to (not admins/PMs/clients/procurement).
             const doerRoles = {'workshop', 'design', 'store', 'service'};

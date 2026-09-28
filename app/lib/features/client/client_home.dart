@@ -102,7 +102,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
         const SizedBox(height: 18),
         trucks.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load your trucks.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load your trucks.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) {
               return const EmptyState(icon: Icons.local_shipping_outlined, tint: BT.pink, title: 'No trucks yet', subtitle: 'Your builds with Azimuth will appear here.');
@@ -181,7 +181,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
         const SectionLabel('Your requests'),
         tickets.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 30), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.headset_mic_outlined, tint: BT.lime, title: 'No requests', subtitle: 'Anything you raise shows here with its status.')
             : Column(children: list.map(_ticketCard).toList()),

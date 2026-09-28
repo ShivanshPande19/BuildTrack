@@ -73,7 +73,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
             reqs.when(
               loading: () => const Padding(padding: EdgeInsets.only(top: 50),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load materials.\n$e',
+              error: (e, _) => AppCard(child: Text('Could not load materials.\n${friendlyError(e)}',
                 style: const TextStyle(color: BT.coral, fontSize: 13))),
               data: (list) => list.isEmpty
                 ? EmptyState(icon: Icons.inventory_2_outlined, tint: BT.lav,
@@ -250,7 +250,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                           _refresh();
                           if (ctx.mounted) Navigator.pop(ctx);
                         } catch (e) {
-                          setS(() { busy = false; err = '$e'; });
+                          setS(() { busy = false; err = '${friendlyError(e)}'; });
                         }
                       })),
                   ]),
@@ -290,7 +290,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
             child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
         ],
       ));
-    });
+    }).whenComplete(() { nameC.dispose(); leadC.dispose(); });
   }
 
   Widget _dialogField(TextEditingController c, String hint, {bool number = false}) => Container(

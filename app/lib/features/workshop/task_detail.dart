@@ -45,7 +45,7 @@ class TaskDetailScreen extends ConsumerWidget {
             bundle.when(
               loading: () => const Padding(padding: EdgeInsets.only(top: 40),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load task.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+              error: (e, _) => AppCard(child: Text('Could not load task.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
               data: (b) => _content(context, ref, b),
             ),
           ],

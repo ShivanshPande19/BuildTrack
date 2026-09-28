@@ -48,10 +48,28 @@ small glitches. This pass fixes the confirmed, low-risk ones:
 on, adding a design version goes through `fn_add_design_version` — an old app build doing
 the direct insert still works but without the race guard. `full_setup.sql` regenerated.
 
-⏭️ Deferred to a later pass (bigger / architectural): realtime cross-user freshness
-(Phase 3), a shared-queue "claim" concept for service tickets & PO approvals, the
-UX-clarity work to remove duplicate access paths, the non-ticking SLA countdown, and the
-remaining raw-`$e` error strings.
+### Tier 2 — polish (same pass)
+
+- ✅ **SLA countdown is live.** The Service ticket queue rebuilds once a minute so the
+  "2h left" / Overdue labels actually move instead of freezing at open time.
+- ✅ **"Fixed today" is a real calendar day** (local), not a rolling 24-hour window
+  (Service tickets tab + profile stat).
+- ✅ **Raw `$e` sweep.** Every error string across the role screens now renders
+  `friendlyError(e)` instead of a raw exception — consistent, and no SQL leaks to users.
+- ✅ **Admin bell badge** counts UNREAD notifications (it opens the notifications feed),
+  not the urgent order-by items (which have their own "needs attention" section).
+- ✅ **Design "assigned to me" carousel** height scales with the text-size setting, so the
+  card no longer overflows at large accessibility scales.
+- ✅ **Guards / leaks:** the client design title no longer risks a RangeError on an empty
+  type; Create-Template and its inline dialogs, the requirements inline dialog and the
+  Add-Member sub-team dialog now dispose their controllers.
+- ⏭️ **Not done — `truck_3d` load-error fallback:** `model_viewer_plus` exposes no Dart
+  `onError`/`onLoad`, so a reliable runtime error state isn't possible without a package
+  change. The empty-URL case is already guarded by callers.
+
+⏭️ Still deferred (bigger / architectural): realtime cross-user freshness (Phase 3), a
+shared-queue "claim" concept for service tickets & PO approvals, and the UX-clarity work
+to remove duplicate access paths.
 
 ---
 

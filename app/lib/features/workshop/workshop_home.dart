@@ -100,7 +100,7 @@ class _TasksTab extends ConsumerWidget {
         tasks.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load tasks.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load tasks.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) {
               return const EmptyState(icon: Icons.checklist_rounded, tint: BT.amber,
@@ -217,7 +217,7 @@ class _PartsTab extends ConsumerWidget {
         parts.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.sky,
                 title: 'No parts installed', subtitle: 'Parts you scan-to-install appear here.')
@@ -256,7 +256,7 @@ class _WeekTab extends ConsumerWidget {
         tasks.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.calendar_today_rounded, tint: BT.sky,
                 title: 'Nothing scheduled', subtitle: 'Your assigned stages will show here.')

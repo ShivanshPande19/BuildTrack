@@ -155,7 +155,7 @@ class _ToOrderTab extends ConsumerWidget {
         items.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
@@ -172,7 +172,7 @@ class _ToOrderTab extends ConsumerWidget {
         // Essentials — general reorder requests raised by Store (no project).
         reqs.when(
           loading: () => const SizedBox.shrink(),
-          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
@@ -286,7 +286,7 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
         orders.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load orders.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load orders.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // 'ordered'/'dispatched'/'received' only make sense for approved POs,
@@ -371,7 +371,7 @@ class _ReceiveTab extends ConsumerWidget {
         orders.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // Only approved POs can move — a PO in approval isn't an order yet.
@@ -496,7 +496,7 @@ class _VendorsTab extends ConsumerWidget {
         vendors.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load vendors.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load vendors.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) {
