@@ -85,7 +85,7 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       ref.invalidate(stagesToAssignProvider);
       ref.invalidate(workloadProvider);
       ref.invalidate(notificationsProvider);
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.ink,
           content: Text(approve
@@ -93,7 +93,7 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
             : '${a.projectCode} · ${a.stageName} sent back for rework')));
       }
     } catch (e) {
-      if (context.mounted) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }

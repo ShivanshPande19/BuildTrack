@@ -300,11 +300,10 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
       await ref.read(workshopRepoProvider).toggleChecklist(widget.c.id, target);
       ref.invalidate(stageBundleProvider(widget.stageId));
     } catch (e) {
-      if (mounted) setState(() => _optimistic = null); // revert the tick
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text(friendlyError(e))));
-      }
+      if (!mounted) return; // reverts nothing / shows nothing if we're gone
+      setState(() => _optimistic = null); // revert the tick
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: BT.coral, content: Text(friendlyError(e))));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
