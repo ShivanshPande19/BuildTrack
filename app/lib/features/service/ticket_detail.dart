@@ -314,7 +314,7 @@ class TicketDetailScreen extends ConsumerWidget {
       ]));
     }
     if (t.status == 'resolved') {
-      return PrimaryButton('Close ticket', icon: Icons.lock_rounded, bg: BT.card2,
+      return AsyncPrimaryButton('Close ticket', icon: Icons.lock_rounded, bg: BT.card2,
         onTap: () async {
           try {
             await ref.read(serviceRepoProvider).close(t.id);

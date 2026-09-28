@@ -65,7 +65,7 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final trucks = ref.watch(deliveredTrucksProvider).valueOrNull ?? const <DeliveredTruck>[];
+    final trucksAsync = ref.watch(deliveredTrucksProvider);
     return Scaffold(
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
@@ -87,22 +87,32 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
             style: TextStyle(color: BT.mut, fontSize: 13)),
 
           const SectionLabel('Truck'),
-          if (trucks.isEmpty)
-            Container(
+          trucksAsync.when(
+            loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+            error: (e, _) => Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
                 borderRadius: BorderRadius.circular(14)),
-              child: const Text(
-                'No delivered trucks yet. A build only enters after-sales once its '
-                'project manager marks it delivered.',
-                style: TextStyle(fontSize: 12.5, height: 1.35)),
-            )
-          else
-            AppSelectField<String>(
-              hint: 'Select a truck', title: 'Choose a truck', value: _projectId,
-              options: [for (final d in trucks) SelectOption(d.project.id, '${d.project.code} · ${d.project.name}')],
-              onChanged: (v) => setState(() => _projectId = v),
+              child: Text('Could not load delivered trucks.\n${friendlyError(e)}',
+                style: const TextStyle(fontSize: 12.5, height: 1.35, color: BT.coral)),
             ),
+            data: (List<DeliveredTruck> trucks) => trucks.isEmpty
+              ? Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(color: const Color(0xFFFBE4E0),
+                    borderRadius: BorderRadius.circular(14)),
+                  child: const Text(
+                    'No delivered trucks yet. A build only enters after-sales once its '
+                    'project manager marks it delivered.',
+                    style: TextStyle(fontSize: 12.5, height: 1.35)),
+                )
+              : AppSelectField<String>(
+                  hint: 'Select a truck', title: 'Choose a truck', value: _projectId,
+                  options: [for (final d in trucks) SelectOption(d.project.id, '${d.project.code} · ${d.project.name}')],
+                  onChanged: (v) => setState(() => _projectId = v),
+                ),
+          ),
 
           const SectionLabel('Category'),
           Wrap(spacing: 9, runSpacing: 9, children: _cats.map((c) =>

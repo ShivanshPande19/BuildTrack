@@ -115,7 +115,7 @@ class TaskDetailScreen extends ConsumerWidget {
         const EmptyState(icon: Icons.checklist_rounded, tint: BT.lime, title: 'No checklist', subtitle: 'This stage has no checklist items.')
       else
         AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(
-          children: b.checklist.map((c) => _checkRow(context, ref, c)).toList())),
+          children: b.checklist.map((c) => _ChecklistTile(c: c, stageId: task.stageId)).toList())),
 
       // actions
       const SizedBox(height: 16),
@@ -166,28 +166,6 @@ class TaskDetailScreen extends ConsumerWidget {
       ],
     ]);
   }
-
-  Widget _checkRow(BuildContext context, WidgetRef ref, ChecklistItem c) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () async {
-      await ref.read(workshopRepoProvider).toggleChecklist(c.id, !c.done);
-      ref.invalidate(stageBundleProvider(task.stageId));
-    },
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 13),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
-      child: Row(children: [
-        Container(width: 26, height: 26, alignment: Alignment.center,
-          decoration: BoxDecoration(color: c.done ? BT.lime : Colors.transparent, borderRadius: BorderRadius.circular(9),
-            border: c.done ? null : Border.all(color: BT.mut2, width: 2)),
-          child: c.done ? const Icon(Icons.check_rounded, size: 15, color: BT.ink) : null),
-        const SizedBox(width: 13),
-        Expanded(child: Text(c.label, style: TextStyle(fontSize: 14.5,
-          color: c.done ? BT.mut2 : BT.ink,
-          decoration: c.done ? TextDecoration.lineThrough : null, decorationColor: BT.mut2))),
-      ]),
-    ),
-  );
 
   /// Take (or pick) a real photo, caption it, and upload it to the `builds`
   /// bucket. The client sees these on their stage timeline, so they used to be
@@ -287,4 +265,71 @@ class TaskDetailScreen extends ConsumerWidget {
         Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: dark ? Colors.white : BT.ink)),
       ])),
   );
+}
+
+
+/// One checklist row. Toggling is optimistic (the tick flips immediately, so a
+/// slow workshop connection doesn't feel dead), guarded against a re-tap while
+/// the write is in flight, and surfaces a failure instead of silently swallowing
+/// it — the old inline toggle did none of these, so a failed write looked like
+/// the checkbox just wouldn't tick and the user kept tapping.
+class _ChecklistTile extends ConsumerStatefulWidget {
+  final ChecklistItem c;
+  final String stageId;
+  const _ChecklistTile({required this.c, required this.stageId});
+  @override
+  ConsumerState<_ChecklistTile> createState() => _ChecklistTileState();
+}
+
+class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
+  bool? _optimistic; // set while a toggle is pending / until the refetch agrees
+  bool _busy = false;
+
+  @override
+  void didUpdateWidget(covariant _ChecklistTile old) {
+    super.didUpdateWidget(old);
+    // Server refetch landed with a new value — let it be the source of truth again.
+    if (old.c.done != widget.c.done) _optimistic = null;
+  }
+
+  Future<void> _toggle() async {
+    if (_busy) return;
+    final target = !(_optimistic ?? widget.c.done);
+    setState(() { _optimistic = target; _busy = true; });
+    try {
+      await ref.read(workshopRepoProvider).toggleChecklist(widget.c.id, target);
+      ref.invalidate(stageBundleProvider(widget.stageId));
+    } catch (e) {
+      if (mounted) setState(() => _optimistic = null); // revert the tick
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final done = _optimistic ?? widget.c.done;
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _toggle,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 13),
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
+        child: Row(children: [
+          Container(width: 26, height: 26, alignment: Alignment.center,
+            decoration: BoxDecoration(color: done ? BT.lime : Colors.transparent, borderRadius: BorderRadius.circular(9),
+              border: done ? null : Border.all(color: BT.mut2, width: 2)),
+            child: done ? const Icon(Icons.check_rounded, size: 15, color: BT.ink) : null),
+          const SizedBox(width: 13),
+          Expanded(child: Text(widget.c.label, style: TextStyle(fontSize: 14.5,
+            color: done ? BT.mut2 : BT.ink,
+            decoration: done ? TextDecoration.lineThrough : null, decorationColor: BT.mut2))),
+        ]),
+      ),
+    );
+  }
 }

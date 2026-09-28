@@ -11,6 +11,50 @@ verified through CI, not locally).
 
 ---
 
+## Tier 1 — UI/correctness + multi-user-per-role hardening 🔄
+
+A line-by-line audit of every role's screens (a role is a *team*, not one person —
+multiple PMs, procurement staff, designers, technicians, etc.) turned up a class of
+small glitches. This pass fixes the confirmed, low-risk ones:
+
+- ✅ **Double-submit guards.** New shared `AsyncPrimaryButton` (spinner + ignores taps
+  while its async action runs). Applied to PO sign/approve/reject/dispatch/receive,
+  procurement Receive & Mark-dispatched (the latter also de-hand-rolled to the design
+  system), recall **Notify all**, and service **Close ticket**. PM **Approvals** cards
+  became stateful with a `_deciding` guard + spinner; client **reopen** and the Store
+  inline **new-item** dialog got in-flight guards; **Mark all read** got try/catch +
+  `friendlyError`.
+- ✅ **New members appear immediately.** `Add member` now invalidates the PM dropdown,
+  the assign-work picker and the service technician picker by role — a freshly-added
+  PM/technician/doer was invisible until an app restart.
+- ✅ **Design version numbering is atomic** (migration `0025`). `addVersion` did
+  read-max-then-insert; two designers on the same build could grab the same `version_no`
+  and lose an upload. Now a unique index on `(artifact_id, version_no)` + a
+  `SECURITY DEFINER` `fn_add_design_version` that computes the next number under a row
+  lock. `addVersion` calls the RPC.
+- ✅ **Checklist toggle** (workshop task) is now optimistic, guarded against re-taps, and
+  surfaces failures instead of silently swallowing them.
+- ✅ **Stale-after-write invalidation.** Logging a component refreshes stock + the
+  scan-to-install pool + the truck record (not just the component list); approving a
+  design refreshes the truck's 3D model + the client's truck list.
+- ✅ **Money in words matches figures** on the GST PO document (paise are now spelled out
+  instead of rounded away).
+- ✅ **`new_ticket` truck picker** uses `.when` — a load/error no longer shows a false
+  "No delivered trucks".
+- ✅ **`mounted` guards** added to the design upload pickers (no `setState` after backing
+  out mid-upload).
+
+**Watch out when deploying:** run `0025_design_version_atomic.sql` (idempotent). From it
+on, adding a design version goes through `fn_add_design_version` — an old app build doing
+the direct insert still works but without the race guard. `full_setup.sql` regenerated.
+
+⏭️ Deferred to a later pass (bigger / architectural): realtime cross-user freshness
+(Phase 3), a shared-queue "claim" concept for service tickets & PO approvals, the
+UX-clarity work to remove duplicate access paths, the non-ticking SLA countdown, and the
+remaining raw-`$e` error strings.
+
+---
+
 ## Phase 1 — closing the broken logic loops ✅ COMPLETE
 
 All seven loops shipped, each its own CI-verified PR, all merged to `main`.

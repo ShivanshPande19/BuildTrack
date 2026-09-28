@@ -54,8 +54,15 @@ class NotificationsScreen extends ConsumerWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () async {
-                  await ref.read(notificationsRepoProvider).markAllRead();
-                  ref.invalidate(notificationsProvider);
+                  try {
+                    await ref.read(notificationsRepoProvider).markAllRead();
+                    ref.invalidate(notificationsProvider);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        backgroundColor: BT.coral, content: Text(friendlyError(e))));
+                    }
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),

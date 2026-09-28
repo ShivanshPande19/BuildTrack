@@ -74,6 +74,60 @@ class PrimaryButton extends StatelessWidget {
   );
 }
 
+/// A [PrimaryButton] that guards a mutating async action against double-taps.
+///
+/// While its [onTap] future is running it swaps the label for a spinner and
+/// ignores further taps, so a fast double-tap can never fire the same call
+/// twice (duplicate PO, double approval, duplicate recall notifications…). Use
+/// this instead of [PrimaryButton] anywhere the tap writes to the backend.
+class AsyncPrimaryButton extends StatefulWidget {
+  final String label;
+  final Future<void> Function()? onTap;
+  final IconData? icon;
+  final Color bg;
+  final Color fg;
+  const AsyncPrimaryButton(this.label, {super.key, this.onTap, this.icon, this.bg = BT.lime, this.fg = BT.ink});
+  @override
+  State<AsyncPrimaryButton> createState() => _AsyncPrimaryButtonState();
+}
+
+class _AsyncPrimaryButtonState extends State<AsyncPrimaryButton> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy || widget.onTap == null) return;
+    setState(() => _busy = true);
+    try {
+      await widget.onTap!();
+    } finally {
+      // The action may have popped this screen — only touch state if we're still mounted.
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final disabled = _busy || widget.onTap == null;
+    return PressableScale(
+      onTap: disabled ? null : _run,
+      pressedScale: 0.97,
+      child: Container(
+        height: 54, alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(color: widget.bg, borderRadius: BorderRadius.circular(16)),
+        child: _busy
+          ? SizedBox(width: 22, height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.4, valueColor: AlwaysStoppedAnimation<Color>(widget.fg)))
+          : Row(mainAxisSize: MainAxisSize.min, children: [
+              if (widget.icon != null) ...[Icon(widget.icon, size: 19, color: widget.fg), const SizedBox(width: 8)],
+              Flexible(child: Text(widget.label, maxLines: 1, overflow: TextOverflow.ellipsis, softWrap: false,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: widget.fg))),
+            ]),
+      ),
+    );
+  }
+}
+
 /// Signature floating pill nav + circular action button (matches the UI).
 class PillNav extends StatelessWidget {
   final List<IconData> icons;

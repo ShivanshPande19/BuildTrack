@@ -420,7 +420,7 @@ class _ReceiveTab extends ConsumerWidget {
         _poHeader(o, trailing: o.expectedDate != null
           ? StatusPill(_fmt.format(o.expectedDate!), color: BT.sky) : null),
         const SizedBox(height: 12),
-        PrimaryButton('Receive & verify', icon: Icons.check,
+        AsyncPrimaryButton('Receive & verify', icon: Icons.check,
           onTap: () async {
             try {
               await ref.read(procurementRepoProvider).markReceived(o.id);
@@ -449,8 +449,7 @@ class _ReceiveTab extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _poHeader(o, trailing: const StatusPill('Ordered', color: BT.sky)),
         const SizedBox(height: 12),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AsyncPrimaryButton('Mark dispatched', icon: Icons.local_shipping_rounded, bg: BT.ink, fg: BT.card,
           onTap: () async {
             final now = DateTime.now();
             final eta = await showDatePicker(context: context,
@@ -472,15 +471,7 @@ class _ReceiveTab extends ConsumerWidget {
                   backgroundColor: BT.coral, content: Text(friendlyError(e))));
               }
             }
-          },
-          child: Container(height: 52, alignment: Alignment.center,
-            decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(16)),
-            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.local_shipping_rounded, size: 18, color: BT.card),
-              SizedBox(width: 8),
-              Text('Mark dispatched', style: TextStyle(fontWeight: FontWeight.w600, color: BT.card)),
-            ])),
-        ),
+          }),
       ]),
     ),
   );

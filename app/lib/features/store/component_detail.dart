@@ -190,7 +190,7 @@ class RecallCheckScreen extends ConsumerWidget {
                   const SizedBox(height: 6),
                   // Actually sends it: each affected build's PM and client get a
                   // notification. This button used to only show a snackbar.
-                  PrimaryButton('Notify all ${rows.length}', icon: Icons.notifications_active_rounded,
+                  AsyncPrimaryButton('Notify all ${rows.length}', icon: Icons.notifications_active_rounded,
                     bg: BT.ink, fg: BT.card, onTap: () async {
                       try {
                         final n = await ref.read(storeRepoProvider)

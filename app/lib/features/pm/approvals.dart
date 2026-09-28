@@ -57,17 +57,26 @@ class ApprovalsScreen extends ConsumerWidget {
 }
 
 /// One submission: header, the evidence bundle, and the approve/reject actions.
-class _ApprovalCard extends ConsumerWidget {
+class _ApprovalCard extends ConsumerStatefulWidget {
   const _ApprovalCard(this.a);
   final ApprovalItem a;
+  @override
+  ConsumerState<_ApprovalCard> createState() => _ApprovalCardState();
+}
 
-  Future<void> _decide(BuildContext context, WidgetRef ref, bool approve) async {
+class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
+  bool _deciding = false;
+  ApprovalItem get a => widget.a;
+
+  Future<void> _decide(bool approve) async {
+    if (_deciding) return; // guard a fast double-tap firing two decisions
     // Sending work back without saying why leaves the assignee guessing, so ask.
     String? note;
     if (!approve) {
       note = await _askReason(context);
       if (note == null) return; // cancelled
     }
+    setState(() => _deciding = true);
     try {
       await ref.read(projectsRepoProvider).decideApproval(a.id, approve, note: note);
       ref.invalidate(pendingApprovalsProvider);
@@ -88,6 +97,8 @@ class _ApprovalCard extends ConsumerWidget {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }
+    } finally {
+      if (mounted) setState(() => _deciding = false);
     }
   }
 
@@ -117,7 +128,7 @@ class _ApprovalCard extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final bundle = ref.watch(stageBundleProvider(a.stageId));
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -151,29 +162,35 @@ class _ApprovalCard extends ConsumerWidget {
           ),
 
           const SizedBox(height: 13),
-          Row(children: [
-            Expanded(child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _decide(context, ref, false),
-              child: Container(height: 44, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.close_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                  Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
-                ])),
-            )),
-            const SizedBox(width: 10),
-            Expanded(child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _decide(context, ref, true),
-              child: Container(height: 44, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(13)),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.check_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                  Text('Approve', style: TextStyle(fontWeight: FontWeight.w600)),
-                ])),
-            )),
-          ]),
+          if (_deciding)
+            Container(height: 44, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+              child: const SizedBox(width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: BT.ink)))
+          else
+            Row(children: [
+              Expanded(child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _decide(false),
+                child: Container(height: 44, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.close_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
+                    Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ])),
+              )),
+              const SizedBox(width: 10),
+              Expanded(child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _decide(true),
+                child: Container(height: 44, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(13)),
+                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Icon(Icons.check_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
+                    Text('Approve', style: TextStyle(fontWeight: FontWeight.w600)),
+                  ])),
+              )),
+            ]),
         ]),
       ),
     );

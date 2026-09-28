@@ -58,6 +58,13 @@ class _LogComponentState extends ConsumerState<LogComponent> {
         itemId: _itemId!, serial: saved,
         vendorId: _vendorId, warrantyEnd: _warrantyEnd, projectId: _projectId, billUrl: billUrl);
       ref.invalidate(componentsProvider);
+      // A logged unit changes on-hand counts (Stock tab + Inbox stats) and the
+      // workshop's scan-to-install pool; if it was assigned straight to a build
+      // it also lands on that truck's record. Refresh all of them — not just the
+      // component list this screen shows.
+      ref.invalidate(stockProvider);
+      ref.invalidate(inStockProvider);
+      if (_projectId != null) ref.invalidate(truckComponentsProvider(_projectId!));
       if (!mounted) return;
       if (another) {
         // Receiving several units of the same item: keep item/vendor/warranty/
@@ -218,6 +225,7 @@ class _LogComponentState extends ConsumerState<LogComponent> {
   Future<OptRef?> _promptNewItem() {
     final nameC = TextEditingController();
     String? e;
+    bool busy = false;
     return showDialog<OptRef>(context: context, builder: (dctx) => StatefulBuilder(builder: (dctx, setD) => AlertDialog(
       backgroundColor: BT.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
@@ -236,11 +244,16 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('Cancel', style: TextStyle(color: BT.mut))),
-        TextButton(onPressed: () async {
+        TextButton(onPressed: busy ? null : () async {
           if (nameC.text.trim().isEmpty) { setD(() => e = 'Name required'); return; }
-          final created = await ref.read(procurementRepoProvider).createItem(name: nameC.text.trim());
-          if (dctx.mounted) Navigator.pop(dctx, created);
-        }, child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+          setD(() { busy = true; e = null; });
+          try {
+            final created = await ref.read(procurementRepoProvider).createItem(name: nameC.text.trim());
+            if (dctx.mounted) Navigator.pop(dctx, created);
+          } catch (err) {
+            if (dctx.mounted) setD(() { busy = false; e = friendlyError(err); });
+          }
+        }, child: Text(busy ? 'Adding…' : 'Add', style: const TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
     )));
   }

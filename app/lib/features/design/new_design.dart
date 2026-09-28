@@ -69,9 +69,11 @@ class _NewDesignState extends ConsumerState<NewDesign> {
     setState(() { _uploadingModel = true; _error = null; });
     try {
       final url = await ref.read(designRepoProvider).uploadFile(bytes, filename: name, contentType: 'model/gltf-binary');
+      if (!mounted) return; // backed out mid-upload
       setState(() { _modelUrl = url; _modelName = name; _uploadingModel = false; });
     } catch (e) {
-      setState(() { _uploadingModel = false; _error = 'Upload failed: $e'; });
+      if (!mounted) return;
+      setState(() { _uploadingModel = false; _error = 'Upload failed: ${friendlyError(e)}'; });
     }
   }
 
@@ -88,9 +90,11 @@ class _NewDesignState extends ConsumerState<NewDesign> {
     setState(() { _uploadingImage = true; _error = null; });
     try {
       final url = await ref.read(designRepoProvider).uploadFile(bytes, filename: f.name, contentType: ct);
+      if (!mounted) return; // backed out mid-upload
       setState(() { _imageUrl = url; _imageName = f.name; _uploadingImage = false; });
     } catch (e) {
-      setState(() { _uploadingImage = false; _error = 'Upload failed: $e'; });
+      if (!mounted) return;
+      setState(() { _uploadingImage = false; _error = 'Upload failed: ${friendlyError(e)}'; });
     }
   }
 

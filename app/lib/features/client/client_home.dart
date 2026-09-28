@@ -22,6 +22,7 @@ class ClientHome extends ConsumerStatefulWidget {
 
 class _ClientHomeState extends ConsumerState<ClientHome> {
   int _tab = 0;
+  bool _reopening = false;
   static const _labels = ['My Trucks', 'Support', 'Profile'];
 
   void _raise(List<Project> trucks) {
@@ -269,6 +270,8 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
       ],
     ));
     if (reason == null) return;
+    if (_reopening) return; // guard a double-confirm reopening the ticket twice
+    _reopening = true;
     try {
       await ref.read(clientRepoProvider).reopenTicket(t.id, reason);
       ref.invalidate(myTicketsProvider);
@@ -282,6 +285,8 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }
+    } finally {
+      _reopening = false;
     }
   }
 

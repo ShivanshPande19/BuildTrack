@@ -282,13 +282,23 @@ pw.Widget _box(String title, List<pw.Widget> children) => pw.Container(
   ]),
 );
 
-/// Indian-system amount in words: "Rupees One Lakh Twenty Thousand Only".
-/// Paise are rounded into the rupee amount to keep the document clean.
+/// Indian-system amount in words, e.g. "Rupees One Lakh Twenty Thousand Only"
+/// or "Rupees One Thousand Two Hundred Thirty Four and Fifty Six Paise Only".
+///
+/// The figure on the document prints two decimals (Rs 1,234.56), so the words
+/// spell out the paise too — otherwise the amount-in-words (rounded) disagreed
+/// with the amount-in-figures, which on a GST purchase order is a real defect.
 String rupeesInWords(double amount) {
-  final n = amount.round();
-  if (n == 0) return 'Rupees Zero Only';
-  final words = _numberToWords(n);
-  return 'Rupees $words Only';
+  // Work in whole paise to avoid floating-point drift, then split rupees/paise.
+  final totalPaise = (amount * 100).round();
+  final rupees = totalPaise ~/ 100;
+  final paise = totalPaise % 100;
+  if (rupees == 0 && paise == 0) return 'Rupees Zero Only';
+  final buf = StringBuffer('Rupees ');
+  buf.write(rupees == 0 ? 'Zero' : _numberToWords(rupees));
+  if (paise > 0) buf.write(' and ${_twoDigits(paise)} Paise');
+  buf.write(' Only');
+  return buf.toString();
 }
 
 const _ones = [
