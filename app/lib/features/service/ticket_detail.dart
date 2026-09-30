@@ -249,7 +249,9 @@ class TicketDetailScreen extends ConsumerWidget {
               child: GestureDetector(
                 onTap: () => Navigator.pop(dctx),
                 child: ClipRRect(borderRadius: BorderRadius.circular(20),
-                  child: Image.network(p.url, fit: BoxFit.contain)),
+                  child: Image.network(p.url, fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const Text('Could not load photo',
+                      style: TextStyle(color: Colors.white70)))),
               ),
             )),
             child: ClipRRect(
