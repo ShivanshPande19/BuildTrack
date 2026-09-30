@@ -84,6 +84,36 @@ class ProjectDetailScreen extends ConsumerWidget {
     ])),
   );
 
+  /// Make the current mode explicit. The same screen opens read-only for an
+  /// Admin (oversight) and editable for the build's PM, and nothing used to say
+  /// which — so an Admin saw an edit-looking screen that mostly wasn't, and vice
+  /// versa. (UX navigation audit, finding C.)
+  Widget _modeBanner() {
+    final canManage = materialsEditable || canAssign || canEditTimeline;
+    final (IconData icon, Color tint, String title, String sub) = canManage
+      ? (Icons.tune_rounded, BT.sky, 'You manage this build',
+         'Assign work, edit materials and the delivery date.')
+      : (Icons.visibility_outlined, BT.card2, 'Oversight · read-only',
+         canAssignPm ? 'You can assign or change the project manager.'
+                     : 'Monitoring only.');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: BT.line)),
+      child: Row(children: [
+        Icon(icon, size: 18, color: BT.ink),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 1),
+          Text(sub, style: const TextStyle(color: BT.mut, fontSize: 11.5, height: 1.3)),
+        ])),
+      ]),
+    );
+  }
+
   Widget _content(BuildContext context, WidgetRef ref, ProjectDetailData d) {
     final s = _status(d.project.status);
     final cur = d.currentStage;
@@ -98,7 +128,10 @@ class ProjectDetailScreen extends ConsumerWidget {
         const SizedBox(width: 10),
         StatusPill(s.label, color: s.color),
       ]),
-      const SizedBox(height: 16),
+      const SizedBox(height: 14),
+
+      _modeBanner(),
+      const SizedBox(height: 12),
 
       _pmCard(context, ref, d, names),
       const SizedBox(height: 12),
