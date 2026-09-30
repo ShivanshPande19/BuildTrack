@@ -51,7 +51,7 @@ class ClientStageDetail extends ConsumerWidget {
           const SizedBox(height: 18),
           photos.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load photos.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            error: (e, _) => AppCard(child: Text('Could not load photos.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: (list) => list.isEmpty
               ? EmptyState(
                   icon: stage.status == 'todo' ? Icons.schedule_rounded : Icons.photo_library_outlined,

@@ -62,7 +62,7 @@ class ClientTruckDetail extends ConsumerWidget {
 
           detail.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: (d) {
               final cur = d.currentStage;
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

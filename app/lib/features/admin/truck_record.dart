@@ -14,9 +14,11 @@ import '../../shared/widgets.dart';
 /// warranty claim, an audit or a handover pack never means hunting stage by
 /// stage.
 class TruckRecordScreen extends ConsumerWidget {
-  const TruckRecordScreen({super.key, required this.projectId, this.code, this.name});
+  const TruckRecordScreen({super.key, required this.projectId, this.code, this.name, this.embedded = false});
   final String projectId;
   final String? code, name;
+  /// When shown as a tab inside BuildScreen: drop the back-row + top safe-area.
+  final bool embedded;
 
   static final _fmt = DateFormat('d MMM yyyy');
   static String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -38,7 +40,7 @@ class TruckRecordScreen extends ConsumerWidget {
     final comps = ref.watch(truckComponentsProvider(projectId));
     final docs = ref.watch(projectDocsProvider(projectId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !embedded, child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(projectDocsProvider(projectId));
           return ref.refresh(truckComponentsProvider(projectId).future);
@@ -46,7 +48,7 @@ class TruckRecordScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),

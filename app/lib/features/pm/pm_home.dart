@@ -9,7 +9,7 @@ import '../../shared/widgets.dart';
 import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import '../common/profile.dart';
-import '../admin/project_detail.dart';
+import '../admin/build_screen.dart';
 import '../procurement/po_approvals.dart';
 import 'approvals.dart';
 import 'assign_work.dart';
@@ -120,7 +120,7 @@ class _HomeTab extends ConsumerWidget {
         dash.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (d) {
             final projects = d.projects;
@@ -270,7 +270,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
           _pmHeader(context, 'My Projects'), const SizedBox(height: 16),
-          AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (list) {
           final filtered = _filter == 'all' ? list : list.where((p) => p.status == _filter).toList();
@@ -315,7 +315,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p,
+        builder: (_) => BuildScreen(projectId: p.id, initial: p,
           materialsEditable: true, canAssign: true, canEditTimeline: true))),
       child: AppCard(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
@@ -434,7 +434,7 @@ class _ScheduleTab extends ConsumerWidget {
       behavior: HitTestBehavior.opaque,
       // Straight into the build so the PM can reassign or move the date.
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(projectId: e.projectId,
+        builder: (_) => BuildScreen(projectId: e.projectId,
           materialsEditable: true, canAssign: true, canEditTimeline: true))),
       child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 13),
         child: Row(children: [
@@ -499,7 +499,7 @@ class _TeamTab extends ConsumerWidget {
         members.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 40),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load team.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load team.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // PM's team = execution staff they assign build tasks to (not admins/PMs/clients/procurement).
             const doerRoles = {'workshop', 'design', 'store', 'service'};

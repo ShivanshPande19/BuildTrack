@@ -44,6 +44,19 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
     }
   }
 
+  @override
+  void dispose() {
+    _name.dispose();
+    for (final r in _rows) {
+      r.name.dispose();
+      r.days.dispose();
+      for (final c in r.checks) {
+        c.dispose();
+      }
+    }
+    super.dispose();
+  }
+
   Future<void> _save() async {
     final stages = <StageDraft>[];
     for (final r in _rows) {
@@ -61,7 +74,7 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
       final created = await ref.read(adminRepoProvider).createTemplate(_name.text.trim(), null, stages);
       if (mounted) Navigator.pop(context, created);
     } catch (e) {
-      setState(() { _error = 'Failed: $e'; _saving = false; });
+      setState(() { _error = 'Failed: ${friendlyError(e)}'; _saving = false; });
     }
   }
 
@@ -280,7 +293,7 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
           if (dctx.mounted) Navigator.pop(dctx, created);
         }, child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
-    )));
+    ))).whenComplete(() { nameC.dispose(); leadC.dispose(); });
   }
 
   Widget _dialogField(TextEditingController c, String hint, {bool number = false}) => Container(

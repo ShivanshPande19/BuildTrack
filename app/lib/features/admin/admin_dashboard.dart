@@ -8,7 +8,7 @@ import '../../shared/widgets.dart';
 import '../../shared/animations.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
-import 'project_detail.dart';
+import 'build_screen.dart';
 import 'company_settings.dart';
 import 'ops_center.dart';
 import '../common/notifications.dart';
@@ -29,9 +29,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   static const _labels = ['Home', 'Projects', 'Team', 'Insights'];
 
   void _fabAction() {
-    // Team tab → add member; every other tab → onboard a project.
-    final page = _tab == 2 ? const AddMember() : const OnboardProject();
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    // The FAB is always Admin's primary create — Onboard project. Adding a
+    // member is an explicit button on the Team tab; a FAB that changed identity
+    // per tab was easy to misfire. (UX navigation audit, finding G.)
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnboardProject()));
   }
 
   @override
@@ -86,7 +87,11 @@ class _HomeTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fleet = ref.watch(fleetProvider);
-    final urgentCount = fleet.valueOrNull?.urgent.length ?? 0;
+    // The bell opens the notifications feed, so its badge should count UNREAD
+    // notifications — not urgent order-by items (which have their own
+    // "needs attention" section below).
+    final unread = ref.watch(notificationsProvider).valueOrNull
+        ?.where((n) => !n.read).length ?? 0;
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(fleetProvider.future),
       child: ListView(
@@ -104,7 +109,7 @@ class _HomeTab extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Row(children: [
-                _bell(context, urgentCount),
+                _bell(context, unread),
                 const SizedBox(width: 10),
                 _avatar(context),
               ]),
@@ -116,7 +121,7 @@ class _HomeTab extends ConsumerWidget {
           fleet.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 80),
               child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load fleet.\n$e',
+            error: (e, _) => AppCard(child: Text('Could not load fleet.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: _homeContent,
           ),
@@ -362,7 +367,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
       child: fleet.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load projects.\n$e',
+          AppCard(child: Text('Could not load projects.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (f) {
@@ -455,7 +460,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         behavior: HitTestBehavior.opaque,
         // canAssignPm: assigning / changing the project manager is Admin's job.
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, canAssignPm: true))),
+          builder: (_) => BuildScreen(projectId: p.id, initial: p, canAssignPm: true))),
         child: AppCard(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -531,7 +536,7 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
       child: members.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load team.\n$e',
+          AppCard(child: Text('Could not load team.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (list) {
@@ -554,13 +559,18 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
               style: const TextStyle(color: BT.mut, fontSize: 12.5)),
             const SizedBox(height: 18),
             _companyCard(context),
+            const SizedBox(height: 12),
+            PrimaryButton('Add member', icon: Icons.person_add_alt_1_rounded,
+              bg: BT.ink, fg: BT.card,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddMember()))),
           ];
 
           if (list.isEmpty) {
             children.add(const EmptyState(
               icon: Icons.people_outline_rounded, tint: BT.lav,
               title: 'No members yet',
-              subtitle: 'Tap + to invite your first team member.'));
+              subtitle: 'Use "Add member" above to invite your first team member.'));
           } else {
             children.add(_deptFilter(depts, byDept, active));
             children.add(const SizedBox(height: 16));
@@ -750,7 +760,7 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
           } catch (e) {
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                backgroundColor: BT.coral, content: Text('Could not remove: $e')));
+                backgroundColor: BT.coral, content: Text('Could not remove: ${friendlyError(e)}')));
             }
             return false;
           }
@@ -773,7 +783,7 @@ class _InsightsTab extends ConsumerWidget {
       child: fleet.when(
         loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
         error: (e, _) => ListView(padding: _pad, children: [
-          AppCard(child: Text('Could not load insights.\n$e',
+          AppCard(child: Text('Could not load insights.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
         ]),
         data: (f) {

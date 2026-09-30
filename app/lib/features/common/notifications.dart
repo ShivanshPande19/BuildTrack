@@ -54,8 +54,15 @@ class NotificationsScreen extends ConsumerWidget {
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () async {
-                  await ref.read(notificationsRepoProvider).markAllRead();
-                  ref.invalidate(notificationsProvider);
+                  try {
+                    await ref.read(notificationsRepoProvider).markAllRead();
+                    ref.invalidate(notificationsProvider);
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        backgroundColor: BT.coral, content: Text(friendlyError(e))));
+                    }
+                  }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
@@ -70,7 +77,7 @@ class NotificationsScreen extends ConsumerWidget {
               loading: () => const Padding(padding: EdgeInsets.only(top: 60),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
               error: (e, _) => Padding(padding: const EdgeInsets.only(top: 16),
-                child: AppCard(child: Text('Could not load notifications.\n$e',
+                child: AppCard(child: Text('Could not load notifications.\n${friendlyError(e)}',
                   style: const TextStyle(color: BT.coral, fontSize: 13)))),
               data: _list,
             ),

@@ -69,7 +69,7 @@ class StageDetailScreen extends ConsumerWidget {
               loading: () => const Padding(padding: EdgeInsets.only(top: 50),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
               error: (e, _) => Padding(padding: const EdgeInsets.only(top: 16),
-                child: AppCard(child: Text('Could not load stage details.\n$e',
+                child: AppCard(child: Text('Could not load stage details.\n${friendlyError(e)}',
                   style: const TextStyle(color: BT.coral, fontSize: 13)))),
               data: (b) => _body(b),
             ),

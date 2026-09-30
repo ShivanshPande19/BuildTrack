@@ -23,6 +23,11 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
     try {
       await ref.read(clientRepoProvider).decideDesign(widget.design.id, approve, feedback: feedback);
       ref.invalidate(truckDesignsProvider(widget.projectId));
+      // Approving a design promotes its .glb to the truck's 3D showcase and can
+      // move the build's status/progress — refresh those too, or the truck card
+      // keeps showing the demo model and stale progress until an app restart.
+      ref.invalidate(truckModelUrlProvider(widget.projectId));
+      ref.invalidate(myTrucksProvider);
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -31,7 +36,8 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text('Failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }
     }
   }
@@ -95,7 +101,8 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
             const StatusPill('Needs approval', color: BT.amber),
           ]),
           const SizedBox(height: 14),
-          Text('${d.type[0].toUpperCase()}${d.type.substring(1)} design', style: display(27, w: FontWeight.w600)),
+          Text(d.type.isEmpty ? 'Design' : '${d.type[0].toUpperCase()}${d.type.substring(1)} design',
+            style: display(27, w: FontWeight.w600)),
           const SizedBox(height: 4),
           const Text('From the Azimuth design team', style: TextStyle(color: BT.mut, fontSize: 13)),
           const SizedBox(height: 16),

@@ -14,7 +14,10 @@ class ProjectRequirementsScreen extends ConsumerStatefulWidget {
   final String? projectCode;
   /// Admin opens this read-only (monitor). Owning roles (PM/Procurement) open it editable.
   final bool editable;
-  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode, this.editable = false});
+  /// When shown as a tab inside BuildScreen: drop the back-row + top safe-area.
+  final bool embedded;
+  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode,
+    this.editable = false, this.embedded = false});
   @override
   ConsumerState<ProjectRequirementsScreen> createState() => _ProjectRequirementsScreenState();
 }
@@ -45,12 +48,12 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
   Widget build(BuildContext context) {
     final reqs = ref.watch(requirementsProvider(widget.projectId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !widget.embedded, child: RefreshIndicator(
         onRefresh: () async => ref.refresh(requirementsProvider(widget.projectId).future),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            Row(children: [
+            if (!widget.embedded) Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),
@@ -73,7 +76,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
             reqs.when(
               loading: () => const Padding(padding: EdgeInsets.only(top: 50),
                 child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load materials.\n$e',
+              error: (e, _) => AppCard(child: Text('Could not load materials.\n${friendlyError(e)}',
                 style: const TextStyle(color: BT.coral, fontSize: 13))),
               data: (list) => list.isEmpty
                 ? EmptyState(icon: Icons.inventory_2_outlined, tint: BT.lav,
@@ -250,7 +253,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                           _refresh();
                           if (ctx.mounted) Navigator.pop(ctx);
                         } catch (e) {
-                          setS(() { busy = false; err = '$e'; });
+                          setS(() { busy = false; err = '${friendlyError(e)}'; });
                         }
                       })),
                   ]),
@@ -290,7 +293,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
             child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
         ],
       ));
-    });
+    }).whenComplete(() { nameC.dispose(); leadC.dispose(); });
   }
 
   Widget _dialogField(TextEditingController c, String hint, {bool number = false}) => Container(
