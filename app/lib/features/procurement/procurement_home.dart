@@ -41,7 +41,7 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
         activeLabel: _labels[_tab],
         onTap: (i) => setState(() => _tab = i),
         onAction: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _tab == 3 ? const AddVendorScreen() : const NewPoScreen())),
+          builder: (_) => const NewPoScreen())),
       ),
     );
   }
@@ -493,6 +493,10 @@ class _VendorsTab extends ConsumerWidget {
       child: ListView(padding: _pad, children: [
         _header(context, 'Vendors'),
         const SizedBox(height: 16),
+        PrimaryButton('Add vendor', icon: Icons.add_business_rounded, bg: BT.ink, fg: BT.card,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddVendorScreen()))),
+        const SizedBox(height: 14),
         vendors.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),

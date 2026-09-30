@@ -29,9 +29,10 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   static const _labels = ['Home', 'Projects', 'Team', 'Insights'];
 
   void _fabAction() {
-    // Team tab → add member; every other tab → onboard a project.
-    final page = _tab == 2 ? const AddMember() : const OnboardProject();
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    // The FAB is always Admin's primary create — Onboard project. Adding a
+    // member is an explicit button on the Team tab; a FAB that changed identity
+    // per tab was easy to misfire. (UX navigation audit, finding G.)
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OnboardProject()));
   }
 
   @override
@@ -558,13 +559,18 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
               style: const TextStyle(color: BT.mut, fontSize: 12.5)),
             const SizedBox(height: 18),
             _companyCard(context),
+            const SizedBox(height: 12),
+            PrimaryButton('Add member', icon: Icons.person_add_alt_1_rounded,
+              bg: BT.ink, fg: BT.card,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AddMember()))),
           ];
 
           if (list.isEmpty) {
             children.add(const EmptyState(
               icon: Icons.people_outline_rounded, tint: BT.lav,
               title: 'No members yet',
-              subtitle: 'Tap + to invite your first team member.'));
+              subtitle: 'Use "Add member" above to invite your first team member.'));
           } else {
             children.add(_deptFilter(depts, byDept, active));
             children.add(const SizedBox(height: 16));
