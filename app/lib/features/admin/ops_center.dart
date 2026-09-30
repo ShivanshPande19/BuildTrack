@@ -5,7 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
-import 'project_detail.dart';
+import 'build_screen.dart';
 
 /// Admin — the operations command center.
 ///
@@ -228,7 +228,7 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(
+        builder: (_) => BuildScreen(
           projectId: r.projectId,
           initial: Project(id: r.projectId, code: r.code, name: r.name,
             status: r.status, progressPct: r.progressPct),
@@ -311,7 +311,7 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
     return Padding(padding: const EdgeInsets.only(bottom: 9), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDetailScreen(
+        builder: (_) => BuildScreen(
           projectId: r.projectId,
           initial: Project(id: r.projectId, code: r.code, name: r.name,
             status: r.status, progressPct: r.progressPct),

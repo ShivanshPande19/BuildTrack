@@ -8,7 +8,7 @@ import '../../shared/widgets.dart';
 import '../../shared/animations.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
-import 'project_detail.dart';
+import 'build_screen.dart';
 import 'company_settings.dart';
 import 'ops_center.dart';
 import '../common/notifications.dart';
@@ -459,7 +459,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         behavior: HitTestBehavior.opaque,
         // canAssignPm: assigning / changing the project manager is Admin's job.
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => ProjectDetailScreen(projectId: p.id, initial: p, canAssignPm: true))),
+          builder: (_) => BuildScreen(projectId: p.id, initial: p, canAssignPm: true))),
         child: AppCard(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

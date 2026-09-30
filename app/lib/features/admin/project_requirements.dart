@@ -14,7 +14,10 @@ class ProjectRequirementsScreen extends ConsumerStatefulWidget {
   final String? projectCode;
   /// Admin opens this read-only (monitor). Owning roles (PM/Procurement) open it editable.
   final bool editable;
-  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode, this.editable = false});
+  /// When shown as a tab inside BuildScreen: drop the back-row + top safe-area.
+  final bool embedded;
+  const ProjectRequirementsScreen({super.key, required this.projectId, this.projectCode,
+    this.editable = false, this.embedded = false});
   @override
   ConsumerState<ProjectRequirementsScreen> createState() => _ProjectRequirementsScreenState();
 }
@@ -45,12 +48,12 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
   Widget build(BuildContext context) {
     final reqs = ref.watch(requirementsProvider(widget.projectId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !widget.embedded, child: RefreshIndicator(
         onRefresh: () async => ref.refresh(requirementsProvider(widget.projectId).future),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            Row(children: [
+            if (!widget.embedded) Row(children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),

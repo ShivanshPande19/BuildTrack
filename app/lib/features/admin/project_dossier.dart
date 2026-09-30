@@ -16,9 +16,11 @@ import 'truck_record.dart';
 /// gets the whole story of a build in one screen instead of drilling stage by
 /// stage.
 class ProjectDossierScreen extends ConsumerWidget {
-  const ProjectDossierScreen({super.key, required this.projectId, this.code});
+  const ProjectDossierScreen({super.key, required this.projectId, this.code, this.embedded = false});
   final String projectId;
   final String? code;
+  /// When shown as a tab inside BuildScreen: drop the back-row + top safe-area.
+  final bool embedded;
 
   static final _fmt = DateFormat('d MMM');
   static String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -48,7 +50,7 @@ class ProjectDossierScreen extends ConsumerWidget {
       for (final m in (ref.watch(membersProvider).valueOrNull ?? <Member>[])) m.id: m
     };
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !embedded, child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(projectDelaysProvider(projectId));
           return ref.refresh(projectDetailProvider(projectId).future);
@@ -56,7 +58,7 @@ class ProjectDossierScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),
@@ -109,7 +111,8 @@ class ProjectDossierScreen extends ConsumerWidget {
 
       const SizedBox(height: 12),
       // The truck's complete physical record — parts, serials, warranty, bills.
-      FadeSlideIn(delay: Motion.stagger(1), child: GestureDetector(
+      // Hidden when this is the Pipeline tab (Record is its own tab there).
+      if (!embedded) FadeSlideIn(delay: Motion.stagger(1), child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => TruckRecordScreen(projectId: projectId, code: d.project.code, name: d.project.name))),
@@ -147,8 +150,9 @@ class ProjectDossierScreen extends ConsumerWidget {
             d.stages[i], i == d.stages.length - 1, members, delaysByStage[d.stages[i].id] ?? const []))),
 
       const SizedBox(height: 20),
-      // For the admin who wants to act (assign PM, edit, deliver).
-      FadeSlideIn(delay: Motion.stagger(2), child: GestureDetector(
+      // For the admin who wants to act (assign PM, edit, deliver). Hidden when
+      // this is the Pipeline tab inside BuildScreen — you're already in the build.
+      if (!embedded) FadeSlideIn(delay: Motion.stagger(2), child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ProjectDetailScreen(projectId: projectId, initial: d.project, canAssignPm: true))),

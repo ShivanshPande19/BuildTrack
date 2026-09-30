@@ -25,9 +25,13 @@ class ProjectDetailScreen extends ConsumerWidget {
   final bool canAssign;         // PM can assign stages to team members
   final bool canEditTimeline;   // PM can change delivery date (re-schedules)
   final bool canAssignPm;       // Admin can assign / change the project manager
+  /// When shown as the Overview tab inside BuildScreen: drop the back-row, the
+  /// top safe-area, and the in-page nav cards (Materials / Pipeline / Record
+  /// are tabs there).
+  final bool embedded;
   const ProjectDetailScreen({super.key, required this.projectId, this.initial,
     this.materialsEditable = false, this.canAssign = false, this.canEditTimeline = false,
-    this.canAssignPm = false});
+    this.canAssignPm = false, this.embedded = false});
 
   static final _fmt = DateFormat('d MMM');
   String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -44,13 +48,13 @@ class ProjectDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(projectDetailProvider(projectId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !embedded, child: RefreshIndicator(
         onRefresh: () async => ref.refresh(projectDetailProvider(projectId).future),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
             // top row: back + code pill
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),
@@ -186,7 +190,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       ),
 
       const SizedBox(height: 12),
-      GestureDetector(
+      if (!embedded) GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ProjectRequirementsScreen(
@@ -208,7 +212,7 @@ class ProjectDetailScreen extends ConsumerWidget {
         ),
       ),
       // Admin's read-only dossier: the whole pipeline + delay attribution.
-      if (canAssignPm) ...[
+      if (canAssignPm && !embedded) ...[
         const SizedBox(height: 12),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -236,7 +240,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       // its serial / warranty / bill. Reachable in one tap from the build now,
       // not only via the dossier.
       const SizedBox(height: 12),
-      GestureDetector(
+      if (!embedded) GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => TruckRecordScreen(
