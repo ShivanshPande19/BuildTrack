@@ -1,382 +1,264 @@
-# Azimuth BuildTrack — Data Model (v1)
+# Azimuth BuildTrack: Data Model
 
-Derived directly from the 8-role UI. This defines **what data the system stores**, **how entities relate**, and **which role touches what**. It's the backbone for the API (next step) and the actual build.
+The **schema as it actually exists after migrations `0001`–`0025`**: 33 tables, 5 views, 19 enums.
+The migrations in `supabase/migrations/` are the source of truth. This page explains them.
+Callable functions (RPCs) are in [`API.md`](API.md). Who produces which data for whom is in
+[`../DEPENDENCIES.md`](../DEPENDENCIES.md).
 
-**Type conventions:** `uuid` · `string` · `text` · `int` · `decimal` · `date` · `datetime` · `bool` · `enum(...)` · `FK→Entity` (foreign key) · `file` (stored doc/image URL).
+Conventions: every `id` is `uuid primary key default gen_random_uuid()`. "→ x" is a foreign key.
+`(0020)` marks the migration that added a column or table. Person FKs to `profiles` are
+`ON DELETE SET NULL` (from `0009`), **except** the seven added in `0020`/`0017` (see §9).
 
 ---
 
-## 1. Entity relationship diagram
+## 1. Entity relationships
 
 ```mermaid
 erDiagram
-  CLIENT_ACCOUNT ||--o{ PROJECT : "owns"
-  USER ||--o{ PROJECT : "manages (PM)"
-  WORKFLOW_TEMPLATE ||--o{ PROJECT : "instantiates"
-  WORKFLOW_TEMPLATE ||--o{ TEMPLATE_STAGE : "defines"
-  PROJECT ||--o{ STAGE : "has"
-  STAGE ||--o{ CHECKLIST_ITEM : "has"
-  STAGE ||--o{ DELAY_LOG : "logs"
-  USER ||--o{ STAGE : "assigned"
-  BAY ||--o{ STAGE : "hosts"
-  PROJECT ||--o{ PROCUREMENT_REQUIREMENT : "needs"
-  ITEM_CATALOG ||--o{ PROCUREMENT_REQUIREMENT : "of"
-  VENDOR ||--o{ PURCHASE_ORDER : "supplies"
-  PROJECT ||--o{ PURCHASE_ORDER : "for"
-  PURCHASE_ORDER ||--o{ PO_LINE : "contains"
-  ITEM_CATALOG ||--o{ PO_LINE : "of"
-  PURCHASE_ORDER ||--|| GOODS_RECEIPT : "received via"
-  ITEM_CATALOG ||--o{ COMPONENT_INSTANCE : "typed as"
-  VENDOR ||--o{ COMPONENT_INSTANCE : "supplied"
-  GOODS_RECEIPT ||--o{ COMPONENT_INSTANCE : "creates"
-  PROJECT ||--o{ COMPONENT_INSTANCE : "installed in"
-  STAGE ||--o{ COMPONENT_INSTANCE : "installed at"
-  ITEM_CATALOG ||--o{ STOCK_ITEM : "stocked as"
-  PROJECT ||--o{ DESIGN_ARTIFACT : "has"
-  DESIGN_ARTIFACT ||--o{ DESIGN_VERSION : "versions"
-  DESIGN_VERSION ||--o{ DESIGN_APPROVAL : "reviewed by"
-  PROJECT ||--o{ TICKET : "raises"
-  COMPONENT_INSTANCE ||--o{ TICKET : "linked to"
-  TICKET ||--o{ SERVICE_VISIT : "scheduled"
-  STAGE ||--o{ STAGE_APPROVAL : "submitted for"
-  PROJECT ||--o{ DOCUMENT : "has"
-  USER ||--o{ NOTIFICATION : "receives"
+  CLIENT_ACCOUNTS ||--o{ PROJECTS : owns
+  PROFILES ||--o{ PROJECTS : "pm_id"
+  WORKFLOW_TEMPLATES ||--o{ TEMPLATE_STAGES : defines
+  TEMPLATE_STAGES ||--o{ TEMPLATE_STAGE_ITEMS : "BOM"
+  TEMPLATE_STAGES ||--o{ TEMPLATE_STAGE_CHECKS : "checklist"
+  WORKFLOW_TEMPLATES ||--o{ PROJECTS : instantiates
+  PROJECTS ||--o{ STAGES : has
+  STAGES ||--o{ CHECKLIST_ITEMS : has
+  STAGES ||--o{ DELAY_LOGS : logs
+  STAGES ||--o{ STAGE_APPROVALS : "submitted for"
+  PROFILES ||--o{ STAGES : "assignee_id"
+  PROJECTS ||--o{ PROCUREMENT_REQUIREMENTS : needs
+  ITEM_CATALOG ||--o{ PROCUREMENT_REQUIREMENTS : of
+  VENDORS ||--o{ PURCHASE_ORDERS : supplies
+  PROJECTS ||--o{ PURCHASE_ORDERS : "project PO"
+  PURCHASE_ORDERS ||--o{ PO_LINES : contains
+  PURCHASE_ORDERS ||--o{ PO_APPROVAL_EVENTS : "signature trail"
+  PURCHASE_ORDERS ||--o{ GOODS_RECEIPTS : "received via"
+  PURCHASE_ORDERS ||--o{ STOCK_REQUESTS : fulfils
+  ITEM_CATALOG ||--o{ STOCK_ITEMS : "bulk on-hand"
+  ITEM_CATALOG ||--o{ COMPONENT_INSTANCES : "serialized unit"
+  PROJECTS ||--o{ COMPONENT_INSTANCES : "installed in"
+  STAGES ||--o{ COMPONENT_INSTANCES : "installed at"
+  PROJECTS ||--o{ DESIGN_ARTIFACTS : has
+  DESIGN_ARTIFACTS ||--o{ DESIGN_VERSIONS : versions
+  DESIGN_VERSIONS ||--o{ DESIGN_APPROVALS : "client decision"
+  PROJECTS ||--o{ TICKETS : raises
+  COMPONENT_INSTANCES ||--o{ TICKETS : "linked part"
+  TICKETS ||--o{ SERVICE_VISITS : books
+  PROJECTS ||--o{ DOCUMENTS : has
+  SUB_TEAMS ||--o{ PROFILES : groups
+  PROFILES ||--o{ NOTIFICATIONS : receives
 ```
 
----
-
-## 2. Identity & Access
-
-### USER
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| full_name | string | |
-| email | string | login |
-| phone | string | |
-| role | enum(admin, pm, procurement, workshop, store, design, service, client) | drives which UI opens |
-| avatar_color | string | UI accent per role |
-| status | enum(active, invited, disabled) | |
-| created_by | FK→User | the Admin who created it |
-| created_at | datetime | |
-
-> Only `admin` can create users and set `role`. This is the "Add Member" screen.
-
-### CLIENT_ACCOUNT
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| business_name | string | e.g. "Ramesh Traders" |
-| contact_user_id | FK→User | the client login (role=client) |
-| phone / email | string | |
-
-> **One client → many projects.** A `ClientAccount` can own multiple `Project`s (e.g. a chain ordering 4 trucks). The client login sees all trucks under their account. **Client UI implication:** when a client has more than one project, the app opens a **"My Trucks" list** first, then into the selected truck's dashboard. With exactly one, it can open that truck directly. All client detail data (progress, photos, designs, docs, tickets) is scoped per `project_id`.
+`attachments` is polymorphic (`owner_type` + `owner_id`, no FK). `bays` exists but is unused.
 
 ---
 
-## 3. Projects & Build
+## 2. Enums (`0001`, plus `po_approval_status` in `0020`)
 
-### WORKFLOW_TEMPLATE
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| name | string | e.g. "Standard Food Truck", "Kiosk" |
-| truck_type | string | |
+| Enum | Values |
+|---|---|
+| `user_role` | admin, pm, procurement, workshop, store, design, service, client |
+| `user_status` | active, invited, disabled |
+| `project_status` | on_track, at_risk, delayed, delivered |
+| `stage_status` | todo, in_progress, done, rework |
+| `delay_reason` | procurement, design_approval, workshop_capacity, weather, client, quality, other |
+| `req_status` | pending, ordered, received |
+| `po_status` (fulfilment) | ordered, dispatched, received, partial *(partial is never produced)* |
+| `po_approval_status` | pending_pm, pending_final, approved, rejected |
+| `grn_status` | complete, partial, issue |
+| `component_status` | in_stock, installed, replaced, faulty *(last two never set by code)* |
+| `design_type` | layout, interior, exterior, branding |
+| `design_status` | draft, pending_approval, revision, approved |
+| `approval_status` | pending, approved, changes_requested, rejected *(stages use approved/rejected; designs use approved/changes_requested)* |
+| `ticket_category` | equipment, electrical, cosmetic, other |
+| `ticket_status` | open, in_progress, resolved, closed |
+| `ticket_priority` | low, medium, high |
+| `resolution_type` | warranty_replace, repair, remote_guide |
+| `visit_status` | scheduled, done, cancelled |
+| `doc_type` | contract, invoice, warranty_pack, handover_cert |
 
-### TEMPLATE_STAGE
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| template_id | FK→WorkflowTemplate | |
-| name | string | e.g. "Electrical" |
-| order | int | sequence |
-| default_duration_days | int | used for auto-scheduling |
-| depends_on | FK→TemplateStage | predecessor (dependency) |
-
-### PROJECT
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| code | string | "AZ-118" |
-| name | string | "Chai Point Truck" |
-| client_account_id | FK→ClientAccount | |
-| template_id | FK→WorkflowTemplate | |
-| pm_id | FK→User | assigned Project Manager |
-| status | enum(on_track, at_risk, delayed, delivered) | |
-| progress_pct | int | derived from stages |
-| current_stage_id | FK→Stage | |
-| target_delivery_date | date | |
-| actual_delivery_date | date | nullable |
-| advance_received | bool | light payment gate |
-| created_at | datetime | |
-
-### STAGE
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| project_id | FK→Project | |
-| template_stage_id | FK→TemplateStage | |
-| name | string | |
-| order | int | |
-| planned_start / planned_end | date | auto-computed (backward schedule) |
-| actual_start / actual_end | date | nullable |
-| status | enum(todo, in_progress, done, rework) | |
-| assignee_id | FK→User | workshop member |
-| bay_id | FK→Bay | nullable |
-
-### CHECKLIST_ITEM
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| stage_id | FK→Stage | |
-| label | string | e.g. "Fit distribution board" |
-| done | bool | |
-
-### BAY
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| name | string | "Bay 3" |
-| current_stage_id | FK→Stage | nullable (free if null) |
-
-### DELAY_LOG
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| stage_id | FK→Stage | |
-| reason_code | enum(procurement, design_approval, workshop_capacity, weather, client, quality, other) | |
-| days_delayed | int | |
-| note | text | |
-| logged_by | FK→User | |
-| created_at | datetime | powers "top delay reasons" analytics |
+Sequences: `ticket_number_seq` gives `T-001` (`0010`). `po_number_seq` gives `PO-00001` (`0020`).
 
 ---
 
-## 4. Procurement
+## 3. Tables
 
-### VENDOR
-| Field | Type | Notes |
+### People & access
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| name | string | |
-| category | string | Electronics, Steel… |
-| avg_lead_time_days | int | |
-| reliability_score | int | % on-time (auto-computed) |
-| contact | string | |
+| `profiles` | id → `auth.users` (cascade), full_name, email (unique), phone, role, avatar_color, status (default `invited`), created_by, created_at, sub_team_id → sub_teams *(0021)* | One row per login, written by the `admin-create-member` Edge Function. `role` picks the home screen. |
+| `client_accounts` | business_name, contact_user_id → profiles, phone, email | **contact_user_id is the client's login.** Without it the client can never see their truck. One account can own many projects. |
+| `sub_teams` *(0021)* | role, name, created_at · unique(role, name) | A department's teams (seed: Workshop → Welding, Paint, Electrical, Fitter). |
 
-### ITEM_CATALOG
-| Field | Type | Notes |
+### Templates & builds
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| name | string | "Samsung 42\" TV" |
-| model | string | "UA42-XYZ" |
-| category | string | |
-| default_vendor_id | FK→Vendor | |
-| lead_time_days | int | per-item lead time |
-| buffer_days | int | safety buffer |
-| serialized | bool | true=ComponentInstance, false=StockItem |
-| unit | string | pcs, m, kg |
-| low_stock_threshold | int | for bulk items |
+| `workflow_templates` | name, truck_type | |
+| `template_stages` | template_id, name, ord, default_duration_days, depends_on *(unused)*, discipline *(0009)* | `discipline` falls back to `fn_infer_discipline(name)`. |
+| `template_stage_items` *(0005)* | template_stage_id, item_catalog_id, qty | The template **BOM**. Onboarding turns it into requirements. |
+| `template_stage_checks` *(0012)* | template_stage_id, label, ord | The template **checklist**. Onboarding copies it into `checklist_items`. |
+| `projects` | code (unique), name, client_account_id, template_id, pm_id, pm_assigned_by, pm_assigned_at *(0009)*, status, progress_pct, current_stage_id → stages, target_delivery_date, actual_delivery_date, advance_received *(unused)*, created_at | `status`, `progress_pct` and `current_stage_id` are **computed** (§6). `actual_delivery_date` is set by `fn_mark_delivered`. |
+| `stages` | project_id, template_stage_id, name, ord, discipline, planned_start/end, actual_start/end, status, assignee_id, assigned_by/at/start/due *(0009)*, bay_id *(unused)* | `planned_*` come from backward scheduling. `assigned_*` are what the PM committed to. |
+| `checklist_items` | stage_id, label, done | No `ord` column, so the order is insertion order. |
+| `delay_logs` | stage_id, reason_code, days_delayed, note, logged_by, created_at | Written by PM → Log a delay. |
+| `stage_approvals` | stage_id, submitted_by, approver_id, status, note, decided_at, created_at *(0009)* | Partial unique index: **one pending row per stage**. `approver_id` is the build's PM at submit time. |
+| `bays` | name, current_stage_id | Unused; nothing writes it. |
 
-### PROCUREMENT_REQUIREMENT  *(drives "To-Order" alerts — Hero #1)*
-| Field | Type | Notes |
+### Procurement
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| project_id | FK→Project | |
-| item_catalog_id | FK→ItemCatalog | |
-| qty | int | |
-| needed_by_date | date | = stage install date |
-| **order_by_date** | date | = needed_by − lead_time − buffer (computed) |
-| status | enum(pending, ordered, received) | |
-| po_id | FK→PurchaseOrder | nullable, once ordered |
+| `vendors` | name, category, avg_lead_time_days, reliability_score, contact, gstin, address, state, email *(0020)* | `state` decides CGST+SGST vs IGST on the PO document; a blank state on either side prints a single "GST" line. `reliability_score` is 100 for every vendor added in the app (the seed has fixed values), and nothing ever recomputes it. |
+| `item_catalog` | name, model, category, default_vendor_id, lead_time_days, buffer_days, serialized, unit, low_stock_threshold, is_essential *(0019)*, hsn_code, default_rate *(0020)* | `serialized` means tracked per unit (`component_instances`); otherwise bulk (`stock_items`). `is_essential` items are the only ones Store can request. |
+| `procurement_requirements` | project_id, item_catalog_id, qty, needed_by_date, order_by_date, status, po_id | **Hero #1.** `order_by_date = needed_by − lead_time − buffer`. |
+| `purchase_orders` | po_number, vendor_id, project_id, status, order_date, expected_date, created_by · *(0020)* approval_status, subtotal, tax_total, amount, needed_by, delivery_date, ship_to, payment_terms, notes, pm_id, submitted_by/at, pm_signed_by/at, final_signed_by/at, rejected_by/at, rejection_reason · *(0021)* priority_override | Two lifecycles: **approval** (`approval_status`) gates **fulfilment** (`status`). `expected_date` = the ETA set at dispatch. `delivery_date` = what the PO asked for. |
+| `po_lines` | po_id, item_catalog_id, qty, received_qty · *(0020)* unit_price, tax_rate, hsn_code, description | `tax_rate` is the GST %. |
+| `po_approval_events` *(0020)* | po_id, event, from_status, to_status, actor_id, note, created_at | Immutable signature trail. Events: created, pm_signed, final_signed, rejected, resubmitted. |
+| `company_settings` *(0020)* | only_one (unique), name, address, gstin, state, phone, email, logo_url, updated_at | One row. This is the buyer block on every PO. `logo_url` is never rendered. |
+| `goods_receipts` | po_id, received_by, received_at, status, note | Written by `fn_receive_po`. |
+| `stock_requests` *(0017)* | item_catalog_id, qty (> 0), note, status, requested_by, po_id, created_at | Store raises an essentials reorder; Procurement fills it with a general PO. |
 
-### PURCHASE_ORDER
-| Field | Type | Notes |
+### Inventory & traceability
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| po_number | string | "PO-2041" |
-| vendor_id | FK→Vendor | |
-| project_id | FK→Project | |
-| status | enum(ordered, dispatched, received, partial) | |
-| order_date / expected_date | date | |
-| created_by | FK→User | procurement |
+| `component_instances` | item_catalog_id, serial_number (unique), vendor_id, grn_id *(never set)*, bill_url, warranty_start/end, status, installed_in_project_id, installed_stage_id, installed_by, install_date | **Hero #2, the digital twin.** Store logs it; Workshop installs it (`fn_install_component`). |
+| `stock_items` | item_catalog_id, quantity, unit | Bulk on-hand. **No unique index per item.** |
 
-### PO_LINE
-| Field | Type | Notes |
+### Design
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| po_id | FK→PurchaseOrder | |
-| item_catalog_id | FK→ItemCatalog | |
-| qty | int | |
-| received_qty | int | for partial receipts |
+| `design_artifacts` | project_id, type, status, current_version_id, created_by, client_feedback *(0007)* | |
+| `design_versions` | artifact_id, version_no, file_url (preview image), model_url (`.glb`, *0007*), change_note, created_at | **unique(artifact_id, version_no)** *(0025)*. New versions go through `fn_add_design_version`. |
+| `design_approvals` | version_id, client_user_id, status, feedback, decided_at | Written by `fn_client_decide_design`. |
 
-### GOODS_RECEIPT (GRN)
-| Field | Type | Notes |
+### After-sales
+| Table | Columns | Notes |
 |---|---|---|
-| id | uuid | PK |
-| po_id | FK→PurchaseOrder | |
-| received_by | FK→User | store |
-| received_at | datetime | |
-| status | enum(complete, partial, issue) | |
-| note | text | |
+| `tickets` | ticket_number, project_id, raised_by, category, description, linked_component_id, priority, sla_due, status, assigned_to, resolution_type, resolution_note, created_at, resolved_at, closed_at, first_reply_at *(0010)* | Triggers fill the number, SLA and `raised_by`. No UI sets `linked_component_id`. |
+| `service_visits` | ticket_id, technician_id, scheduled_date, status, note, created_at, created_by *(0010)* | One live `scheduled` visit per ticket (re-booking cancels the old one). |
+
+### Cross-cutting
+| Table | Columns | Notes |
+|---|---|---|
+| `attachments` | owner_type, owner_id, file_url, caption, uploaded_by, created_at | `owner_type` used: `stage` (site photos), `ticket` (client photos). |
+| `documents` | project_id, type, file_url, available | The app always inserts `available = true`. |
+| `notifications` | user_id, type, title, body, entity_type, entity_id, read, created_at | Written only by `fn_notify*` / triggers. |
+| `audit_log` | actor_id, action, entity_type, entity_id, created_at | Written by `fn_audit`; admin-read. |
 
 ---
 
-## 5. Inventory & Traceability
+## 4. Views (all `security_invoker = on`, so the reader's RLS applies)
 
-### COMPONENT_INSTANCE  *(the "digital twin" record — Hero #2)*
-| Field | Type | Notes |
+| View | Returns | Used by |
 |---|---|---|
-| id | uuid | PK |
-| item_catalog_id | FK→ItemCatalog | model/type |
-| serial_number | string | unique per physical unit |
-| vendor_id | FK→Vendor | |
-| grn_id | FK→GoodsReceipt | how it entered |
-| bill_file | file | invoice/bill (**Store captures at intake**) |
-| warranty_start / warranty_end | date | |
-| status | enum(in_stock, installed, replaced, faulty) | |
-| installed_in_project_id | FK→Project | nullable until installed |
-| installed_stage_id | FK→Stage | nullable |
-| installed_by | FK→User | workshop (via "Scan to install") |
-| install_date | date | nullable |
-
-> **Split:** Store creates this row + `bill_file` + warranty at receipt. Workshop's "Scan to install" only sets `installed_in_project_id`, `installed_stage_id`, `installed_by`, `install_date`, `status=installed`. No duplicate data entry.
-
-> **Recall query:** `SELECT * FROM component_instance WHERE item_catalog_id = :model` → every truck (`installed_in_project_id`) with that part → notify all clients.
-
-### STOCK_ITEM  *(bulk / non-serialized materials)*
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| item_catalog_id | FK→ItemCatalog | |
-| quantity | decimal | |
-| unit | string | |
-| is_low | bool | qty < threshold (computed) |
+| `v_order_due` *(0003)* | pending requirements + `item_name`, `project_code`, `days_left`, ordered by order-by | Admin "needs attention", Procurement To Order |
+| `v_po_pending_approvals` *(0021)* | POs in `pending_pm` / `pending_final` + vendor, project, `waiting_since`, `waiting_hours`, `overdue`, `priority`, `priority_rank` | PO Approvals inbox (PM + Admin) |
+| `v_ops_board` *(0021)* | one row per non-delivered build: status, progress, PM, current stage + discipline + status, `days_in_stage`, `stage_due`, assignee + role + sub-team, `next_order_by` | Admin Command Center ("stuck" = `days_in_stage > 7`, computed in the app) |
+| `v_project_delays` *(0022)* | each `delay_log` + stage, discipline, `logged_by_name`, `assignee_name` | Build → Pipeline delay ledger |
+| `v_truck_components` *(0023)* | every installed part of a build + item, model, vendor, bill, warranty, stage, installer | Build → Record (truck record) |
 
 ---
 
-## 6. Design
+## 5. Triggers
 
-### DESIGN_ARTIFACT
-| Field | Type | Notes |
+| Trigger | On | Does |
 |---|---|---|
-| id | uuid | PK |
-| project_id | FK→Project | |
-| type | enum(layout, interior, exterior, branding) | |
-| status | enum(draft, pending_approval, revision, approved) | |
-| current_version_id | FK→DesignVersion | |
-| created_by | FK→User | design |
-
-### DESIGN_VERSION
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| artifact_id | FK→DesignArtifact | |
-| version_no | int | v1, v2, v3 |
-| file | file | render/PDF |
-| change_note | text | "what changed" |
-| created_at | datetime | |
-
-### DESIGN_APPROVAL
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| version_id | FK→DesignVersion | |
-| client_user_id | FK→User | |
-| status | enum(pending, approved, changes_requested) | |
-| feedback | text | client comment |
-| decided_at | datetime | |
+| `t_stage_progress` | stages, after insert / update **of status** / delete | Recomputes progress, then current stage, then status |
+| `t_guard_projects` | projects, before update | A non-admin can't change `pm_id` (except to null), `code`, `client_account_id` or `template_id` |
+| `t_guard_stages` | stages, before update | Only admin or the build's PM may change `assignee_id`, `discipline`, `ord`, `project_id`, `bay_id`, `planned_*` or `assigned_*` (*not* `status`; see §9) |
+| `trg_po_require_approval` | purchase_orders, before update | Refuses dispatched / partial / received unless `approval_status = 'approved'` |
+| `t_ticket_defaults` | tickets, before insert | Fills `ticket_number` (`T-###`), `sla_due` (high 4h · medium 24h · low 72h) and `raised_by` |
+| `t_ticket_created` | tickets, after insert | Notifies every service and admin user |
 
 ---
 
-## 7. Service (post-delivery)
+## 6. Engine logic
 
-### TICKET
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| ticket_number | string | "T-241" |
-| project_id | FK→Project | delivered truck |
-| raised_by | FK→User | client |
-| category | enum(equipment, electrical, cosmetic, other) | |
-| description | text | |
-| linked_component_id | FK→ComponentInstance | pulls warranty automatically |
-| priority | enum(low, medium, high) | |
-| sla_due | datetime | drives countdown pills |
-| status | enum(open, in_progress, resolved, closed) | |
-| assigned_to | FK→User | service |
-| resolution_type | enum(warranty_replace, repair, remote_guide) | nullable |
-| resolution_note | text | |
-| created_at / resolved_at | datetime | |
+- **Backward schedule** (`fn_recompute_schedule`): starting from `target_delivery_date`, it walks stages from the
+  last `ord` to the first. Each stage ends where the next one starts and lasts `default_duration_days`
+  (min 1; calendar days, no holidays). Then every requirement gets
+  `order_by = needed_by − lead_time_days − buffer_days`. With `p_rebaseline_assigned = true` (only the
+  delivery-date change uses it), it also snaps open stages' `assigned_start` / `assigned_due` to the new plan.
+  `needed_by` is set once at onboarding, to the stage's `planned_start`, and is not re-derived.
+- **Progress** = `round(100 × done / total)`.
+- **Current stage**: the first in_progress / rework stage, else the first todo, else the last stage.
+- **Status** (`fn_recompute_status`, `0024`); the first rule that matches wins:
+  1. `actual_delivery_date` is set → **delivered**
+  2. the target date is past, **or** any open stage's `planned_end` is past → **delayed**
+  3. a todo stage's `planned_start` is today or earlier, **or** a pending requirement's order-by date is today or earlier, **or** delivery is ≤ 7 days away with work open → **at_risk**
+  4. otherwise → **on_track**
 
-### SERVICE_VISIT
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid | PK |
-| ticket_id | FK→Ticket | |
-| technician_id | FK→User | |
-| scheduled_date | datetime | |
-| status | enum(scheduled, done, cancelled) | |
+  It runs on stage status changes and from `fn_refresh_all_statuses()`. The dashboards call the latter on load,
+  and a daily cron is recommended.
+- **PO priority** (`v_po_pending_approvals`): `priority_override` if set. Otherwise from `needed_by`:
+  past → critical, ≤ 3 days → high, ≤ 7 days → medium, later → low, no date → medium.
+- **PO totals** (`fn_create_po` / `fn_resubmit_po`): subtotal = Σ qty × rate; tax = Σ qty × rate × GST% / 100;
+  amount = subtotal + tax.
 
 ---
 
-## 8. Cross-cutting
+## 7. Storage (both buckets public-read)
 
-### STAGE_APPROVAL *(workshop → PM)*
-| Field | Type | Notes |
+| Bucket | Path | Written by |
 |---|---|---|
-| id | uuid · stage_id FK→Stage · submitted_by FK→User(workshop) · approver_id FK→User(pm) · status enum(pending, approved, rejected) · photos (Attachment[]) · decided_at datetime |
+| `designs` *(0008)* | `<uid>/<ms>_<file>` | Design: `.glb` models + preview images |
+| `builds` *(0011)* | `stages/<stageId>/` | Workshop site photos |
+| | `tickets/<ticketId>/` | Client ticket photos (the only path a client may write) |
+| | `bills/` | Store bill images |
+| | `docs/<projectId>/` | Build documents (contract, invoice, …) |
 
-### ATTACHMENT *(polymorphic — build photos, design files, bills, ticket photos)*
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid · owner_type enum(stage, ticket, component, design_version) · owner_id uuid · file file · caption string · uploaded_by FK→User · created_at datetime |
-
-### DOCUMENT *(client-facing docs)*
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid · project_id FK→Project · type enum(contract, invoice, warranty_pack, handover_cert) · file file · available bool |
-
-### NOTIFICATION
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid · user_id FK→User · type string · title string · body text · entity_ref (type+id) · read bool · created_at datetime |
-
-### AUDIT_LOG
-| Field | Type | Notes |
-|---|---|---|
-| id | uuid · actor_id FK→User · action string · entity_type/entity_id · timestamp datetime | who did what, when |
+Staff may write anywhere in both buckets.
 
 ---
 
-## 9. How the two hero features live in the model
+## 8. Who can read / write what (RLS after `0025`)
 
-**Hero #1 — never miss a lead time**
-`PROCUREMENT_REQUIREMENT.order_by_date` = `needed_by_date − ItemCatalog.lead_time_days − buffer_days`, recomputed whenever a `STAGE` date shifts. A daily job flags requirements whose `order_by_date` is near/past and `status = pending` → procurement alerts + escalation.
+R = read all rows · W = insert/update/delete · **own** = scoped as noted · — = no access.
+Workflow writes (assign, start, submit, approve, onboard, PO chain, tickets, recall) go through
+`SECURITY DEFINER` RPCs with their own role checks. See [`API.md`](API.md).
 
-**Hero #2 — full traceability + recall**
-Every physical part = one `COMPONENT_INSTANCE` (serial + bill + warranty + which truck/stage). Recall = one query on `item_catalog_id`. A truck's full parts list = `WHERE installed_in_project_id = :project`.
-
----
-
-## 10. Role → data access (permissions)
-
-| Entity / area | Admin | PM | Procure | Workshop | Store | Design | Service | Client |
+| Table(s) | admin | pm | procurement | store | workshop | design | service | client |
 |---|---|---|---|---|---|---|---|---|
-| Users & roles | RW | – | – | – | – | – | – | – |
-| Projects (all) | RW | R (assigned) | R | R (own tasks) | R | R (assigned) | R (delivered) | R (own) |
-| Stages / tasks | RW | RW | – | RW (own) | – | – | – | R (own) |
-| Procurement / PO | R | R | RW | – | R | – | – | – |
-| Vendors | R | – | RW | – | – | – | – | – |
-| Component instances | R | R | – | R + install | RW | – | R | – |
-| Stock | R | – | R | R | RW | – | – | – |
-| Designs | R | R | – | – | – | RW | – | R (approve own) |
-| Tickets | R | – | – | – | – | – | RW | RW (own) |
-| Documents | RW | R | – | – | – | – | – | R (own) |
-| Analytics | RW | R (own) | R (procure) | – | R (stock) | – | R (service) | – |
+| profiles | RW | R | R | R | R | R | R | own row |
+| client_accounts | RW | R | R | R | R | R | R | own |
+| templates, template_stages, \_items, \_checks | RW | RW | R | R | R | R | R | — |
+| projects | RW | R + update own | R | R | R | R | R | own |
+| stages | RW | R + W own builds | R | R + update if assignee | (same) | (same) | (same) | own builds |
+| checklist_items | RW | R + W own builds | R | R + W if assignee | (same) | (same) | (same) | own builds |
+| delay_logs | RW | RW | R | R | RW | R | R | — |
+| stage_approvals | RW | RW | R | R | R | R | R | — |
+| vendors | RW | R | RW | R | R | R | R | — |
+| item_catalog | RW | RW | RW | **R** | R | R | R | — |
+| procurement_requirements | RW | RW | R + update | R | R | R | R | — |
+| purchase_orders | R + update | R | R + update | R | — | — | — | — |
+| po_lines | RW | R | RW | R | — | — | — | — |
+| po_approval_events | R | R | R | R | — | — | — | — |
+| company_settings | RW | R | R | R | R | R | R | — |
+| goods_receipts | RW | R | RW | RW | R | R | R | — |
+| stock_requests | RW | R | R + update | R + insert | — | — | — | — |
+| stock_items, component_instances | RW | R | R | RW | R | R | R | — |
+| design_artifacts, design_versions | RW | R | R | R | R | RW | R | own builds |
+| design_approvals | RW | R | R | R | R | RW | R | own rows |
+| tickets | RW | R | R | R | R | R | RW | own + own builds; insert |
+| service_visits | RW | R | R | R | R | R | RW | own tickets |
+| attachments, documents | RW | RW | RW | RW | RW | RW | RW | stage photos + available docs of own builds; own ticket photos (+ insert) |
+| notifications | own | own | own | own | own | own | own | own |
+| sub_teams | RW | R | R | R | R | R | R | — |
+| audit_log | R | — | — | — | — | — | — | — |
 
-`RW` = read+write · `R` = read-only · `–` = no access. *(Costs & vendor data hidden from Workshop, Design, Client.)*
+Nobody can INSERT or DELETE `purchase_orders` directly; `fn_create_po` is the only way in.
+Views inherit these rules.
 
 ---
 
-*Azimuth BuildTrack · Data Model · v1 · derived from role UIs*
+## 9. Known schema issues (open, Oct 2026)
+
+Listed with fixes in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md) §7:
+
+- `t_guard_stages` / `t_guard_projects` leave `status` and the delivery dates unguarded.
+- Procurement can set `approval_status` itself.
+- Seven person FKs added in `0017` / `0020` have no `ON DELETE`, so removing such a member fails:
+  `purchase_orders.{pm_id, submitted_by, pm_signed_by, final_signed_by, rejected_by}`,
+  `po_approval_events.actor_id`, `stock_requests.requested_by`.
+- `stock_items` has no unique index per item.
+- `p_tickets_client_new` and `p_dappr_client` are too broad.
+- Disabled accounts keep access.

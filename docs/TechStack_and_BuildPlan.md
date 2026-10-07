@@ -1,5 +1,22 @@
 # Azimuth BuildTrack — Tech Stack & Build Plan (Step C)
 
+> **Status (7 Oct 2026): decided and built.** Path 2 (Flutter + Supabase) was chosen. The sections
+> below are the original plan, kept for the reasoning. How it actually turned out:
+>
+> | Planned | Built |
+> |---|---|
+> | Flutter + Riverpod + Dio | Flutter 3.44.8 + Riverpod 2 + go_router 14. Supabase is accessed through `supabase_flutter` (no Dio). |
+> | Supabase tables + RLS | 25 migrations: 33 tables, 5 views, RLS + guard triggers + ~40 `SECURITY DEFINER` RPCs ([`API.md`](API.md)) |
+> | Edge Function + `pg_cron` daily order-by job | Order-by is recomputed in SQL on every schedule change. Statuses refresh when the dashboards load. A daily `fn_refresh_all_statuses()` cron is recommended but not set up. Edge Functions are used only for member create/delete. |
+> | Realtime dashboards, FCM push | **Not built yet.** Pull to refresh; in-app notifications only. |
+> | Offline sync for Workshop | **Not built yet.** |
+> | Design + Service deferred to Phase 2 | Built in the first pass. All 8 roles have worked since 30 Jul 2026. |
+> | ~10-week roadmap | Started 24 Jul 2026. Every role was wired by 30 Jul. Followed by hardening, Phase 1 loops, inventory, the PO approval chain, the ops backbone, UI polish and Tier 1–3 (see [`PROJECT_LOG.md`](PROJECT_LOG.md) §6). |
+>
+> Also added beyond the plan: 3D `.glb` showcase (`model_viewer_plus`), barcode scanning
+> (`mobile_scanner`), camera photos (`image_picker`), GST PO PDFs (`pdf` + `printing`), and CI
+> (analyze, test, Android build, Postgres suite).
+
 We have the vision, all 8 role UIs, the data model, and the API. This locks **what we build with** and **in what order**. Tuned for a **solo developer** who wants to ship an MVP fast without cutting corners on the two hero features.
 
 ---
@@ -79,20 +96,13 @@ buildtrack/
 
 ---
 
-## 5. What I can scaffold now (once you greenlight)
+## 5. Decision (taken)
 
-- Flutter app skeleton with the **Equora design system** already coded (colors, cards, pills, nav, progress ring — reused from our UI) + role-based routing + login
-- Supabase **migrations** (all tables from the data model) + **RLS policies** (the permission matrix) + **seed data**
-- The **order-by scheduling function** (the heart of Hero #1)
+1. **Path 2 (Supabase)** was chosen.
+2. The Phase-1 scope was delivered, and Design + Service were built in the same pass instead of being deferred.
 
----
-
-## Decision needed
-
-1. **Path 1 (custom NestJS)** or **Path 2 (Supabase)?** → I recommend **Path 2** for solo speed.
-2. Confirm **Phase-1 MVP scope** above (or adjust).
-
-Once you pick, I'll scaffold the repo (Flutter + Supabase) and start with the design system + auth + data tables.
+What's next is tracked in [`PROJECT_LOG.md`](PROJECT_LOG.md) §3: known gaps first, then offline, push,
+realtime, pagination and localization.
 
 ---
 

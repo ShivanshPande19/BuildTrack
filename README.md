@@ -18,12 +18,18 @@ Two real problems this solves:
 
 ```
 BuildTrack/
-├── docs/                     # specs
-│   ├── Proposal.pdf              # leadership proposal
-│   ├── Roles.md                  # roles, features, permissions
-│   ├── DataModel.md              # entities, relations, ER diagram
-│   ├── API.md                    # REST endpoints by role
-│   └── TechStack_and_BuildPlan.md
+├── docs/
+│   ├── PROJECT_LOG.md            # ← start here: current state, known gaps, deploy facts, change log
+│   ├── OVERVIEW.md               # what the app is + the end-to-end workflow
+│   ├── Roles.md                  # every role's tabs, FAB, screens, limits
+│   ├── DataModel.md              # 33 tables, views, triggers, RLS matrix, storage
+│   ├── API.md                    # the real API: RPCs, views, Edge Functions, direct writes
+│   ├── TESTING_GUIDE.md          # deploy checklist + 2-device test plan
+│   ├── WORKFLOW_AUDIT.md         # audit findings + fix status
+│   ├── UX_NAVIGATION_AUDIT.md    # navigation clean-up (Tier 3) status
+│   ├── WORKLOG.md                # session-by-session trail
+│   ├── NATIVE_SETUP.md · INVITE_FLOW.md · TechStack_and_BuildPlan.md
+│   └── Proposal.pdf              # leadership proposal
 ├── design/                   # the full UI (Equora style)
 │   ├── html/                     # source of each role's screens (8 files)
 │   ├── screens/                  # rendered PNGs per role (73 screens)
@@ -36,36 +42,48 @@ BuildTrack/
 │   ├── analysis_options.yaml     # lint + strict-cast rules CI enforces
 │   └── pubspec.lock              # committed: every machine resolves the same versions
 ├── supabase/                 # backend
-│   ├── migrations/               # 0001 schema · 0002 RLS · 0003 functions · … · 0011 storage
+│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0025 atomic design versions
 │   ├── functions/                # Edge Functions (admin create/delete member)
-│   ├── tests/                    # run.sh — verifies the whole backend on real Postgres
+│   ├── tests/                    # run.sh: 149 assertions on real Postgres, as real users
+│   ├── check_migrations.sql      # read-only: which migrations a database has
 │   ├── full_setup.sql            # GENERATED one-shot setup (build_full_setup.sh)
-│   └── seed.sql                  # demo data
+│   └── seed.sql                  # demo data (+ seed_*_demo.sql extras)
+├── DEPENDENCIES.md           # who produces which data for whom; repos; screen matrix
+├── BUILD_PROGRESS.md         # per-role build history
 └── .github/workflows/ci.yml  # analyze · test · Android build · backend suite
 ```
 
+> `design/` holds the **original** 73-screen mock-ups. The shipped app has since changed in places
+> (e.g. the client truck view is one scrolling screen, not tabs). `docs/Roles.md` describes what ships.
+
 ## Tech stack
 
-- **Flutter** (iOS + Android) · Riverpod · go_router · google_fonts
-- **Supabase** — Postgres + Auth + Storage + Realtime + **Row-Level Security** (role permissions in the DB)
+- **Flutter 3.44.8** (iOS + Android; web works, but the camera needs HTTPS) with:
+  - Riverpod 2 · go_router 14 · google_fonts;
+  - `model_viewer_plus` (3D `.glb`) · `mobile_scanner` (barcodes) · `image_picker` · `file_picker`;
+  - `pdf` + `printing` (GST purchase orders).
+- **Supabase**: Postgres + Auth + Storage + Edge Functions + **Row-Level Security** (role permissions
+  live in the DB). Realtime is not used yet, so pull to refresh.
 
 ## Status
 
+*As of 7 Oct 2026 (`main` @ PR #46).*
+
 | Area | State |
 |---|---|
-| Proposal, roles, data model, API, build plan | ✅ documented |
-| UI — all 8 roles (73 screens) | ✅ designed |
-| DB schema + RLS + scheduling/recall functions + seed | ✅ built & validated on Postgres 15 |
-| Flutter foundation (theme, auth, role routing, design-system widgets) | ✅ scaffolded |
-| Role screens wired to Supabase | ✅ all 8 — Admin · PM · Procurement · Store · Workshop · Design · Service · Client |
-| Assignment chain (Admin → PM → role staff) enforced in the DB | ✅ see `docs/WORKFLOW_AUDIT.md` |
-| Real camera photos + barcode scanning · after-sales / tickets | ✅ built |
-| Reproducible build (platform folders, lockfiles, native config, CI) | ✅ this is new — see below |
-| Stock movement · bill capture · template checklists · delay logging · handover documents | ⏭️ next |
-| Offline support · push notifications · realtime · pagination · localization | ⏭️ not started |
+| All 8 roles wired to Supabase: Admin · PM · Procurement · Store · Workshop · Design · Service · Client | ✅ |
+| Assignment chain (Admin → PM → role staff) enforced in the DB | ✅ `docs/WORKFLOW_AUDIT.md` |
+| Hero #1 order-by engine · Hero #2 traceability + recall | ✅ |
+| Template BOM + checklists · stock movement · bill capture · delay logging · documents | ✅ |
+| PO approval chain (Procurement → PM → owner) + GST PO document | ✅ |
+| Command Center · tabbed build screen (Overview / Pipeline / Materials / Record) · truck record | ✅ |
+| Camera photos + barcode scanning · after-sales (tickets, SLA, visits, warranty) | ✅ |
+| Multi-user hardening (double-tap guards, atomic design versions, live SLA) | ✅ PR #46 |
+| Reproducible build + CI (analyze, test, Android build, Postgres suite) | ✅ |
+| Known gaps: Design/Service can't submit a stage, several DB bypasses, Store "new item" RLS | ⬜ `docs/PROJECT_LOG.md` §3 |
+| Offline · push notifications · realtime · pagination · localization | ⏭️ not started |
 
-Progress percentages in `docs/PROJECT_LOG.md` describe features wired up, not production readiness.
-The gaps above are real and listed deliberately: `docs/PROJECT_LOG.md` §3 has the full set.
+The gaps are real and listed deliberately. `docs/PROJECT_LOG.md` §3 has the full numbered set.
 
 ## The operating chain
 
@@ -79,20 +97,23 @@ PM      approves  ──►  stage done  ──►  next stage starts  ──►
 Every step is enforced in Postgres (RLS + guard triggers + `SECURITY DEFINER` RPCs), not just in
 the UI — so a welder cannot create a project, a PM cannot touch someone else's build, and a design
 stage cannot be handed to a fabricator without an explicit override.
-`docs/WORKFLOW_AUDIT.md` documents the ~40 issues this closed.
+`docs/WORKFLOW_AUDIT.md` documents the ~40 issues this closed (§1–§6) and the ones still open (§7).
 
 ## Getting started
 
-**Backend:** create a Supabase project → run `supabase/migrations/*.sql` in order (or paste
-`supabase/full_setup.sql` for a fresh project) → deploy the Edge Functions in `supabase/functions/`.
+**Backend:** create a Supabase project, then paste `supabase/full_setup.sql` once (for a fresh project), or run
+`supabase/migrations/*.sql` in order. Deploy the Edge Functions in `supabase/functions/`.
+On an **existing** project, run `supabase/check_migrations.sql` (read-only) first. It tells you which
+migrations are missing. Full checklist: `docs/TESTING_GUIDE.md` §1.
 
 Optional but recommended: schedule `select public.fn_refresh_all_statuses();` daily so at-risk /
 delayed statuses roll forward with the calendar.
 
-**Verify the backend** (needs only Docker — spins up a throwaway Postgres 15, applies the migration
-chain, proves the newest migration is idempotent, runs 83 assertions as real non-superuser users so
-RLS and the guard triggers actually apply, then checks `full_setup.sql` alone produces the same
-database):
+**Verify the backend.** This needs only Docker. It:
+- spins up a throwaway Postgres 15 and applies the migration chain;
+- proves the newest migration is idempotent;
+- runs **149 assertions** in 7 suites as real non-superuser users, so RLS and the guard triggers actually apply;
+- checks that `full_setup.sql` alone produces the same database.
 
 ```bash
 sh supabase/tests/run.sh

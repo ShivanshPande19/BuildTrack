@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **26 Aug 2026** (status vs delivery date fix)
+Last updated: **7 Oct 2026** (full code audit after PR #46. Every section re-checked against the code.)
 
 ---
 
@@ -12,11 +12,12 @@ Last updated: **26 Aug 2026** (status vs delivery date fix)
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0024` |
-| **Roughly complete** | **~90%** of the intended product. **All 8 roles usable**, the core chain works, the two "hero" features work, after-sales closed |
-| **Phase 1 shipped** | Documents, delay logging, template checklists, stock movement, bill capture, PM approval evidence, client ticket visibility — all closed (PRs #7–#13, migrations 0012–0014). See `WORKLOG.md`. |
-| **Not started (Phase 2)** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
-| **Deployed state** | Migrations through `0010`. Both Edge Functions live. Accounts created. Platform folders (`app/android`, `app/ios`, `app/web`) tracked in the repo |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0025`: 33 tables, 5 views, 53 functions (about 30 called by the app), 2 Edge Functions |
+| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is PR #46 (Tier 1–3 hardening and one canonical build screen), merged **7 Oct 2026**. The known gaps are real and listed in §3. The biggest ones: Design and Service can't submit their own stages, and several DB rules can be bypassed. |
+| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`). See §6 and `WORKLOG.md`. |
+| **Not started** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
+| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
 
@@ -54,72 +55,147 @@ a fabricator without an explicit override. Full detail: [`WORKFLOW_AUDIT.md`](WO
 
 ## 2. What each role can do today
 
-| Role | Screens | Status | What works |
-|---|---|---|---|
-| 👑 **Admin** | 7 | ✅ usable | Fleet dashboard (health, order-by alerts) · onboard project **+ create the client's login inline** · **assign / change the PM** · **No PM** filter for stranded builds · project detail + stage detail (read-only oversight) · materials/order-by view · team management (add/delete members, all 8 roles) · create workflow template + BOM · insights |
-| 📋 **PM** | 2 + shared | ✅ usable | My builds (real at-risk/delayed counts) · **Assign work** screen (every unassigned/rework stage across their builds) · assign stage → discipline-aware picker + start/due dates + workload · approvals (approve → next stage auto-starts / reject **with a reason**) · editable materials + delivery date (re-schedules) · **mark delivered** (hands the truck to after-sales) · team workload · **Schedule** (open stages by due date — overdue / today / next 7 days / later / no date) |
-| 🛒 **Procurement** | 4 | ✅ usable | To-Order (order-by alerts) · create PO from an alert or manually · PO list + detail · mark dispatched / received (closes requirements, writes GRN) · vendors + add vendor · add catalog items inline |
-| 📦 **Store** | 3 | ✅ usable | Inbox/receive · log component (serial + warranty + vendor, optionally assign to a build) · inventory + low-stock · component list + digital record · **recall check + working "Notify all"** |
-| 🔧 **Workshop** | 3 | ✅ usable | My tasks (with due dates, overdue flags, **rework reason from the PM**, "awaiting approval") · **Start work** · checklist toggle · **scan a part's QR/barcode to install it** (with manual-serial fallback) · **take a real site photo** (camera or gallery, uploaded to the `builds` bucket) · submit for approval |
-| 🎨 **Design** | 3 | ✅ usable | **Scoped to assigned builds only** · studio stats · design library + filters · new design (upload `.glb` + preview to Storage) · new version after a change request · design detail with interactive 3D · client approval loop + feedback |
-| 🙋 **Client** | 6 | ✅ usable | My trucks + progress + **3D showcase of the approved design** · stage timeline + per-stage photos · **approve / request changes on designs (now actually works)** · raise a request (ticket) **with a photo of the problem** · my requests **with the resolution and a "still not fixed" reopen** · documents tab *(always empty — nothing creates documents)* |
-| 🛠️ **Service** | 5 | ✅ usable | Ticket queue sorted by **SLA countdown** (open / overdue / fixed-today) · ticket detail with the linked part's **warranty state** · triage to a technician · **schedule a visit** (tech + date + time + note) · **resolve** (warranty replace / repair / remote guide) with a note the client reads · close · **delivered trucks** list with open-ticket / warranty health · **truck history** (parts tracked, warranty position, every past request) · **warranty lookup** by serial / model / truck · **sees the client's photos** on a ticket · log a phoned-in ticket |
+Tabs and FAB are exactly what the bottom `PillNav` shows. The FAB does **one** thing per role, whatever tab is open.
+Full per-screen detail: [`Roles.md`](Roles.md).
 
-**Shared:** login · set-password (invite flow) · notifications feed · profile · role-based routing.
+| Role | Tabs · FAB | What works | Known gap (see §3) |
+|---|---|---|---|
+| 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **No PM** chip, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, Add member (admin sets the password), sub-teams, swipe to remove, **Company details** (GST buyer block). **Insights:** on-track %, distribution. **Onboard:** create a client login inline, **create a template inline** (stages, days, BOM, checklist). | No delivered filter. Templates can't be listed or edited. |
+| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. | At-risk rows on Home aren't tappable. PM bell has no badge. |
+| 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
+| 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | Inline "New item" is blocked by RLS for Store. No incoming-PO / GRN list. |
+| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval. **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. Start and Submit have no double-tap guard. |
+| 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats. **Designs:** library + filters. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | Can't start or submit its **stage**. Submitting a design doesn't notify the client. |
+| 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | Can't start or submit its **stage**. "Linked component" never shows (nothing sets it). |
+| 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | Document "download" only shows a snackbar. No priority picker on requests. |
+
+**Shared:** login · set-password (email-invite path) · notifications feed (Today / Earlier, mark all read) · profile (Admin, PM, Procurement, Store, Workshop and Design use the shared `ProfileScreen`; Service and Client have their own Profile tab) · role-based routing.
+
+**The build screen** (`BuildScreen`): every entry point opens it, from Admin Projects, the Command Center, PM Projects and PM Schedule. Its tabs are **Overview · Pipeline · Materials · Record**. The Overview banner states the mode: *Oversight · read-only* for Admin, *You manage this build* for the PM.
 
 ---
 
 ## 3. What's pending
 
-### Features that exist in the schema but nothing writes to them
-1. **`checklist_items` are never created.** Every stage has an empty checklist — templates can't
-   define checks. Needs a `template_stage_checks` table + UI in Create Template.
-2. **`delay_logs`** — never written, so Insights' "top delay reasons" can't work and the PM's
-   "tag reason & reschedule" card has no action behind it.
-3. ~~**`bays`**~~ — **removed from the app.** Nothing in the app or the database ever set
-   `stages.bay_id` or `bays.current_stage_id`, so the PM Schedule tab could only ever report
-   every bay "Free". The bay board is gone; Schedule now shows the PM's open stages grouped as
-   overdue / due today / next 7 days / later / no date, off `assigned_due` (what the PM
-   committed to) falling back to `planned_end` (backward scheduling). The `bays` table and
-   `stages.bay_id` are still in the schema, untouched, for whenever bay allocation is actually
-   built.
-4. **`documents`** (contract / invoice / warranty pack / handover) — never created, so the client's
-   Documents tab is permanently empty.
+Known gaps, found by reading the code line by line on 7 Oct 2026 and verified where marked ✔︎.
+This is one continuous numbered list. Items 1–11 hurt a real build, 12–21 are DB rules that can be
+bypassed, and 22–34 are smaller. The full write-up is in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md) §7.
+
+### Workflow gaps
+1. ✔︎ **Design- and Service-discipline stages can't be started or submitted from the app.** Only Workshop has
+   a Task detail. A stage like *Design & Layout* or *Testing & Delivery* stays `todo`, progress never
+   reaches 100%, and delivery needs *Deliver anyway*. Workaround: the PM reassigns the stage to a
+   workshop member with an override.
+2. ✔︎ **Templates can only be created from Admin → Onboard project → Template "New".** There is no
+   template list, edit or delete, and no per-stage `discipline` picker (it's inferred from the stage name). RLS lets a PM
+   write templates, but the PM has no UI for it.
+3. ✔︎ **Store's inline "New item"** (Stock → Request sheet, Log component) is refused by RLS:
+   `item_catalog` writes are `admin, procurement, pm` only.
+4. ✔︎ **Invited members stay `invited` forever.** Set-password's `profiles.update(status:'active')`
+   is silently blocked by RLS (only admin can update `profiles`).
+5. **A PM hand-over strands in-flight approvals.** `stage_approvals.approver_id` and
+   `purchase_orders.pm_id` are snapshots. The new PM can't see pending stage approvals, and PO signing
+   stays with the old PM until a resubmit.
+6. **Log component → "Assign to build"** marks a part `installed` with no stage, bypassing
+   `fn_install_component`. It shows under "Other / at intake" in the truck record.
+7. ✔︎ **Removing a member who raised or signed a PO, or requested stock, fails.** Seven FKs to `profiles`
+   have no `ON DELETE`: `purchase_orders.{pm_id, submitted_by, pm_signed_by, final_signed_by,
+   rejected_by}`, `po_approval_events.actor_id`, `stock_requests.requested_by`.
+8. **Submitting a design doesn't notify the client.** The "They've been notified" banner is untrue.
+9. **Client document download** only shows "Opening document…". It never opens `file_url`.
+10. **Notifications aren't tappable.** There's no deep link to the build, PO or ticket.
+11. **Only the To-Order *hero* item pre-fills a PO.** A PO raised from the blank FAB isn't linked to its
+    requirement, so the requirement stays `pending` and keeps alerting.
+
+### DB rules that can be bypassed (fix in Postgres, not the UI)
+12. ✔︎ **`fn_reopen_ticket` has no caller check.** Any signed-in user can reopen any ticket and force it to
+    high priority.
+13. **`SECURITY DEFINER` helpers are callable by anyone over RPC:** `fn_notify*` (spoofed notifications),
+    `fn_audit`, `fn_recompute_schedule` (including the rebaseline) and `fn_refresh_all_statuses`. There is no `REVOKE EXECUTE`.
+14. ✔︎ **`trg_guard_stages` doesn't guard `status` / `actual_*`.** An assignee can mark their own stage
+    `done` with a direct UPDATE, skipping submit and approve.
+15. **`trg_guard_projects` doesn't guard `actual_delivery_date`, `target_delivery_date` or `status`.** A PM can
+    "deliver" by direct UPDATE, skipping `fn_mark_delivered`.
+16. **`purchase_orders_update` lets Procurement set `approval_status = 'approved'` itself.** `po_lines` also stay
+    editable after approval.
+17. **`p_tickets_client_new`:** any signed-in user can insert a ticket on any project and pre-set
+    status, assignee or SLA.
+18. **`p_dappr_client`** allows ALL on `design_approvals` by `client_user_id`, with no project check.
+19. **Disabled accounts can still sign in** and use their role's screens. RLS and `is_staff()` ignore
+    `profiles.status`.
+20. ✔︎ **`fn_receive_po` reads the PO status without a row lock.** Two simultaneous receives double the
+    stock and write two GRNs. `stock_items` has no `unique(item_catalog_id)`.
+21. **Both buckets are public-read.** Contracts and invoices under `builds/docs/` are readable by anyone
+    with the URL.
 
 ### Smaller
-5. Profile "My details" is a coming-soon snackbar.
-6. Workflow templates can't set a stage's `discipline` in the UI (inferred from the stage name;
-   a PM can override per stage).
-7. Client tickets aren't visible to Admin/PM anywhere (Service and the client see them).
-8. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours` — the designed "SLA settings" screen
-   would make them configurable.
+22. Add member (Team) always sets a password. The email-invite path is only reachable from Onboard →
+    New client with "Set a password now" unticked.
+23. Profile "My details", "Account details", "Company profile" and "Roles & permissions" are coming-soon.
+24. Only Admin's bell shows an unread badge (Procurement's shows the order-today count). `unreadCountProvider` is unused.
+25. Workshop Start / Submit have no in-flight guard. "Mark stage complete" submits with checks open.
+26. Admin Projects has no Delivered chip, and a delivered build shows a raw grey "delivered" pill.
+27. Log delay doesn't refresh the Pipeline delay ledger. Assign-PM, onboarding and approvals don't
+    refresh the Command Center (`opsBoardProvider`) or Schedule.
+28. Some providers aren't auth-aware: `purchaseOrders`, `vendors`, `items`, `essentialItems`,
+    `templates`, `clients`, `pms`, `allProjects` and every `.family`. After switching accounts **on one device**
+    they can show the previous user's data until refreshed.
+29. ✔︎ **Fresh / demo databases have no essentials.** `seed.sql` runs after `0019`'s backfill, so *Steel sheet* is
+    not `is_essential`, and Store's "Request from procurement" picker is empty.
+30. Test gaps. The backend has no tests for `fn_receive_po` / stock, `fn_request_stock`, the rebaseline flag,
+    `0012` checklist copying, `0014` or `0025`. App tests cover models only, not `slaLabel`,
+    warranty state or `rupeesInWords`.
+31. Dead code: the non-embedded navigation in `ProjectDetailScreen` / `ProjectDossierScreen`,
+    `poDocProvider`, `unreadCountProvider`, and `RoleHome._titles` / `_navs`.
+32. Client tickets aren't visible to Admin or PM anywhere.
+33. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours`.
+34. Bay allocation is deliberately not built. `bays` / `stages.bay_id` stay in the schema, unused.
 
 ---
 
 ## 4. Deploy / environment facts
 
-- **Supabase:** migrations `0001`–`0011` applied. Storage buckets `designs` (from `0008`) and
-  `builds` (from `0011`), both public read.
-- **Edge Functions:** `admin-create-member`, `admin-delete-member` — both deployed.
-  Service-role key is injected by Supabase automatically.
+- **Supabase migrations:** `0001`–`0025` are in the repo. Applied as last recorded: `0001`–`0014`.
+  To find out what the live database has, run **`supabase/check_migrations.sql`** in the SQL editor.
+  It is read-only and prints `applied` / `RUN THIS` for `0004`–`0025`. Run the missing ones **in order**.
+  - `0025` adds a UNIQUE index on `design_versions(artifact_id, version_no)`, so first check this returns
+    0 rows: `select artifact_id, version_no, count(*) from design_versions group by 1,2 having count(*) > 1;`
+  - Don't re-run `0019` (it resets every bulk item to essential). Don't re-run `0020` after `0021`
+    (it re-creates the old `v_po_pending_approvals` with no priority columns and no grant). Everything else is
+    safe to re-run.
+  - From `0020` on, a PO must be raised through `fn_create_po`. From `0025` on, the app adds design
+    versions through `fn_add_design_version`, so **the DB must be at `0025` before running the
+    current app**.
+- **Storage:** buckets `designs` (`0008`) and `builds` (`0011`), both public read.
+  - `designs/<uid>/…` holds `.glb` files and previews.
+  - `builds/stages/<stageId>/` holds site photos.
+  - `builds/tickets/<ticketId>/` holds client ticket photos; it's the only path a client can write.
+  - `builds/bills/` holds component bills.
+  - `builds/docs/<projectId>/` holds build documents.
+- **Edge Functions:** `admin-create-member` (password or email-invite mode; returns `client_account_id`)
+  and `admin-delete-member`. Both are deployed. They last changed on 30 Jul 2026, so PR #46 needs no redeploy.
 - **App config:** `--dart-define=SUPABASE_URL=… --dart-define=SUPABASE_ANON_KEY=…`
   (defaults in `core/supabase_client.dart` are placeholders).
-- **Platform folders** (`android/`, `ios/`, `web/`) exist locally but are **not tracked in git**.
-  Regenerating them with `flutter create .` wipes the native edits — re-apply the camera/photo
-  permissions from [`NATIVE_SETUP.md`](NATIVE_SETUP.md) and the deep links from
-  `INVITE_FLOW.md` §3–4. (`flutter create .` does *not* touch `lib/` or `pubspec.yaml` — verified.)
+- **Platform folders** (`android/`, `ios/`, `web/`) **are tracked** (since PR #5), with native config
+  committed. CI fails if the manifest loses `CAMERA`, `INTERNET` or the `io.supabase.buildtrack` deep link.
+  `flutter create .` overwrites them silently, so `git diff` after it. See [`NATIVE_SETUP.md`](NATIVE_SETUP.md).
 - **Native requirements:** Android `minSdk` 23 + `CAMERA` + `INTERNET`; iOS 13 + camera/photo usage
-  strings. Camera on web needs HTTPS.
-- **Adding members:** the "set a password now" path needs no SMTP. Email invites need Resend SMTP
-  + redirect URLs + the deep-link edits (`INVITE_FLOW.md`).
-- **Recommended cron:** `select public.fn_refresh_all_statuses();` daily — otherwise at-risk/delayed
-  only recompute when a stage is touched, not as the calendar moves.
+  strings. Camera on web needs HTTPS. The iOS Simulator has no camera: the scanner shows its
+  manual-entry state, and gallery picking works.
+- **Adding members:** Team → Add member always sets a password, which needs no SMTP. The email-invite path
+  (Onboard → New client with "Set a password now" unticked) needs Resend SMTP, redirect URLs and the
+  deep link ([`INVITE_FLOW.md`](INVITE_FLOW.md)).
+- **Recommended cron:** `select public.fn_refresh_all_statuses();` daily. The fleet, PM and Command Center
+  screens also call it on load.
+- **Testing on devices:** [`TESTING_GUIDE.md`](TESTING_GUIDE.md) has the deploy checklist and a phased
+  2-device plan.
 
 ### Verifying a change
 
 ```bash
-sh supabase/tests/run.sh        # backend: needs only Docker. ~83 assertions as real users
-cd app && flutter analyze       # app: must report 0 errors
+sh supabase/tests/run.sh        # backend, needs only Docker: 149 assertions in 7 suites, run twice
+                                #   (migration chain + full_setup.sql), as real non-superuser users
+cd app && flutter analyze && flutter test   # app: 0 errors (CI pins Flutter 3.44.8)
 ```
 
 `supabase/full_setup.sql` is **generated** — never hand-edit it:
@@ -131,8 +207,9 @@ cd supabase && sh build_full_setup.sh
 
 ## 5. Decisions worth remembering
 
-- **Admin = oversight + people.** Creates builds, client logins, members, templates. Assigns the PM.
-  Does *not* assign stages or edit materials (opens project detail read-only).
+- **Admin = oversight + people.** Creates builds, client logins, members and templates (template creation
+  lives inside Onboard project). Assigns the PM and gives final approval on POs. Does *not* assign
+  stages or edit materials: the build screen opens in *Oversight · read-only* mode.
 - **PM = build planning.** Owns stage assignment, materials/requirements, delivery date, approvals.
   Cannot create projects or change who owns a build (RLS + `trg_guard_projects`).
 - **Stage assignees = workshop / design / store / service only.** Never admin/pm/procurement/client.
@@ -147,10 +224,74 @@ cd supabase && sh build_full_setup.sh
 - **DB and app must ship together.** From `0009` on, direct table writes are blocked — an old app
   build against the new schema fails on assignment/approval, and on `0010` it would miss ticket
   SLAs and the delivery handover.
+- **PO approval chain (`0020`).** A project PO goes Procurement → the build's PM signs → an admin gives final
+  approval. A general / stock PO goes straight to final approval. Rejection is a **rework loop** (fix and
+  resubmit), not a dead end. Dispatch and receive are refused until the PO is approved.
+- **One build, one screen.** Every "open a build" entry point lands on `BuildScreen` (Overview ·
+  Pipeline · Materials · Record). Capability comes from flags, and the mode banner makes it visible.
+- **A role is a team, not a person.** Several PMs, designers, technicians and so on work at once. Scope "my work"
+  by user id, guard every mutating action against double-taps, put numbering and claims in the DB (row
+  lock / unique index), and invalidate every affected provider. See `.kiro/steering/product.md`.
 
 ---
 
 ## 6. Change log
+
+### 7 Oct 2026: Full code audit + docs refresh (no code change)
+
+Read every line: app (`lib/` ~18k lines), all 25 migrations, both Edge Functions, the test suites and the seeds.
+Then brought every doc in line with the code. Several had drifted badly:
+
+- `API.md` described a REST API that was never built.
+- `DataModel.md` predated `0009`.
+- `BUILD_PROGRESS.md` / `Roles.md` listed tabs and screens that don't exist (a tabbed client truck view,
+  a Design "Profile" tab, PM template creation).
+- Test counts were quoted as "~40", "~49", "83" and "111". The real number is 149.
+
+New findings are §3 items 1–34 and `WORKFLOW_AUDIT.md` §7. Added `supabase/check_migrations.sql`, a
+read-only "which migrations are applied" checker verified on Postgres 15. `TESTING_GUIDE.md` was rewritten
+around it, with a phased 2-device plan. Re-verified: 149/149 backend assertions; CI green on `main`.
+
+### 7 Oct 2026: Tier 1–3 hardening + one canonical build screen ([PR #46](https://github.com/ShivanshPande19/BuildTrack/pull/46), migration `0025`)
+
+Built 28–30 Sep, merged 7 Oct.
+
+- **Multi-user per role.**
+  - New shared `AsyncPrimaryButton` and in-flight guards on PO sign / approve / reject / dispatch / receive,
+    recall Notify all, Close ticket, PM approvals and client reopen. Mark all read got error handling.
+  - A new member appears in the PM / assignee / technician pickers immediately.
+  - **Atomic design version numbering:** `fn_add_design_version` takes a row lock, backed by
+    `ux_design_versions_artifact_no`.
+- **Correctness.**
+  - Optimistic workshop checklist.
+  - Broader invalidation after logging a part or approving a design.
+  - The PO amount in words now spells out paise.
+  - `.when` on the new-ticket truck picker.
+  - `mounted` guards.
+  - `friendlyError` everywhere instead of raw `$e`.
+- **Polish.** Live SLA countdown (1-min tick), "fixed today" by local calendar day, Admin bell = unread
+  count, the design carousel scales with text size, and controllers are disposed.
+- **Navigation (Tier 3).**
+  - `BuildScreen` (Overview · Pipeline · Materials · Record) is the single place every build opens.
+  - The Overview **mode banner** shows "Oversight · read-only" or "You manage this build".
+  - The FAB is stable per role: Admin is always *Onboard*, and Add member moved into the Team tab. Procurement
+    is always *New PO*, and Add vendor moved into the Vendors tab.
+  - `errorBuilder` on the client's full-screen photo.
+- **Docs.** `TESTING_GUIDE.md`, `UX_NAVIGATION_AUDIT.md`, `.kiro/steering/product.md`.
+
+**Watch out when deploying:** run `0025` (idempotent) **before** shipping this app build. "Upload new
+version" calls `fn_add_design_version`. `full_setup.sql` is regenerated.
+
+### 27–31 Aug 2026: UI polish (PRs #32–#45, no migrations)
+
+- Fixed Design Studio and Workshop "my work" failing to load (ambiguous `stages`↔`projects` embed, PR #32).
+- Design home: profile in the header and an *Assigned to me* carousel with dates (#33).
+- `AppSelectField` bottom-sheet selector replaces Material dropdowns (#34).
+- Admin Team grouped by department, with filter pills (#35–#36).
+- Nav bar iterations ending in a **floating pill over the content** (`extendBody`) (#37–#40, #45).
+- Edge-to-edge transparent system bars, keeping the top safe area while the bottom runs edge-to-edge (#39, #43–#44).
+- A **motion layer**, `shared/animations.dart`: `FadeSlideIn`, `PressableScale`, `CountUp`,
+  `AnimatedBar`, `TabSwitcher`, plus fade-through page transitions (#41–#42).
 
 ### 26 Aug 2026 — Build status now honours the delivery date (migration `0024`)
 
@@ -293,6 +434,23 @@ dashboard, flagging how long each PO has waited and which are overdue.
 **Watch out when deploying:** run `0020_po_approvals.sql`. Existing POs are
 grandfathered to `approved`. From this migration on, a PO must be raised through
 `fn_create_po` — an old app build doing a direct insert will be refused by RLS.
+
+### 10–11 Aug 2026: Inventory truthfulness (migrations `0015`–`0019`, PRs #17–#23)
+
+- **`0015`:** changing the delivery date re-baselines each open stage's *assigned* dates too.
+  `fn_recompute_schedule` gets `p_rebaseline_assigned`, which only the delivery-date action passes.
+- **`0016`:** a PO must be **dispatched (with an ETA) before it can be received**.
+- **`0017`:** `stock_requests` + `fn_request_stock`. Store raises reorders and Procurement fills them with
+  general POs.
+- **`0018`:** receiving tops up `stock_items` for **bulk** items only. Serialized parts enter stock when
+  Store logs their serials. The Stock tab counts serialized on-hand from the component ledger.
+- **`0019`:** `item_catalog.is_essential`. Store's request picker offers essentials only. The backfill
+  marks existing bulk items as essential (see §3 #29 for the seed caveat).
+
+### 5 Aug 2026: Phase 1, seven broken loops closed (migrations `0012`–`0014`, PRs #7–#13)
+
+Template checklists, stock movement on receipt, client ticket visibility, bill capture, delay logging,
+documents, and PM approval evidence. Details in [`WORKLOG.md`](WORKLOG.md).
 
 ### 30 Jul 2026 — Real photos and real barcode scanning (migration `0011`)
 

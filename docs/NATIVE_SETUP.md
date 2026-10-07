@@ -158,8 +158,15 @@ the browser blocks `getUserMedia` and the scanner shows its "camera not availabl
    a `picsum.photos` placeholder).
 2. **Workshop → scan button → Scan serial** — the viewfinder opens with a torch toggle. Scanning a
    part's label finds it by serial; **Enter serial manually** is the fallback for a damaged label.
-3. **Client → Raise a request → Add a photo** — attaches to the ticket, and Service sees it under
+3. **Client → Raise a request → Add a photo**: it attaches to the ticket, and Service sees it under
    *Photos from the client* on the ticket.
+4. **Store → ＋ Log component**: the scan button next to *Serial number* opens the same scanner, and
+   **Attach bill / invoice** uses the same camera/gallery sheet (it uploads to `builds/bills/`).
+
+**iOS Simulator / Android Emulator:** there is no usable camera, so the scanner shows its *Camera not
+available* state (manual entry still works) and only the gallery option of the photo sheet is useful.
+Test scanning and camera photos on a real device. [`TESTING_GUIDE.md`](TESTING_GUIDE.md) §2 shows how to
+split the roles across two devices.
 
 If the camera screen shows "Camera not available", the permission was denied or the usage string is
 missing — the manual-entry path still works.

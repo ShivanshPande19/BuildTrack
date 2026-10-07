@@ -58,6 +58,11 @@ account. So:
 - **Concurrency-sensitive numbering/claims belong in the database** (a `SECURITY DEFINER`
   RPC with a row lock / unique constraint), not read-then-write in Dart — two users on the
   same record will race. See `fn_add_design_version` (migration 0025) as the pattern.
+  Known exception to fix: `fn_receive_po` still reads the PO status without `FOR UPDATE`.
+- **Every provider that reads data must `ref.watch(authStateProvider)`**, so it refetches when
+  someone else signs in on the same device. Several (`purchaseOrdersProvider`, `vendorsProvider`,
+  `itemsProvider`, `templatesProvider`, `pmsProvider`, `clientsProvider`, the `.family` ones) don't
+  yet, and can show the previous user's data.
 - **After a mutation, invalidate EVERY provider it affects**, not just the one on the
   current screen (e.g. adding a member must refresh the PM dropdown, the assign picker and
   the technician picker; logging a part must refresh stock + the scan-to-install pool +

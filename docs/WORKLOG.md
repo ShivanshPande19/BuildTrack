@@ -11,7 +11,37 @@ verified through CI, not locally).
 
 ---
 
-## Tier 1 — UI/correctness + multi-user-per-role hardening 🔄
+## 7 Oct 2026: Full code audit + docs refresh ✅
+
+PR #46 merged. Then every line of the app, the 25 migrations, both Edge Functions, the test
+suites and the seeds was read to rebuild full context, and every doc was brought back in line with
+the code. No app or schema change.
+
+- ✅ **Docs rewritten to match the code:**
+  - `API.md`: the real RPC / view / Edge Function surface. The old REST spec was never built.
+  - `DataModel.md`: 33 tables, 5 views, enums, triggers, RLS matrix, storage.
+  - `Roles.md`: real tabs, FAB and screens per role.
+  - Also corrected: `DEPENDENCIES.md`, `BUILD_PROGRESS.md`, `README.md`, `app/README.md`, `OVERVIEW.md`,
+    `TechStack_and_BuildPlan.md`, `INVITE_FLOW.md`, `UX_NAVIGATION_AUDIT.md` (Tier 3 status), and the
+    `.kiro/steering` working rules.
+- ✅ **`supabase/check_migrations.sql`:** a read-only checker that prints `applied` / `RUN THIS` for
+  `0004`–`0025`. Verified on Postgres 15 at three levels: base only, through `0011`, and the full chain.
+- ✅ **`TESTING_GUIDE.md` rewritten.** It has a deploy checklist built on the checker, and a phased 2-device plan:
+  Simulator = office roles, phone = camera roles + client. It fixes three wrong assumptions in the
+  previous version: the live DB level, a seed template with no BOM, and Design stages that can't be submitted.
+- ✅ **Re-verified:** `supabase/tests/run.sh` gives **149/149** on both paths. CI is green on `main` (`8ea550c`).
+- ⏭️ **Findings to fix next**, listed in `PROJECT_LOG.md` §3 and `WORKFLOW_AUDIT.md` §7. Highest impact:
+  1. Design / Service stages need a Start / Submit UI.
+  2. Store's inline "new item" is blocked by RLS.
+  3. Close the DB bypasses: `fn_reopen_ticket` has no caller check, the guard triggers don't
+     protect `status` / delivery dates, Procurement can self-approve POs, and definer helpers are
+     executable by anyone.
+  4. Seven `profiles` FKs block member removal.
+  5. `fn_receive_po` race.
+
+---
+
+## Tier 1–3: UI/correctness + multi-user-per-role hardening + canonical build screen ✅ (PR #46, merged 7 Oct 2026)
 
 A line-by-line audit of every role's screens (a role is a *team*, not one person —
 multiple PMs, procurement staff, designers, technicians, etc.) turned up a class of
@@ -67,9 +97,21 @@ the direct insert still works but without the race guard. `full_setup.sql` regen
   `onError`/`onLoad`, so a reliable runtime error state isn't possible without a package
   change. The empty-URL case is already guarded by callers.
 
+### Tier 3: navigation clarity (same PR)
+
+- ✅ **One canonical build screen.** `BuildScreen` has tabs **Overview · Pipeline · Materials ·
+  Record**. Every entry point (Admin Projects, Command Center rows, PM Projects, PM Schedule) opens
+  it, so the Dossier-vs-Detail fork is gone for users. The old standalone navigation inside
+  `ProjectDetailScreen` / `ProjectDossierScreen` is still in the code but unreachable; it's dead code to remove.
+- ✅ **Role-mode banner** on Overview: *Oversight · read-only* (Admin) vs *You manage this build* (PM).
+- ✅ **Stable FAB per role.** Admin's ＋ is always Onboard project (Add member now lives in the Team tab).
+  Procurement's ＋ is always New PO (Add vendor now lives in the Vendors tab).
+- ✅ `errorBuilder` on the client's full-screen stage photo.
+- ✅ Docs: `TESTING_GUIDE.md`, `UX_NAVIGATION_AUDIT.md` (blueprint), `.kiro/steering/product.md`.
+
 ⏭️ Still deferred (bigger / architectural): realtime cross-user freshness (Phase 3), a
-shared-queue "claim" concept for service tickets & PO approvals, and the UX-clarity work
-to remove duplicate access paths.
+shared-queue "claim" concept for service tickets and PO approvals, a shared `StageEvidence` widget,
+one Profile pattern for all roles, and the PO one-detail consolidation (see `UX_NAVIGATION_AUDIT.md`).
 
 ---
 
