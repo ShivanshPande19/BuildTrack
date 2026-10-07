@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -51,6 +52,15 @@ class _ServiceHomeState extends ConsumerState<ServiceHome> {
 
 const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
 final _dayFmt = DateFormat('d MMM');
+
+/// True if [d] (a stored, usually-UTC timestamp) falls on today's LOCAL calendar
+/// date — a genuine "today" check, not a rolling 24-hour window (a ticket fixed
+/// yesterday at 23:00 should not read as "fixed today" this morning).
+bool isSameDayAsToday(DateTime d) {
+  final now = DateTime.now();
+  final local = d.toLocal();
+  return local.year == now.year && local.month == now.month && local.day == now.day;
+}
 
 Widget svHeader(BuildContext context, String title) => Row(
   crossAxisAlignment: CrossAxisAlignment.start,
@@ -114,6 +124,26 @@ class _TicketsTab extends ConsumerStatefulWidget {
 
 class _TicketsTabState extends ConsumerState<_TicketsTab> {
   String _filter = 'open';
+  Timer? _tick;
+
+  @override
+  void initState() {
+    super.initState();
+    // The SLA labels ("2h left" / "Overdue") and the overdue count are computed
+    // from DateTime.now() at build time. Rebuild once a minute so the countdown
+    // actually moves instead of freezing at whatever it read when the screen
+    // opened. This only re-derives from the already-cached tickets — it does not
+    // hit the network.
+    _tick = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _tick?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,8 +162,7 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
             final open = list.where((t) => t.isOpen).toList();
             final overdue = open.where((t) => t.isOverdue).length;
             final resolvedToday = list.where((t) =>
-              t.resolvedAt != null &&
-              DateTime.now().difference(t.resolvedAt!).inDays == 0).length;
+              t.resolvedAt != null && isSameDayAsToday(t.resolvedAt!)).length;
 
             final shown = switch (_filter) {
               'open'     => open,
@@ -461,7 +490,7 @@ class _ProfileTab extends ConsumerWidget {
     final mine = tickets.where((t) => t.assignedTo == u?.id).toList();
     final openMine = mine.where((t) => t.isOpen).length;
     final fixedToday = tickets.where((t) =>
-      t.resolvedAt != null && DateTime.now().difference(t.resolvedAt!).inDays == 0).length;
+      t.resolvedAt != null && isSameDayAsToday(t.resolvedAt!)).length;
 
     return ListView(padding: _pad, children: [
       Text('Profile', style: display(29, w: FontWeight.w500)),

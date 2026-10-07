@@ -53,12 +53,22 @@ class _AddMemberState extends ConsumerState<AddMember> {
         businessName: _business.text.trim().isEmpty ? null : _business.text.trim(),
         subTeamId: _subTeamId);
       ref.invalidate(membersProvider);
+      // A new member must show up immediately in every picker that lists people
+      // — otherwise a freshly-added PM/technician/doer stays invisible (in the
+      // Onboard PM dropdown, the PM's assign-work sheet, the service tech
+      // picker) until the app is restarted.
       if (_role == 'client') ref.invalidate(clientsProvider);
+      if (_role == 'pm') ref.invalidate(pmsProvider);
+      if (ProjectsRepo.doerRoles.contains(_role)) {
+        ref.invalidate(assignableMembersProvider);
+        ref.invalidate(assignableForDisciplineProvider);
+      }
+      if (_role == 'service' || _role == 'workshop') ref.invalidate(techniciansProvider);
       if (!mounted) return;
       await _showCredentials(_email.text.trim(), _password.text);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = '${friendlyError(e)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -230,6 +240,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
           child: const Text('Add', style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
       ],
     ));
+    c.dispose();
     if (name == null || name.isEmpty) return;
     try {
       final created = await ref.read(adminRepoProvider).createSubTeam(_role, name);
@@ -238,7 +249,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text('Could not add team: $e')));
+          backgroundColor: BT.coral, content: Text('Could not add team: ${friendlyError(e)}')));
       }
     }
   }

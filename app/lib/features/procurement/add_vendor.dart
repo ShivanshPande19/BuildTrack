@@ -46,7 +46,7 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
           backgroundColor: BT.ink, content: Text('${_name.text.trim()} added.')));
       }
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = '${friendlyError(e)}');
     } finally {
       if (mounted) setState(() => _saving = false);
     }

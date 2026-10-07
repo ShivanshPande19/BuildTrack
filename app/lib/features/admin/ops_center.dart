@@ -5,7 +5,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
-import 'project_dossier.dart';
+import 'build_screen.dart';
 
 /// Admin — the operations command center.
 ///
@@ -228,7 +228,11 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDossierScreen(projectId: r.projectId, code: r.code))),
+        builder: (_) => BuildScreen(
+          projectId: r.projectId,
+          initial: Project(id: r.projectId, code: r.code, name: r.name,
+            status: r.status, progressPct: r.progressPct),
+          canAssignPm: true))),
       child: AppCard(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${r.code} · ${r.name}',
@@ -307,7 +311,11 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
     return Padding(padding: const EdgeInsets.only(bottom: 9), child: GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProjectDossierScreen(projectId: r.projectId, code: r.code))),
+        builder: (_) => BuildScreen(
+          projectId: r.projectId,
+          initial: Project(id: r.projectId, code: r.code, name: r.name,
+            status: r.status, progressPct: r.progressPct),
+          canAssignPm: true))),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),

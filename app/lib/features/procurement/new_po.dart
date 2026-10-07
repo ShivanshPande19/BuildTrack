@@ -221,7 +221,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
                         leadTimeDays: int.tryParse(leadC.text.trim()) ?? 0);
                       if (ctx.mounted) Navigator.pop(ctx, created);
                     } catch (e) {
-                      setSheet(() { busy = false; err = '$e'; });
+                      setSheet(() { busy = false; err = '${friendlyError(e)}'; });
                     }
                   }),
             ]),

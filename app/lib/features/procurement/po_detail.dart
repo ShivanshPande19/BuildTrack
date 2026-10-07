@@ -260,31 +260,23 @@ class PoDetailScreen extends ConsumerWidget {
 
       const SizedBox(height: 12),
       if (canPmSign)
-        PrimaryButton('Sign & send for approval', icon: Icons.draw_rounded, bg: BT.ink, fg: BT.card,
+        AsyncPrimaryButton('Sign & send for approval', icon: Icons.draw_rounded, bg: BT.ink, fg: BT.card,
           onTap: () => _run(context, ref, () => ref.read(procurementRepoProvider).pmSignPo(poId),
             'Signed — sent for final approval.')),
       if (canFinal)
-        PrimaryButton('Approve — place the order', icon: Icons.verified_rounded, bg: BT.ink, fg: BT.card,
+        AsyncPrimaryButton('Approve — place the order', icon: Icons.verified_rounded, bg: BT.ink, fg: BT.card,
           onTap: () => _run(context, ref, () => ref.read(procurementRepoProvider).finalApprovePo(poId),
             'Approved — the order can be placed.')),
       if (canReject) Padding(
         padding: EdgeInsets.only(top: (canPmSign || canFinal) ? 10 : 0),
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        child: AsyncPrimaryButton('Reject', icon: Icons.close_rounded, bg: BT.card2, fg: BT.ink,
           onTap: () async {
             final reason = await _askReason(context);
             if (reason == null || reason.trim().isEmpty) return;
             if (!context.mounted) return;
             await _run(context, ref, () => ref.read(procurementRepoProvider).rejectPo(poId, reason.trim()),
               'Rejected — sent back to procurement.');
-          },
-          child: Container(height: 50, alignment: Alignment.center,
-            decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(16)),
-            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.close_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
-              Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
-            ])),
-        ),
+          }),
       ),
       // A sent-back PO is procurement's to fix and resubmit — the rework loop.
       if (po.isRejected && (role == 'procurement' || role == 'admin'))
@@ -393,7 +385,7 @@ class PoDetailScreen extends ConsumerWidget {
   Widget _actionButton(BuildContext context, WidgetRef ref, String status) {
     final repo = ref.read(procurementRepoProvider);
     if (status == 'ordered') {
-      return PrimaryButton('Mark as dispatched', icon: Icons.local_shipping_rounded,
+      return AsyncPrimaryButton('Mark as dispatched', icon: Icons.local_shipping_rounded,
         bg: BT.ink, fg: BT.card,
         onTap: () async {
           final now = DateTime.now();
@@ -417,7 +409,7 @@ class PoDetailScreen extends ConsumerWidget {
         ]),
       );
     }
-    return PrimaryButton('Mark as received', icon: Icons.inventory_2_rounded,
+    return AsyncPrimaryButton('Mark as received', icon: Icons.inventory_2_rounded,
       bg: BT.ink, fg: BT.card,
       onTap: () => _run(context, ref, () => repo.markReceived(poId), 'Marked received — Store can now log components.'));
   }

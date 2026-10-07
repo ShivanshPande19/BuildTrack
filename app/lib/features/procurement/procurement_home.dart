@@ -41,7 +41,7 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
         activeLabel: _labels[_tab],
         onTap: (i) => setState(() => _tab = i),
         onAction: () => Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => _tab == 3 ? const AddVendorScreen() : const NewPoScreen())),
+          builder: (_) => const NewPoScreen())),
       ),
     );
   }
@@ -155,7 +155,7 @@ class _ToOrderTab extends ConsumerWidget {
         items.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 80),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
@@ -172,7 +172,7 @@ class _ToOrderTab extends ConsumerWidget {
         // Essentials — general reorder requests raised by Store (no project).
         reqs.when(
           loading: () => const SizedBox.shrink(),
-          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
@@ -286,7 +286,7 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
         orders.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load orders.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load orders.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // 'ordered'/'dispatched'/'received' only make sense for approved POs,
@@ -371,7 +371,7 @@ class _ReceiveTab extends ConsumerWidget {
         orders.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             // Only approved POs can move — a PO in approval isn't an order yet.
@@ -420,7 +420,7 @@ class _ReceiveTab extends ConsumerWidget {
         _poHeader(o, trailing: o.expectedDate != null
           ? StatusPill(_fmt.format(o.expectedDate!), color: BT.sky) : null),
         const SizedBox(height: 12),
-        PrimaryButton('Receive & verify', icon: Icons.check,
+        AsyncPrimaryButton('Receive & verify', icon: Icons.check,
           onTap: () async {
             try {
               await ref.read(procurementRepoProvider).markReceived(o.id);
@@ -449,8 +449,7 @@ class _ReceiveTab extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _poHeader(o, trailing: const StatusPill('Ordered', color: BT.sky)),
         const SizedBox(height: 12),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
+        AsyncPrimaryButton('Mark dispatched', icon: Icons.local_shipping_rounded, bg: BT.ink, fg: BT.card,
           onTap: () async {
             final now = DateTime.now();
             final eta = await showDatePicker(context: context,
@@ -472,15 +471,7 @@ class _ReceiveTab extends ConsumerWidget {
                   backgroundColor: BT.coral, content: Text(friendlyError(e))));
               }
             }
-          },
-          child: Container(height: 52, alignment: Alignment.center,
-            decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(16)),
-            child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(Icons.local_shipping_rounded, size: 18, color: BT.card),
-              SizedBox(width: 8),
-              Text('Mark dispatched', style: TextStyle(fontWeight: FontWeight.w600, color: BT.card)),
-            ])),
-        ),
+          }),
       ]),
     ),
   );
@@ -502,10 +493,14 @@ class _VendorsTab extends ConsumerWidget {
       child: ListView(padding: _pad, children: [
         _header(context, 'Vendors'),
         const SizedBox(height: 16),
+        PrimaryButton('Add vendor', icon: Icons.add_business_rounded, bg: BT.ink, fg: BT.card,
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AddVendorScreen()))),
+        const SizedBox(height: 14),
         vendors.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load vendors.\n$e',
+          error: (e, _) => AppCard(child: Text('Could not load vendors.\n${friendlyError(e)}',
             style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             if (list.isEmpty) {

@@ -101,7 +101,7 @@ class _InboxTab extends ConsumerWidget {
         stock.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 30),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load stock.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load stock.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final low = list.where((s) => s.low).toList();
             if (low.isEmpty) {
@@ -168,7 +168,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
         stock.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 40),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final rows = _lowOnly ? list.where((s) => s.low).toList() : list;
             if (rows.isEmpty) {
@@ -269,7 +269,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
                   setSheet(() => sending = false);
                   if (sheetCtx.mounted) {
                     ScaffoldMessenger.of(sheetCtx).showSnackBar(SnackBar(
-                      backgroundColor: BT.coral, content: Text('Failed: $e')));
+                      backgroundColor: BT.coral, content: Text('Failed: ${friendlyError(e)}')));
                   }
                 }
               }),
@@ -370,7 +370,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
                     setSheet(() => sending = false);
                     if (sheetCtx.mounted) {
                       ScaffoldMessenger.of(sheetCtx).showSnackBar(SnackBar(
-                        backgroundColor: BT.coral, content: Text('Failed: $e')));
+                        backgroundColor: BT.coral, content: Text('Failed: ${friendlyError(e)}')));
                     }
                   }
                 }),
@@ -449,7 +449,7 @@ class _PartsTabState extends ConsumerState<_PartsTab> {
         comps.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 40),
             child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load components.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load components.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final filtered = _q.isEmpty ? list : list.where((c) =>
               c.serial.toLowerCase().contains(_q) || c.name.toLowerCase().contains(_q) ||

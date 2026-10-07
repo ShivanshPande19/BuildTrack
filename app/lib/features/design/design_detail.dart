@@ -40,7 +40,7 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
         backgroundColor: BT.ink, content: Text('Sent to client for approval 🎉')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        backgroundColor: BT.coral, content: Text('Failed: $e')));
+        backgroundColor: BT.coral, content: Text('Failed: ${friendlyError(e)}')));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -73,7 +73,7 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
           const SizedBox(height: 12),
           detail.when(
             loading: () => const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load design.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            error: (e, _) => AppCard(child: Text('Could not load design.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
             data: (d) => _content(d),
           ),
         ]),

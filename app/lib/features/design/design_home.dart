@@ -160,7 +160,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         ),
         designs.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load designs.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load designs.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final drafts   = list.where((d) => d.status == 'draft').length;
             final awaiting = list.where((d) => d.status == 'pending_approval').length;
@@ -222,8 +222,11 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
 
   Widget _assignedCarousel(List<AssignedBuild> list) {
     if (list.length == 1) return _buildCard(list.first);
+    // Grow the carousel with the user's text scale so the card content never
+    // overflows a fixed height at larger accessibility text sizes.
+    final scale = MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.6).toDouble();
     return Column(children: [
-      SizedBox(height: 178, child: PageView.builder(
+      SizedBox(height: 178 * scale, child: PageView.builder(
         controller: _buildsCtrl,
         itemCount: list.length,
         onPageChanged: (i) => setState(() => _buildsPage = i),
@@ -361,7 +364,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         const SizedBox(height: 8),
         designs.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 50), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final shown = _filter == 'all' ? list : list.where((d) => d.status == _filter).toList();
             if (shown.isEmpty) {
@@ -403,7 +406,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         const SizedBox(height: 16),
         designs.when(
           loading: () => const Padding(padding: EdgeInsets.only(top: 50), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n$e', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
           data: (list) {
             final submitted = list.where((d) => d.status != 'draft').toList();
             if (submitted.isEmpty) {

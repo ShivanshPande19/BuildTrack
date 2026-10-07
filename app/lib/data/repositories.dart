@@ -1659,23 +1659,22 @@ class DesignRepo {
   }
 
   /// Add a new version to an existing artifact (e.g. after a change request).
+  ///
+  /// Goes through fn_add_design_version (migration 0025), which computes the
+  /// next version_no under a row lock on the artifact — so two designers on the
+  /// same build submitting a new version at the same time can no longer both
+  /// grab the same number and lose one of the uploads.
   Future<void> addVersion({
     required String artifactId,
     String? modelUrl, String? imageUrl, String? changeNote, required bool submit,
   }) async {
-    final existing = await sb.from('design_versions')
-        .select('version_no').eq('artifact_id', artifactId)
-        .order('version_no', ascending: false).limit(1);
-    final nextNo = (existing as List).isEmpty ? 1 : ((existing.first['version_no'] as num).toInt() + 1);
-    final v = await sb.from('design_versions').insert({
-      'artifact_id': artifactId, 'version_no': nextNo,
-      'file_url': _clean(imageUrl), 'model_url': _clean(modelUrl), 'change_note': _clean(changeNote),
-    }).select('id').single();
-    await sb.from('design_artifacts').update({
-      'current_version_id': v['id'],
-      'status': submit ? 'pending_approval' : 'draft',
-      'client_feedback': null,
-    }).eq('id', artifactId);
+    await sb.rpc('fn_add_design_version', params: {
+      'p_artifact': artifactId,
+      'p_model_url': _clean(modelUrl),
+      'p_image_url': _clean(imageUrl),
+      'p_change_note': _clean(changeNote),
+      'p_submit': submit,
+    });
   }
 
   Future<void> submitForApproval(String artifactId) async {

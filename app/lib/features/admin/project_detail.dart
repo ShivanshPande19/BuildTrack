@@ -10,6 +10,7 @@ import '../../shared/animations.dart';
 import 'stage_detail.dart';
 import 'project_requirements.dart';
 import 'project_dossier.dart';
+import 'truck_record.dart';
 import '../client/truck_3d.dart';
 
 /// Admin / PM — Project detail (a4): progress, delivery date, who owns the build,
@@ -24,9 +25,13 @@ class ProjectDetailScreen extends ConsumerWidget {
   final bool canAssign;         // PM can assign stages to team members
   final bool canEditTimeline;   // PM can change delivery date (re-schedules)
   final bool canAssignPm;       // Admin can assign / change the project manager
+  /// When shown as the Overview tab inside BuildScreen: drop the back-row, the
+  /// top safe-area, and the in-page nav cards (Materials / Pipeline / Record
+  /// are tabs there).
+  final bool embedded;
   const ProjectDetailScreen({super.key, required this.projectId, this.initial,
     this.materialsEditable = false, this.canAssign = false, this.canEditTimeline = false,
-    this.canAssignPm = false});
+    this.canAssignPm = false, this.embedded = false});
 
   static final _fmt = DateFormat('d MMM');
   String _d(DateTime? d) => d == null ? '—' : _fmt.format(d);
@@ -43,13 +48,13 @@ class ProjectDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final detail = ref.watch(projectDetailProvider(projectId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      body: SafeArea(top: !embedded, child: RefreshIndicator(
         onRefresh: () async => ref.refresh(projectDetailProvider(projectId).future),
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
             // top row: back + code pill
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => Navigator.pop(context),
@@ -84,6 +89,36 @@ class ProjectDetailScreen extends ConsumerWidget {
     ])),
   );
 
+  /// Make the current mode explicit. The same screen opens read-only for an
+  /// Admin (oversight) and editable for the build's PM, and nothing used to say
+  /// which — so an Admin saw an edit-looking screen that mostly wasn't, and vice
+  /// versa. (UX navigation audit, finding C.)
+  Widget _modeBanner() {
+    final canManage = materialsEditable || canAssign || canEditTimeline;
+    final (IconData icon, Color tint, String title, String sub) = canManage
+      ? (Icons.tune_rounded, BT.sky, 'You manage this build',
+         'Assign work, edit materials and the delivery date.')
+      : (Icons.visibility_outlined, BT.card2, 'Oversight · read-only',
+         canAssignPm ? 'You can assign or change the project manager.'
+                     : 'Monitoring only.');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      decoration: BoxDecoration(
+        color: tint.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: BT.line)),
+      child: Row(children: [
+        Icon(icon, size: 18, color: BT.ink),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 1),
+          Text(sub, style: const TextStyle(color: BT.mut, fontSize: 11.5, height: 1.3)),
+        ])),
+      ]),
+    );
+  }
+
   Widget _content(BuildContext context, WidgetRef ref, ProjectDetailData d) {
     final s = _status(d.project.status);
     final cur = d.currentStage;
@@ -98,7 +133,10 @@ class ProjectDetailScreen extends ConsumerWidget {
         const SizedBox(width: 10),
         StatusPill(s.label, color: s.color),
       ]),
-      const SizedBox(height: 16),
+      const SizedBox(height: 14),
+
+      _modeBanner(),
+      const SizedBox(height: 12),
 
       _pmCard(context, ref, d, names),
       const SizedBox(height: 12),
@@ -152,7 +190,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       ),
 
       const SizedBox(height: 12),
-      GestureDetector(
+      if (!embedded) GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () => Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => ProjectRequirementsScreen(
@@ -174,7 +212,7 @@ class ProjectDetailScreen extends ConsumerWidget {
         ),
       ),
       // Admin's read-only dossier: the whole pipeline + delay attribution.
-      if (canAssignPm) ...[
+      if (canAssignPm && !embedded) ...[
         const SizedBox(height: 12),
         GestureDetector(
           behavior: HitTestBehavior.opaque,
@@ -197,6 +235,32 @@ class ProjectDetailScreen extends ConsumerWidget {
           ),
         ),
       ],
+
+      // The truck's complete physical record (digital twin) — every part fitted,
+      // its serial / warranty / bill. Reachable in one tap from the build now,
+      // not only via the dossier.
+      const SizedBox(height: 12),
+      if (!embedded) GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => TruckRecordScreen(
+            projectId: projectId, code: d.project.code, name: d.project.name))),
+        child: AppCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(children: [
+            Container(width: 40, height: 40, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.mint, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.memory_rounded, size: 20, color: BT.ink)),
+            const SizedBox(width: 13),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Truck record', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+              SizedBox(height: 2),
+              Text('Every part fitted · serials · warranties · bills', style: TextStyle(color: BT.mut, fontSize: 12)),
+            ])),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+          ]),
+        ),
+      ),
 
       // Tag why a build slipped, and optionally push the delivery date by the
       // same number of days (which re-runs backward scheduling — the cascade).

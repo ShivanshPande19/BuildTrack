@@ -42,7 +42,7 @@ class RoleHome extends ConsumerWidget {
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: BT.ink))),
       error: (e, _) => Scaffold(body: Center(child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text('Could not load your account.\n$e',
+        child: Text('Could not load your account.\n${friendlyError(e)}',
           textAlign: TextAlign.center, style: const TextStyle(color: BT.coral, fontSize: 13))))),
       data: (role0) {
         // A signed-in user with no profile row has no role. Falling back to the
