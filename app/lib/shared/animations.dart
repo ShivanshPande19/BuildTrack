@@ -352,8 +352,11 @@ class ContentReveal extends StatelessWidget {
           opacity: a,
           child: _PixelSlide(animation: a, dy: 10, child: c),
         ),
+        // passthrough: the slot keeps the list's tight width, so a narrow child
+        // (a short error line) stays left-aligned instead of being centred.
         layoutBuilder: (current, previous) => Stack(
-          alignment: Alignment.topCenter,
+          alignment: AlignmentDirectional.topStart,
+          fit: StackFit.passthrough,
           clipBehavior: Clip.none,
           children: [...previous, if (current != null) current],
         ),
@@ -533,6 +536,7 @@ class TabSwitcher extends StatelessWidget {
   // overlapping cross-fades read as ghosting (old title showing through the
   // new one) and that is the jerky feel.
   static const _outEnd = 0.35;
+  static final _scale = Tween<double>(begin: 0.97, end: 1.0);
 
   @override
   Widget build(BuildContext context) {
@@ -541,28 +545,23 @@ class TabSwitcher extends StatelessWidget {
       duration: duration,
       // Same length both ways so the two halves stay in step.
       reverseDuration: duration,
-      switchInCurve: Curves.linear,
-      switchOutCurve: Curves.linear,
-      transitionBuilder: (child, anim) {
-        // AnimatedSwitcher re-runs this builder when the current tab becomes the
-        // outgoing one, so the widget shape must be identical in both branches
-        // (Fade → Scale → child). If it changed, Flutter would rebuild the
-        // outgoing tab from scratch mid-fade and its entrance motion would
-        // restart, which shows as a flicker.
-        final incoming = child.key == ValueKey(index);
-        final Animation<double> opacity;
-        final Animation<double> scale;
-        if (incoming) {
-          final t = CurvedAnimation(parent: anim, curve: const Interval(_outEnd, 1, curve: Easing.emphasizedDecelerate));
-          opacity = t;
-          scale = Tween(begin: 0.97, end: 1.0).animate(t);
-        } else {
-          // Outgoing: anim runs 1 → 0, so it has finished fading by 1 - _outEnd.
-          opacity = CurvedAnimation(parent: anim, curve: const Interval(1 - _outEnd, 1, curve: Curves.easeOut));
-          scale = const AlwaysStoppedAnimation(1.0);
-        }
-        return FadeTransition(opacity: opacity, child: ScaleTransition(scale: scale, child: child));
-      },
+      // The direction lives in the controller, not in the builder. The
+      // incoming tab runs forward through switchInCurve (it stays invisible
+      // until 35%, then fades and scales up). The leaving one runs in reverse
+      // through switchOutCurve (gone by the time it passes 65%, which is 35% of
+      // the switch). Deciding "incoming?" from the child's key, as before, gave
+      // a tab that was still leaving the incoming curve on a quick A → B → A, and
+      // it ghosted. Plain tweens, not CurvedAnimations built per build, also
+      // mean no listeners pile up on the controllers while the shell rebuilds.
+      switchInCurve: const Interval(_outEnd, 1, curve: Easing.emphasizedDecelerate),
+      switchOutCurve: const Interval(1 - _outEnd, 1, curve: Curves.easeOut),
+      // The widget shape is the same for every layer (Fade → Scale → child). If
+      // it changed when a tab became the leaving one, Flutter would rebuild
+      // that tab from scratch mid-fade and replay its entrance, which flickers.
+      transitionBuilder: (child, anim) => FadeTransition(
+        opacity: anim,
+        child: ScaleTransition(scale: _scale.animate(anim), child: child),
+      ),
       // Every layer keeps the same shape (keyed Positioned → IgnorePointer →
       // child) whether it is current or leaving. Then the tab that just lost
       // focus keeps its element and state while it fades, and doesn't get

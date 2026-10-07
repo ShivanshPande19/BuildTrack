@@ -80,13 +80,22 @@ class TicketDetailScreen extends ConsumerWidget {
 
     // The client's words are the title. A short note was printed twice (as the
     // title and again in the quote card right under it). Now the quote card
-    // only appears when the title had to be cut short.
+    // only appears when the title really got cut. That's measured at the real
+    // width and text size, not guessed from a character count, which hid the
+    // tail of the client's report at large text sizes.
     final desc = t.description?.trim() ?? '';
-    final longDesc = desc.length > 40; // ~2 lines of the 25pt title on a phone
+    final titleStyle = display(25, w: FontWeight.w600);
+    return LayoutBuilder(builder: (context, c) {
+    final longDesc = desc.isNotEmpty && (TextPainter(
+      text: TextSpan(text: desc, style: titleStyle),
+      maxLines: 2,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: c.maxWidth)).didExceedMaxLines;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(desc.isEmpty ? categoryLabel(t.category) : desc,
         maxLines: 2, overflow: TextOverflow.ellipsis,
-        style: display(25, w: FontWeight.w600)),
+        style: titleStyle),
       const SizedBox(height: 5),
       Text([
         t.number,
@@ -197,6 +206,7 @@ class TicketDetailScreen extends ConsumerWidget {
       const SizedBox(height: 18),
       _actions(context, ref, t),
     ]);
+    });
   }
 
   Widget _assigneeCard(BuildContext context, WidgetRef ref, ServiceTicket t,
@@ -314,6 +324,7 @@ class TicketDetailScreen extends ConsumerWidget {
         onTap: () async {
           try {
             await ref.read(serviceRepoProvider).close(t.id);
+            Haptic.confirm();
             await _refresh(ref);
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(

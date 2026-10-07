@@ -295,6 +295,7 @@ class PoDetailScreen extends ConsumerWidget {
   Future<void> _run(BuildContext context, WidgetRef ref, Future<void> Function() action, String msg) async {
     try {
       await action();
+      Haptic.confirm(); // only once the write has really succeeded
       ref.invalidate(poDetailProvider(poId));
       ref.invalidate(purchaseOrdersProvider);
       ref.invalidate(poApprovalsProvider);

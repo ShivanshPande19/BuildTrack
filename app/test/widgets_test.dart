@@ -4,10 +4,16 @@
 // so a layout overflow, an exception inside an animation, or a broken state
 // transition fails CI instead of showing up on a device. Fonts fall back to the
 // test font (google_fonts doesn't fetch in tests).
+import 'dart:async';
+
 import 'package:buildtrack/core/theme.dart';
+import 'package:buildtrack/data/models.dart';
+import 'package:buildtrack/data/repositories.dart';
+import 'package:buildtrack/features/common/notifications.dart';
 import 'package:buildtrack/shared/animations.dart';
 import 'package:buildtrack/shared/widgets.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -18,6 +24,15 @@ Widget _host(Widget child, {Size size = const Size(390, 844), double textScale =
         home: Scaffold(backgroundColor: BT.bg, body: child),
       ),
     );
+
+/// Lays the test out on a real phone-sized surface. Overriding MediaQuery's
+/// size alone doesn't change the 800×600 view the widgets are laid out in, so a
+/// "narrow phone" test would silently run 800px wide.
+void _phone(WidgetTester t, Size size) {
+  t.view.physicalSize = size;
+  t.view.devicePixelRatio = 1;
+  addTearDown(t.view.reset);
+}
 
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
@@ -54,10 +69,26 @@ void main() {
     });
 
     testWidgets('long label on a narrow phone at large text never overflows', (t) async {
+      _phone(t, const Size(320, 640));
       await t.pumpWidget(_host(nav(1, 'Procurement orders'), size: const Size(320, 640), textScale: 1.6));
       await t.pumpAndSettle();
+      expect(t.getSize(find.byType(PillNav)).width, 320); // really laid out narrow
       expect(t.takeException(), isNull);
     });
+
+    // Every real tab label, on small and normal phones, up to 2× text.
+    for (final width in [320.0, 360.0, 390.0]) {
+      for (final scale in [1.0, 1.3, 1.6, 2.0]) {
+        testWidgets('no overflow at ${width.toInt()}dp, ${scale}x text', (t) async {
+          _phone(t, Size(width, 700));
+          for (final label in ['Home', 'Projects', 'Warranty', 'Approvals', 'My Trucks']) {
+            await t.pumpWidget(_host(nav(1, label), size: Size(width, 700), textScale: scale));
+            await t.pumpAndSettle();
+            expect(t.takeException(), isNull, reason: '"$label" overflowed');
+          }
+        });
+      }
+    }
 
     testWidgets('action button fires', (t) async {
       var fired = false;
@@ -172,6 +203,107 @@ void main() {
     });
   });
 
+  group('TabSwitcher quick switches', () {
+    testWidgets('A → B → A fast: the tab that is still leaving never fades back in', (t) async {
+      await t.pumpWidget(_host(const TabSwitcher(index: 0, child: Text('A'))));
+      await t.pumpAndSettle();
+      await t.pumpWidget(_host(const TabSwitcher(index: 1, child: Text('B'))));
+      await t.pump(const Duration(milliseconds: 40));
+      await t.pumpWidget(_host(const TabSwitcher(index: 0, child: Text('A'))));
+      // Two layers say "A": the old one leaving, the new one arriving. Before
+      // the fix the leaving one took the incoming curve, and the two A layers
+      // plus B were all visible together (ghosting). Now at most one layer is
+      // ever clearly visible.
+      for (var f = 0; f < 22; f++) {
+        await t.pump(const Duration(milliseconds: 16));
+        // Each tab layer's own fade is the nearest FadeTransition above its text.
+        double layerOpacity(Element e) => t
+            .widgetList<FadeTransition>(find.ancestor(of: find.byElementPredicate((x) => x == e),
+                matching: find.byType(FadeTransition)))
+            .first
+            .opacity
+            .value;
+        final visible = [
+          ...find.text('A').evaluate(),
+          ...find.text('B').evaluate(),
+        ].where((e) => layerOpacity(e) > 0.5).length;
+        expect(visible, lessThanOrEqualTo(1), reason: 'frame $f');
+      }
+      await t.pumpAndSettle();
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('B'), findsNothing);
+    });
+  });
+
+  group('Notifications', () {
+    AppNotification n(String id, Duration ago, {bool read = false}) => AppNotification(
+        id: id, title: 'Title $id', type: 'stage_submitted', read: read,
+        createdAt: DateTime.now().toUtc().subtract(ago));
+
+    Widget screen(List<Override> ov) => ProviderScope(
+          overrides: ov,
+          child: MaterialApp(theme: ThemeData(useMaterial3: true), home: const NotificationsScreen()),
+        );
+
+    testWidgets('titles use the theme text style, not the debug fallback', (t) async {
+      await t.pumpWidget(screen([
+        notificationsProvider.overrideWith((ref) async => [n('a', const Duration(minutes: 5))]),
+      ]));
+      await t.pumpAndSettle();
+      final ctx = t.element(find.text('Title a'));
+      final style = DefaultTextStyle.of(ctx).style;
+      // MaterialApp's fallback is a yellow double underline in monospace.
+      expect(style.decoration, isNot(TextDecoration.underline));
+      expect(style.fontFamily, isNot('monospace'));
+    });
+
+    testWidgets('groups by local day: Today / Yesterday / Earlier', (t) async {
+      final now = DateTime.now();
+      final yesterdayNoon = DateTime(now.year, now.month, now.day - 1, 12);
+      final threeDaysAgo = DateTime(now.year, now.month, now.day - 3, 12);
+      await t.pumpWidget(screen([
+        notificationsProvider.overrideWith((ref) async => [
+              n('t', const Duration(minutes: 2)),
+              AppNotification(id: 'y', title: 'Title y', createdAt: yesterdayNoon.toUtc()),
+              AppNotification(id: 'e', title: 'Title e', createdAt: threeDaysAgo.toUtc()),
+            ]),
+      ]));
+      await t.pumpAndSettle();
+      expect(find.text('TODAY'), findsOneWidget);
+      expect(find.text('YESTERDAY'), findsOneWidget);
+      expect(find.text('EARLIER'), findsOneWidget);
+      expect(find.text('3d ago'), findsOneWidget);
+    });
+
+    testWidgets('mark all read stays read while the refetch is in flight', (t) async {
+      var unread = true;
+      final refetch = Completer<void>();
+      var calls = 0;
+      await t.pumpWidget(screen([
+        notificationsRepoProvider.overrideWithValue(_FakeNotifRepo(() => unread = false)),
+        notificationsProvider.overrideWith((ref) async {
+          calls++;
+          if (calls > 1) await refetch.future;
+          return [n('a', const Duration(minutes: 5), read: !unread)];
+        }),
+      ]));
+      await t.pumpAndSettle();
+      expect(find.text('1 new'), findsOneWidget);
+
+      await t.tap(find.text('Mark all read'));
+      for (var i = 0; i < 30; i++) {
+        await t.pump(const Duration(milliseconds: 16));
+      }
+      // Refetch still pending: the stale unread row must not come back.
+      expect(find.text('1 new'), findsNothing);
+
+      refetch.complete();
+      await t.pumpAndSettle();
+      expect(find.text('1 new'), findsNothing);
+      expect(t.takeException(), isNull);
+    });
+  });
+
   group('ContentReveal', () {
     testWidgets('skeleton fades through to content, and a refresh does not replay it', (t) async {
       final inits = <String, int>{};
@@ -261,6 +393,7 @@ void main() {
     });
 
     testWidgets('SegmentTabs scrolls when wider than a small phone at large text', (t) async {
+      _phone(t, const Size(320, 600));
       await t.pumpWidget(_host(SegmentTabs(
             labels: const ['Overview', 'Pipeline', 'Materials', 'Record'], index: 3, onChanged: (_) {}),
           size: const Size(320, 600), textScale: 1.6));
@@ -316,4 +449,11 @@ class _ProbeState extends State<_Probe> {
   @override
   Widget build(BuildContext context) =>
       Center(child: GestureDetector(onTap: widget.onTap, child: Text(widget.id)));
+}
+
+class _FakeNotifRepo extends NotificationsRepo {
+  final void Function() onMark;
+  _FakeNotifRepo(this.onMark);
+  @override
+  Future<void> markAllRead() async => onMark();
 }

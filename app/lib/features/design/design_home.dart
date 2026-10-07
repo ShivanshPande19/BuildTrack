@@ -187,13 +187,14 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
 
   Widget _assignedCarousel(List<AssignedBuild> list) {
     if (list.length == 1) return AssignedBuildCard(b: list.first);
-    // The carousel's height is MEASURED from a real card (the tallest content
-    // in the list), so it fits exactly at every text size. Fixed heights either
-    // overflowed at large text or left an empty band under the card.
+    // The carousel's height is MEASURED from the real cards (every one, the
+    // tallest wins), so it fits exactly at every text size. Fixed heights either
+    // overflowed at large text or left an empty band under the card. Guessing
+    // the tallest card from one field was wrong too: the stage name is one
+    // ellipsized line, and what actually adds height is the date chips wrapping.
     return Column(children: [
       _MeasuredHeight(
-        probe: AssignedBuildCard(b: list.reduce((x, y) =>
-          (y.stageName?.length ?? 0) > (x.stageName?.length ?? 0) ? y : x)),
+        probes: [for (final b in list) AssignedBuildCard(b: b)],
         builder: (h) => SizedBox(height: h, child: PageView.builder(
           controller: _buildsCtrl,
           itemCount: list.length,
@@ -442,12 +443,13 @@ class AssignedBuildCard extends StatelessWidget {
 
 }
 
-/// Lays [probe] out invisibly (at the available width) and hands its height to
-/// [builder], so a fixed-height container like a PageView can match its content.
+/// Lays every [probes] widget out invisibly (at the page width) and hands the
+/// tallest height to [builder], so a fixed-height container like a PageView can
+/// fit all of its pages.
 class _MeasuredHeight extends StatefulWidget {
-  final Widget probe;
+  final List<Widget> probes;
   final Widget Function(double height) builder;
-  const _MeasuredHeight({required this.probe, required this.builder});
+  const _MeasuredHeight({required this.probes, required this.builder});
   @override
   State<_MeasuredHeight> createState() => _MeasuredHeightState();
 }
@@ -470,13 +472,17 @@ class _MeasuredHeightState extends State<_MeasuredHeight> {
       // The PageView shows each page at 90% width (viewportFraction) minus the
       // 12px gap, so measure at that width.
       final w = c.maxWidth * 0.9 - 12;
-      // The visible child sizes the Stack. The probe is laid out offstage at the
-      // page width with unbounded height, so it reports its natural height.
+      // The visible child sizes the outer Stack. The probes are laid out
+      // offstage at the page width with unbounded height, stacked on each other,
+      // so the inner Stack reports the tallest card's natural height.
       return Stack(clipBehavior: Clip.none, children: [
-        if (_h != null) widget.builder(_h!) else Opacity(opacity: 0, child: SizedBox(width: w, child: widget.probe)),
+        if (_h != null) widget.builder(_h!)
+        else Opacity(opacity: 0, child: SizedBox(width: w, child: widget.probes.first)),
         Positioned(left: 0, top: 0, width: w, child: Offstage(
           child: UnconstrainedBox(alignment: Alignment.topLeft, constrainedAxis: Axis.horizontal,
-            child: KeyedSubtree(key: _key, child: widget.probe)))),
+            child: Stack(key: _key, children: [
+              for (final p in widget.probes) SizedBox(width: w, child: p),
+            ])))),
       ]);
     });
   }

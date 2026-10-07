@@ -14,7 +14,7 @@ Last updated: **7 Oct 2026** (premium motion + UI polish pass on `feat/premium-m
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0025`: 33 tables, 5 views, 53 functions (about 30 called by the app), 2 Edge Functions |
 | **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. PR #46 (Tier 1–3 hardening and one canonical build screen) merged **7 Oct 2026**. The latest work is an app-wide motion and UI polish pass with logic fixes (§6), with no schema change. The known gaps are real and listed in §3. The biggest ones: Design and Service can't submit their own stages, and several DB rules can be bypassed. |
-| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). The polish branch: `flutter analyze` 0 errors / 0 warnings, `flutter test` **44/44** (26 model + 18 widget), run locally on Flutter 3.44.8. |
+| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). The polish branch: `flutter analyze` 0 errors / 0 warnings, `flutter test` **62/62** (28 model + 34 widget), run locally on Flutter 3.44.8. |
 | **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish (no migration). See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
 | **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
@@ -283,11 +283,27 @@ Branch `feat/premium-motion-ui-polish`. Every screen of all 8 roles was touched.
   - Deleting a material requirement is guarded and shows failures. Before, the error was unhandled.
   - Loading and error states on pushed screens keep the back button. Company details, Ticket detail and the
     account-load error used to be dead ends. The role-load error now has Retry + Sign out.
-- **Tests:** `test/widgets_test.dart` has 18 widget tests (nav, buttons, sheets, chips, tabs, motion,
-  fade-through, `ContentReveal`, busy buttons). Each screen was also checked as rendered frames, mid-animation
+- **Fixed after an independent review of the first commit:**
+  - Notification titles were rendering in the debug fallback style (monospace, yellow underline).
+  - *Mark all read* flickered the unread dots back for a moment.
+  - PillNav's label overflowed on 320–360dp phones at large text. The "narrow phone" tests had really run 800px wide, so they missed it.
+  - The design carousel was measured from the wrong card.
+  - A ticket description could be cut off with no full text shown.
+  - A quick A → B → A tab switch ghosted.
+  - `ref` was used after `await push`, and a disposed `ref` can throw.
+  - The success haptic fired even when an action failed (it now fires only on confirmed success).
+  - Retry gave no feedback.
+  - An approval card vanished instead of fading.
+  - Delete spun the Save button instead of its own tile.
+  - Service's Overdue fallback left no chip selected.
+  - Android predictive back was never enabled (`enableOnBackInvokedCallback`).
+- **Tests:** 62 in total. `test/widgets_test.dart` has 34 widget tests: nav at 320/360/390dp × 1.0–2.0× text on a real
+  narrow view, buttons, sheets, chips, tabs, fade-through including A → B → A, `ContentReveal`, busy buttons, and
+  notifications (style, local-day grouping, no mark-all flicker). The new regression tests were each checked to fail
+  against the old code. `models_test.dart` adds FleetData active/delivered. Each screen was also checked as rendered frames, mid-animation
   included, with a local harness that isn't committed.
 
-**Watch out when deploying:** nothing server-side. On device, check the haptics, iOS edge-swipe-back on pushed
+**Watch out when deploying:** nothing server-side. The Android manifest gained `android:enableOnBackInvokedCallback="true"`. On device, check the haptics, iOS edge-swipe-back on pushed
 screens, and the 3D truck card, which can't render in tests.
 
 ### 7 Oct 2026: Full code audit + docs refresh (no code change)

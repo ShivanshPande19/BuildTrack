@@ -244,8 +244,11 @@ class _HomeTab extends ConsumerWidget {
         final n = ref.watch(poApprovalsProvider).valueOrNull?.where((a) => a.awaitingFinal).length ?? 0;
         return Padding(padding: const EdgeInsets.only(top: 16), child: AppCard(
           onTap: () async {
+            // Capture the container: this Consumer can be gone by the time the
+            // pushed screen returns, and a disposed `ref` throws.
+            final c = ProviderScope.containerOf(context, listen: false);
             await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PoApprovalsScreen()));
-            ref.invalidate(poApprovalsProvider);
+            c.invalidate(poApprovalsProvider);
           },
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
             Container(width: 40, height: 40, alignment: Alignment.center,

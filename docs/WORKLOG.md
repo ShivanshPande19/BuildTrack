@@ -44,7 +44,8 @@ mid-animation) and checked by eye.
   - Delete-requirement errors are handled. The role-load error has Retry + Sign out.
   - Full list in `PROJECT_LOG.md` §6.
 - ✅ **Verified:** `flutter analyze --no-fatal-infos`: 0 errors, 0 warnings, 33 infos (down from 51).
-  `flutter test`: **44/44** (26 model + 18 new widget tests). No dependency or schema change.
+  `flutter test`: **62/62** (28 model + 34 widget). No dependency or schema change.
+- ✅ **Independent review → 16 findings, all fixed** (second commit). Every regression test was checked to fail on the old code. See `PROJECT_LOG.md` §6.
 - ⏭️ **On device:** haptics feel, iOS edge-swipe-back on pushed screens, the 3D truck card (a WebView, so it
   can't render in tests), and real-network loading → content reveals.
 

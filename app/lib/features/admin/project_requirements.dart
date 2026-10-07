@@ -124,6 +124,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     int qty = existing?.qty ?? 1;
     DateTime? neededBy = existing?.neededBy;
     bool busy = false;
+    bool deleting = false; // which action is in flight: delete spins its own tile
     String? err;
 
     // catalog items available for picking (add mode)
@@ -221,23 +222,26 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                     // Guarded like Save: one delete at a time, and a failure
                     // shows in the sheet. It used to throw unhandled.
                     onTap: busy ? null : () async {
-                      setS(() { busy = true; err = null; });
+                      setS(() { busy = true; deleting = true; err = null; });
                       try {
                         await ref.read(projectsRepoProvider).deleteRequirement(existing.id);
                         _refresh();
                         if (ctx.mounted) Navigator.pop(ctx);
                       } catch (e) {
-                        setS(() { busy = false; err = friendlyError(e); });
+                        setS(() { busy = false; deleting = false; err = friendlyError(e); });
                       }
                     },
                     child: Container(width: 54, height: 54, alignment: Alignment.center,
                       decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(16)),
-                      child: const Icon(Icons.delete_outline_rounded, color: BT.coral)),
+                      child: AnimatedSwap(child: deleting
+                        ? const SizedBox(key: ValueKey('spin'), width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: BT.coral))
+                        : const Icon(Icons.delete_outline_rounded, key: ValueKey('icon'), color: BT.coral))),
                   ),
                   const SizedBox(width: 12),
                 ],
                 Expanded(child: PrimaryButton(isEdit ? 'Save' : 'Add material', icon: Icons.check,
-                  onTap: () async {
+                  onTap: deleting ? null : () async {
                     if (!isEdit && itemId == null) { setS(() => err = 'Pick an item.'); return; }
                     setS(() { busy = true; err = null; });
                     try {
@@ -252,7 +256,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                     } catch (e) {
                       setS(() { busy = false; err = friendlyError(e); });
                     }
-                  }, busy: busy)),
+                  }, busy: busy && !deleting)),
               ]),
             ]),
           ),

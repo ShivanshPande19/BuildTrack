@@ -369,6 +369,7 @@ class _ReceiveTab extends ConsumerWidget {
           onTap: () async {
             try {
               await ref.read(procurementRepoProvider).markReceived(o.id);
+              Haptic.confirm();
               ref.invalidate(purchaseOrdersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -404,6 +405,7 @@ class _ReceiveTab extends ConsumerWidget {
             if (eta == null) return; // ETA required to dispatch
             try {
               await ref.read(procurementRepoProvider).markDispatched(o.id, expectedDate: eta);
+              Haptic.confirm();
               ref.invalidate(purchaseOrdersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(

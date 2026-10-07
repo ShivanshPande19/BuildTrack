@@ -135,11 +135,13 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
             final resolvedToday = list.where((t) =>
               t.resolvedAt != null && isSameDayAsToday(t.resolvedAt!)).length;
 
+            // The Overdue chip disappears at 0, so don't leave the user stuck on an
+            // empty, chip-less filter. Move the selection itself back to Open, so
+            // the list and the highlighted chip agree. The chips below are built
+            // in this same pass, so assigning here (not setState) is enough.
+            if (_filter == 'overdue' && overdue == 0) _filter = 'open';
             final shown = switch (_filter) {
               'open'     => open,
-              // The Overdue chip disappears at 0, so don't leave the user stuck on an
-              // empty, chip-less filter (it used to show "Nothing here" with no way back).
-              'overdue' when overdue == 0 => open,
               'overdue'  => open.where((t) => t.isOverdue).toList(),
               'resolved' => list.where((t) => t.isResolved).toList(),
               _          => list,

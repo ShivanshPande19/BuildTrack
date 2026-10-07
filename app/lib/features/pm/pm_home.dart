@@ -59,13 +59,16 @@ Widget _pmHeader(BuildContext context, String title) =>
 /// Opens a build with the PM's full controls, then refreshes everything a PM
 /// change inside could have touched.
 Future<void> _openBuild(BuildContext context, WidgetRef ref, {required String projectId, Project? initial}) async {
+  // Capture the container up front: the row that called this may be rebuilt
+  // away while the build is open, and a disposed `ref` throws.
+  final c = ProviderScope.containerOf(context, listen: false);
   await Navigator.of(context).push(MaterialPageRoute(
     builder: (_) => BuildScreen(projectId: projectId, initial: initial,
       materialsEditable: true, canAssign: true, canEditTimeline: true)));
-  ref.invalidate(pmDashboardProvider);
-  ref.invalidate(myProjectsProvider);
-  ref.invalidate(pmScheduleProvider);
-  ref.invalidate(stagesToAssignProvider);
+  c.invalidate(pmDashboardProvider);
+  c.invalidate(myProjectsProvider);
+  c.invalidate(pmScheduleProvider);
+  c.invalidate(stagesToAssignProvider);
 }
 
 /// A "needs you" shortcut card: icon tile, title, live count pill, chevron.
@@ -161,8 +164,12 @@ class _HomeTab extends ConsumerWidget {
                 return _shortcut(context, icon: Icons.person_add_alt_1_rounded, tint: BT.lav, title: 'Assign work',
                   pill: StatusPill(n == 0 ? 'All done' : '$n waiting', key: ValueKey(n), color: n == 0 ? BT.mut2 : BT.lav),
                   onTap: () async {
+                    // This Consumer can be disposed while the pushed screen is
+                    // open (e.g. a background refresh fails), so grab the
+                    // container first; a disposed `ref` throws.
+                    final c = ProviderScope.containerOf(context, listen: false);
                     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AssignWorkScreen()));
-                    r.invalidate(stagesToAssignProvider);
+                    c.invalidate(stagesToAssignProvider);
                   });
               }),
               Consumer(builder: (_, r, __) {
@@ -170,8 +177,12 @@ class _HomeTab extends ConsumerWidget {
                 return _shortcut(context, icon: Icons.verified_rounded, tint: BT.lime, title: 'Approvals',
                   pill: StatusPill(n == 0 ? 'None' : '$n pending', key: ValueKey(n), color: n == 0 ? BT.mut2 : BT.amber),
                   onTap: () async {
+                    // This Consumer can be disposed while the pushed screen is
+                    // open (e.g. a background refresh fails), so grab the
+                    // container first; a disposed `ref` throws.
+                    final c = ProviderScope.containerOf(context, listen: false);
                     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ApprovalsScreen()));
-                    r.invalidate(pendingApprovalsProvider);
+                    c.invalidate(pendingApprovalsProvider);
                   });
               }),
               // Purchase orders on my builds waiting for my signature.
@@ -182,8 +193,12 @@ class _HomeTab extends ConsumerWidget {
                 return _shortcut(context, icon: Icons.request_quote_rounded, tint: BT.sky, title: 'PO approvals',
                   pill: StatusPill(n == 0 ? 'None' : '$n to sign', key: ValueKey(n), color: n == 0 ? BT.mut2 : BT.sky),
                   onTap: () async {
+                    // This Consumer can be disposed while the pushed screen is
+                    // open (e.g. a background refresh fails), so grab the
+                    // container first; a disposed `ref` throws.
+                    final c = ProviderScope.containerOf(context, listen: false);
                     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PoApprovalsScreen()));
-                    r.invalidate(poApprovalsProvider);
+                    c.invalidate(poApprovalsProvider);
                   });
               }),
               if (needsYou.isEmpty)

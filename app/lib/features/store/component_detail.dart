@@ -183,6 +183,7 @@ class RecallCheckScreen extends ConsumerWidget {
                       try {
                         final n = await ref.read(storeRepoProvider)
                             .recallNotify(itemCatalogId, note: 'Safety check required on this part.');
+                        Haptic.confirm();
                         ref.invalidate(notificationsProvider);
                         if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(SnackBar(

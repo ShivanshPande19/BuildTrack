@@ -64,7 +64,8 @@ class _ApprovalCard extends ConsumerStatefulWidget {
 class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
   bool _deciding = false;
   bool _approving = false; // which button is in flight, so that one spins
-  bool _gone = false;      // decided: fold the card away before the list refreshes
+  bool _gone = false;      // decided: fade the card out…
+  bool _folded = false;    // …then fold its space shut, before the list refreshes
   ApprovalItem get a => widget.a;
 
   Future<void> _decide(bool approve) async {
@@ -85,6 +86,8 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       // Fold the card shut first, then refresh the list. If the list refreshed
       // first, the card would blink out and everything below would jump up.
       if (mounted) setState(() => _gone = true);
+      await Future<void>.delayed(Motion.fast);
+      if (mounted) setState(() => _folded = true);
       await Future<void>.delayed(Motion.base);
       container
         ..invalidate(pendingApprovalsProvider)
@@ -199,7 +202,8 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       ),
     );
     if (reduceMotion(context)) return _gone ? const SizedBox.shrink() : card;
-    // Decided cards fold away (fade + collapse) instead of vanishing.
+    // Decided cards fade out (the card stays while it fades), then their space
+    // folds shut so the cards below glide up instead of jumping.
     return AnimatedSize(
       duration: Motion.base,
       curve: Motion.move,
@@ -208,7 +212,7 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       child: AnimatedOpacity(
         duration: Motion.fast,
         opacity: _gone ? 0 : 1,
-        child: _gone ? const SizedBox(width: double.infinity) : card,
+        child: _folded ? const SizedBox(width: double.infinity) : card,
       ),
     );
   }

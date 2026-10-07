@@ -228,6 +228,7 @@ class TaskDetailScreen extends ConsumerWidget {
   Future<void> _start(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(workshopRepoProvider).startTask(task.stageId);
+      Haptic.confirm();
       ref.invalidate(myTasksProvider);
       ref.invalidate(stageBundleProvider(task.stageId));
       if (context.mounted) {
@@ -244,6 +245,7 @@ class TaskDetailScreen extends ConsumerWidget {
   Future<void> _submit(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(workshopRepoProvider).submitForApproval(task.stageId);
+      Haptic.confirm();
       ref.invalidate(pendingApprovalsProvider);
       ref.invalidate(myTasksProvider);
       if (context.mounted) {
@@ -328,8 +330,9 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
           const SizedBox(width: 13),
           Expanded(child: AnimatedDefaultTextStyle(
             duration: Motion.fast,
-            // Merge onto the ambient style so the app font is kept.
-            style: DefaultTextStyle.of(context).style.merge(TextStyle(fontSize: 14.5,
+            // Start from the theme's body style so the app font is kept.
+            // AnimatedDefaultTextStyle replaces the ambient style, it doesn't merge.
+            style: Theme.of(context).textTheme.bodyMedium!.merge(TextStyle(fontSize: 14.5,
               color: done ? BT.mut2 : BT.ink,
               decoration: done ? TextDecoration.lineThrough : TextDecoration.none, decorationColor: BT.mut2)),
             child: Text(widget.c.label))),

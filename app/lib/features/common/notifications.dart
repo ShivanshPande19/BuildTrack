@@ -6,7 +6,8 @@ import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
-/// Notifications feed: grouped Today / Earlier, with "Mark all read".
+/// Notifications feed: grouped Today / Yesterday / Earlier (local days), with
+/// "Mark all read".
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
   @override
@@ -41,23 +42,29 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     _ => (icon: Icons.notifications_none_rounded, bg: BT.card2, fg: BT.ink),
   };
 
+  // Timestamps arrive in UTC. Everything below works in LOCAL calendar days.
+  // Comparing the UTC day put anything between midnight and 05:30 IST into
+  // the wrong group.
+  static int _daysAgo(DateTime t) =>
+      DateUtils.dateOnly(DateTime.now()).difference(DateUtils.dateOnly(t.toLocal())).inDays;
+  static bool _isToday(DateTime? t) => t != null && _daysAgo(t) <= 0;
+  static bool _isYesterday(DateTime? t) => t != null && _daysAgo(t) == 1;
+
+  /// "12m ago" / "3h ago" today, then calendar days: "Yesterday", "2d ago".
+  /// The label agrees with the section it sits in. A 30-hour-old item from
+  /// two calendar days back used to read "1d ago" under the Yesterday items.
   static String _ago(DateTime? t) {
     if (t == null) return '';
-    final local = t.toLocal();
-    final diff = DateTime.now().difference(local);
-    if (diff.inMinutes < 1) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24 && _isToday(t)) return '${diff.inHours}h ago';
-    if (_isYesterday(t)) return 'Yesterday';
-    return '${diff.inDays < 1 ? 1 : diff.inDays}d ago';
+    final days = _daysAgo(t);
+    if (days <= 0) {
+      final diff = DateTime.now().difference(t.toLocal());
+      if (diff.inMinutes < 1) return 'Just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      return '${diff.inHours}h ago';
+    }
+    if (days == 1) return 'Yesterday';
+    return '${days}d ago';
   }
-
-  // Timestamps arrive in UTC. Compare LOCAL calendar days. Comparing the UTC
-  // day put anything between midnight and 05:30 IST into the wrong group.
-  static bool _sameDay(DateTime a, DateTime b) => a.year == b.year && a.month == b.month && a.day == b.day;
-  static bool _isToday(DateTime? t) => t != null && _sameDay(t.toLocal(), DateTime.now());
-  static bool _isYesterday(DateTime? t) =>
-      t != null && _sameDay(t.toLocal(), DateTime.now().subtract(const Duration(days: 1)));
 
   Future<void> _markAll() async {
     if (_markingAll) return;
@@ -65,7 +72,11 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     try {
       await ref.read(notificationsRepoProvider).markAllRead();
       Haptic.confirm();
+      // Hold the optimistic "all read" look until the refetch has landed.
+      // Clearing it straight after the write let the stale unread rows show
+      // again for a beat (fade out, pop back, fade out).
       ref.invalidate(notificationsProvider);
+      await ref.read(notificationsProvider.future);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
@@ -126,11 +137,16 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         subtitle: "You're all caught up. Alerts about orders, stages and approvals show here."));
     }
     final today = all.where((n) => _isToday(n.createdAt)).toList();
-    final earlier = all.where((n) => !_isToday(n.createdAt)).toList();
+    final yesterday = all.where((n) => _isYesterday(n.createdAt)).toList();
+    final earlier = all.where((n) => !_isToday(n.createdAt) && !_isYesterday(n.createdAt)).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: staggered([
       if (today.isNotEmpty) ...[
         const SectionLabel('Today'),
         ...today.map(_row),
+      ],
+      if (yesterday.isNotEmpty) ...[
+        const SectionLabel('Yesterday'),
+        ...yesterday.map(_row),
       ],
       if (earlier.isNotEmpty) ...[
         const SectionLabel('Earlier'),
@@ -153,7 +169,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           AnimatedDefaultTextStyle(
             duration: Motion.base,
-            style: DefaultTextStyle.of(context).style.copyWith(fontSize: 13.5, height: 1.35, color: BT.ink,
+            // From the theme, not DefaultTextStyle.of(context): this context is
+            // the screen's, above its Scaffold/Material, where the ambient style
+            // is MaterialApp's debug fallback (monospace, yellow underline).
+            style: Theme.of(context).textTheme.bodyMedium!.copyWith(fontSize: 13.5, height: 1.35, color: BT.ink,
               fontWeight: unread ? FontWeight.w700 : FontWeight.w500),
             child: Text(n.title)),
           if (n.body != null && n.body!.isNotEmpty) ...[

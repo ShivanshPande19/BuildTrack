@@ -168,9 +168,13 @@ class PrimaryButton extends StatelessWidget {
 ///
 /// While its [onTap] future runs, the label morphs into a spinner and further
 /// taps are ignored, so a fast double-tap can never fire the same call twice
-/// (duplicate PO, double approval, duplicate recall notifications, …). On
-/// success it gives a light confirmation haptic. Use this instead of
-/// [PrimaryButton] anywhere the tap writes to the backend.
+/// (duplicate PO, double approval, duplicate recall notifications, …). Use this
+/// instead of [PrimaryButton] anywhere the tap writes to the backend.
+///
+/// The button doesn't play a "success" haptic. Most callers catch their own
+/// errors and show a snackbar, so the future completes normally even when
+/// the write failed, and a confirm buzz on a failure is a lie. Call
+/// [Haptic.confirm] at the point where the action is known to have worked.
 class AsyncPrimaryButton extends StatefulWidget {
   final String label;
   final Future<void> Function()? onTap;
@@ -192,7 +196,6 @@ class _AsyncPrimaryButtonState extends State<AsyncPrimaryButton> {
     setState(() => _busy = true);
     try {
       await widget.onTap!();
-      Haptic.confirm();
     } finally {
       // The action may have popped this screen, so only touch state if we're still mounted.
       if (mounted) setState(() => _busy = false);
@@ -357,7 +360,7 @@ class AppChip extends StatelessWidget {
           ],
           AnimatedDefaultTextStyle(
             duration: Motion.fast,
-            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg, fontFamily: DefaultTextStyle.of(context).style.fontFamily),
+            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: fg, fontFamily: Theme.of(context).textTheme.bodyMedium?.fontFamily),
             child: Text(label),
           ),
           if (count != null) ...[
@@ -529,7 +532,7 @@ class _SegmentTabsState extends State<SegmentTabs> {
                       child: AnimatedDefaultTextStyle(
                         duration: Motion.base,
                         curve: Motion.move,
-                        style: DefaultTextStyle.of(context).style.merge(_style).copyWith(
+                        style: Theme.of(context).textTheme.bodyMedium!.merge(_style).copyWith(
                               color: i == widget.index ? Colors.white : BT.mut,
                             ),
                         child: Text(widget.labels[i], maxLines: 1, softWrap: false),
@@ -711,7 +714,10 @@ class _NavItem extends StatelessWidget {
             ),
           ),
           // The label unfolds as the bubble arrives and folds away as it leaves.
-          ClipRect(
+          // Flexible, so when the active slot is clamped (narrow phone, four
+          // tabs, large text) the label gets the space left and ellipsizes
+          // instead of overflowing the bubble.
+          Flexible(child: ClipRect(
             child: AnimatedSize(
               duration: const Duration(milliseconds: 380),
               curve: Motion.move,
@@ -725,12 +731,12 @@ class _NavItem extends StatelessWidget {
                         scale: false,
                         delay: const Duration(milliseconds: 90),
                         duration: Motion.fast,
-                        child: Text(label, maxLines: 1, softWrap: false, overflow: TextOverflow.fade, style: style),
+                        child: Text(label, maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis, style: style),
                       ),
                     )
                   : const SizedBox(height: 0, width: 0),
             ),
-          ),
+          )),
         ]),
       );
 }
@@ -1029,10 +1035,32 @@ class EmptyState extends StatelessWidget {
 }
 
 /// A soft inline error card (coral text on cream), with an optional retry.
-class ErrorCard extends StatelessWidget {
+///
+/// Tapping Retry turns it into a spinner for a moment. Riverpod keeps showing
+/// the old error while a refresh runs (`skipLoadingOnRefresh`), so without
+/// this Retry looked dead on a slow network, or when the request failed again.
+class ErrorCard extends StatefulWidget {
   final String message;
   final VoidCallback? onRetry;
   const ErrorCard(this.message, {super.key, this.onRetry});
+  @override
+  State<ErrorCard> createState() => _ErrorCardState();
+}
+
+class _ErrorCardState extends State<ErrorCard> {
+  bool _retrying = false;
+
+  void _retry() {
+    if (_retrying || widget.onRetry == null) return;
+    setState(() => _retrying = true);
+    widget.onRetry!();
+    // If the retry fails again this same card stays mounted, so the spinner
+    // runs briefly and Retry comes back. If it succeeds, the card is replaced.
+    Future<void>.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) setState(() => _retrying = false);
+    });
+  }
+
   @override
   Widget build(BuildContext context) => FadeSlideIn(
         child: AppCard(
@@ -1045,14 +1073,23 @@ class ErrorCard extends StatelessWidget {
               child: const Icon(Icons.wifi_off_rounded, size: 17, color: BT.coral),
             ),
             const SizedBox(width: 12),
-            Expanded(child: Text(message, style: const TextStyle(color: BT.coral, fontSize: 13, height: 1.35))),
-            if (onRetry != null)
+            Expanded(child: Text(widget.message, style: const TextStyle(color: BT.coral, fontSize: 13, height: 1.35))),
+            if (widget.onRetry != null)
               PressableScale(
-                onTap: onRetry,
+                onTap: _retrying ? null : _retry,
                 haptic: true,
-                child: const Padding(
-                  padding: EdgeInsets.only(left: 8, top: 6),
-                  child: Text('Retry', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8, top: 6),
+                  child: AnimatedSwap(
+                    child: _retrying
+                        ? const SizedBox(
+                            key: ValueKey('spin'),
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: BT.ink))
+                        : const Text('Retry',
+                            key: ValueKey('retry'), style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  ),
                 ),
               ),
           ]),
