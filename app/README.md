@@ -35,9 +35,14 @@ lib/
 │   ├── models.dart            # every model + pure logic (SLA label, warranty state, schedule buckets)
 │   └── repositories.dart      # 10 repos + every Riverpod provider + friendlyError() + uploadToBuilds()
 ├── shared/
-│   ├── widgets.dart           # AppCard, StatusPill, SectionLabel, PrimaryButton, AsyncPrimaryButton,
-│   │                          #   PillNav, AppSelectField, EmptyState
-│   ├── animations.dart        # Motion, FadeSlideIn, PressableScale, CountUp, AnimatedBar, TabSwitcher
+│   ├── widgets.dart           # AppCard, StatusPill, SectionLabel, Eyebrow, PrimaryButton (busy),
+│   │                          #   AsyncPrimaryButton, SecondaryButton, PillAction, AppChip/ChipBar,
+│   │                          #   SegmentTabs, PillNav, AppSelectField, showAppSheet, EmptyState,
+│   │                          #   ErrorCard, BackChip
+│   ├── role_header.dart       # RoleHeader (eyebrow + title + bell + avatar), NotifBell, RoleAvatar
+│   ├── animations.dart        # Motion tokens, Haptic, FadeSlideIn, staggered(), PressableScale, CountUp,
+│   │                          #   AnimatedBar, BadgePop, AnimatedSwap, ContentReveal, Shimmer/Skeleton*,
+│   │                          #   TabSwitcher, appPageTransitions(), sheetMotion
 │   ├── photo_picker.dart      # camera/gallery sheet, downscaled to 1600px at q82
 │   └── barcode_scanner.dart   # mobile_scanner viewfinder + torch + manual serial entry
 └── features/

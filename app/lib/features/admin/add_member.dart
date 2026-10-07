@@ -68,7 +68,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
       await _showCredentials(_email.text.trim(), _password.text);
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _error = '${friendlyError(e)}');
+      setState(() => _error = friendlyError(e));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -116,15 +116,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
         children: [
           // top row: back circle + step pill
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink),
-              ),
-            ),
+            const BackChip(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
               decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
@@ -160,10 +152,7 @@ class _AddMemberState extends ConsumerState<AddMember> {
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
 
           const SizedBox(height: 24),
-          _saving
-            ? const Center(child: Padding(padding: EdgeInsets.symmetric(vertical: 10),
-                child: CircularProgressIndicator(color: BT.ink)))
-            : PrimaryButton('Create member', icon: Icons.check, onTap: _submit),
+          PrimaryButton('Create member', icon: Icons.check, onTap: _submit, busy: _saving),
         ],
       )),
     );

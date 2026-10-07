@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
 import '../common/notifications.dart';
 import 'new_ticket.dart';
@@ -50,7 +51,7 @@ class _ServiceHomeState extends ConsumerState<ServiceHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating nav (extendBody)
 final _dayFmt = DateFormat('d MMM');
 
 /// True if [d] (a stored, usually-UTC timestamp) falls on today's LOCAL calendar
@@ -62,37 +63,9 @@ bool isSameDayAsToday(DateTime d) {
   return local.year == now.year && local.month == now.month && local.day == now.day;
 }
 
-Widget svHeader(BuildContext context, String title) => Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('SERVICE · SUPPORT',
-      style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
-    const SizedBox(height: 2),
-    Text(title, style: display(29, w: FontWeight.w500)),
-  ]),
-  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-    GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-      child: Container(width: 42, height: 42, alignment: Alignment.center,
-        decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-        child: const Icon(Icons.notifications_none_rounded, size: 20, color: BT.ink)),
-    ),
-    const SizedBox(width: 10),
-    Builder(builder: (_) {
-      final u = sb.auth.currentUser;
-      final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'S';
-      return Container(width: 42, height: 42, alignment: Alignment.center,
-        decoration: const BoxDecoration(shape: BoxShape.circle,
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-            colors: [Color(0xFFF2A585), Color(0xFFE07F5A)])),
-        child: Text(nm.isNotEmpty ? nm[0].toUpperCase() : 'S',
-          style: display(15, w: FontWeight.w600, c: const Color(0xFF5A2410))));
-    }),
-  ])),
-]);
+/// Service's header. Its profile has its own tab, so the avatar is decorative here.
+Widget svHeader(BuildContext context, String title) => FadeSlideIn(
+  child: RoleHeader(role: 'service', eyebrow: 'Service · Support', title: title, avatarOpensProfile: false));
 
 /// Ticket status → pill. Shared with the ticket detail + truck history screens.
 ({String label, Color color}) ticketPill(String s) => switch (s) {
@@ -154,10 +127,8 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
         svHeader(context, 'Tickets'),
         const SizedBox(height: 18),
         tickets.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 70),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load tickets.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load tickets.\n${friendlyError(e)}'),
           data: (list) {
             final open = list.where((t) => t.isOpen).toList();
             final overdue = open.where((t) => t.isOverdue).length;
@@ -166,6 +137,9 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
 
             final shown = switch (_filter) {
               'open'     => open,
+              // The Overdue chip disappears at 0, so don't leave the user stuck on an
+              // empty, chip-less filter (it used to show "Nothing here" with no way back).
+              'overdue' when overdue == 0 => open,
               'overdue'  => open.where((t) => t.isOverdue).toList(),
               'resolved' => list.where((t) => t.isResolved).toList(),
               _          => list,
@@ -184,12 +158,12 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
                 ]),
               ),
               const SizedBox(height: 14),
-              SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                _chip('Open ${open.length}', 'open'),
-                if (overdue > 0) _chip('Overdue $overdue', 'overdue', tint: BT.coral),
+              ChipBar(chips: [
+                _chip('Open', 'open', count: open.length),
+                if (overdue > 0) _chip('Overdue', 'overdue', count: overdue, tint: BT.coral),
                 _chip('Resolved', 'resolved'),
-                _chip('All ${list.length}', 'all'),
-              ])),
+                _chip('All', 'all', count: list.length),
+              ]),
               const SizedBox(height: 14),
               if (list.isEmpty)
                 const EmptyState(icon: Icons.support_agent_rounded, tint: BT.coral,
@@ -219,29 +193,14 @@ class _TicketsTabState extends ConsumerState<_TicketsTab> {
   Widget _divider() => Container(width: 1, height: 38, color: BT.line,
     margin: const EdgeInsets.symmetric(horizontal: 12));
 
-  Widget _chip(String label, String value, {Color? tint}) {
-    final on = _filter == value;
-    return Padding(padding: const EdgeInsets.only(right: 8), child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _filter = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
-        decoration: BoxDecoration(color: on ? BT.ink : (tint ?? BT.card),
-          borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: on ? BT.ink : (tint ?? BT.line))),
-        child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
-          color: on ? Colors.white : (tint != null ? BT.ink : BT.mut))),
-      ),
-    ));
-  }
+  Widget _chip(String label, String value, {int? count, Color? tint}) => AppChip(label,
+    selected: _filter == value, count: count, tint: tint, onTap: () => setState(() => _filter = value));
 }
 
 /// One ticket row — used by the queue and by a truck's service history.
 Widget ticketCard(BuildContext context, WidgetRef ref, ServiceTicket t) => Padding(
   padding: const EdgeInsets.only(bottom: 11),
-  child: GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+  child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => TicketDetailScreen(ticketId: t.id))).then((_) {
         ref.invalidate(serviceTicketsProvider);
         ref.invalidate(deliveredTrucksProvider);
@@ -313,10 +272,8 @@ class _TrucksTab extends ConsumerWidget {
         svHeader(context, 'Delivered'),
         const SizedBox(height: 18),
         trucks.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 70),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load trucks.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load trucks.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) {
               return const EmptyState(icon: Icons.local_shipping_outlined, tint: BT.coral,
@@ -329,9 +286,7 @@ class _TrucksTab extends ConsumerWidget {
                 style: const TextStyle(color: BT.mut, fontSize: 12.5, fontWeight: FontWeight.w600)),
               const SizedBox(height: 14),
               ...list.map((d) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => TruckHistoryScreen(projectId: d.project.id))),
                   child: AppCard(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -416,9 +371,7 @@ class _WarrantyTabState extends ConsumerState<_WarrantyTab> {
                 hintText: 'Serial, model or truck…', border: InputBorder.none,
                 hintStyle: TextStyle(color: BT.mut2, fontSize: 14)),
             )),
-            if (_search.text.isNotEmpty) GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () { _search.clear(); setState(() => _query = ''); },
+            if (_search.text.isNotEmpty) PressableScale(pressedScale: 0.98, haptic: true, onTap: () { _search.clear(); setState(() => _query = ''); },
               child: const Padding(padding: EdgeInsets.all(4),
                 child: Icon(Icons.close_rounded, size: 18, color: BT.mut)),
             ),
@@ -431,10 +384,8 @@ class _WarrantyTabState extends ConsumerState<_WarrantyTab> {
         const SizedBox(height: 14),
 
         results.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Lookup failed.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Lookup failed.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) {
               return EmptyState(icon: Icons.shield_outlined, tint: BT.sky,
@@ -523,9 +474,7 @@ class _ProfileTab extends ConsumerWidget {
         () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: BT.ink, content: Text('Account details — coming soon')))),
       const SizedBox(height: 20),
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => sb.auth.signOut().then((_) {
+      PressableScale(pressedScale: 0.98, haptic: true, onTap: () => sb.auth.signOut().then((_) {
           if (context.mounted) context.go('/login');
         }),
         child: Row(children: [
@@ -541,8 +490,7 @@ class _ProfileTab extends ConsumerWidget {
     ]);
   }
 
-  Widget _row(IconData icon, String label, VoidCallback onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque, onTap: onTap,
+  Widget _row(IconData icon, String label, VoidCallback onTap) => PressableScale(pressedScale: 0.98, haptic: true, onTap: onTap,
     child: Container(padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
       child: Row(children: [

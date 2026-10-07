@@ -5,6 +5,7 @@ import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'new_po.dart';
 import 'po_document.dart';
@@ -57,27 +58,19 @@ class PoDetailScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               detail.maybeWhen(
                 data: (d) { final s = _statusPill(d.po); return StatusPill(s.label, color: s.color); },
                 orElse: () => const SizedBox.shrink()),
             ]),
             const SizedBox(height: 14),
             Text(poNumber ?? '', style: display(29, w: FontWeight.w500)),
-            detail.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
+            ContentReveal(child: detail.when(
+              loading: () => const SkeletonList(count: 3),
               error: (e, _) => Padding(padding: const EdgeInsets.only(top: 16),
-                child: AppCard(child: Text('Could not load PO.\n${friendlyError(e)}',
-                  style: const TextStyle(color: BT.coral, fontSize: 13)))),
+                child: ErrorCard('Could not load PO.\n${friendlyError(e)}', onRetry: () => ref.invalidate(poDetailProvider(poId)))),
               data: (d) => _content(context, ref, d, role),
-            ),
+            )),
           ],
         ),
       )),

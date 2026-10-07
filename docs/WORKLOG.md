@@ -11,6 +11,45 @@ verified through CI, not locally).
 
 ---
 
+## 7 Oct 2026: Premium motion + UI polish, with logic fixes ✅ (branch `feat/premium-motion-ui-polish`)
+
+The ask: make the app feel premium and fluid, not jerky. Fix visible glitches (Admin Team's *Add member* sat
+oddly) and make sure the logic is right. This session ran Flutter 3.44.8 in the sandbox, so
+`flutter analyze` / `flutter test` were run locally. Each screen was also rendered to PNG (still and
+mid-animation) and checked by eye.
+
+- ✅ **Motion system:**
+  - M3 duration / easing tokens and haptics, with *Reduce motion* respected.
+  - Building blocks: staggered page entrances, spring presses, count-ups that glide, and shimmer skeletons
+    instead of spinners.
+  - Fade-through for tabs and for skeleton → content (`ContentReveal`). Gliding nav bubble and segment
+    indicator.
+  - Native Cupertino routes on iOS (keeps swipe-back), predictive back on Android, and one sheet motion.
+  - Found and fixed with a regression test: the leaving tab was rebuilt from scratch mid-fade (unkeyed layer
+    wrappers), which replayed its entrance and flickered.
+- ✅ **Design system:**
+  - New: `RoleHeader`, `BackChip`, `PrimaryButton(busy:)`, `SecondaryButton`, `PillAction`, `AppChip` / `ChipBar`,
+    `SegmentTabs`, `ErrorCard` (Retry) and `showAppSheet`.
+  - Hand-rolled back circles, spinner swaps and buttons replaced across 45 feature files.
+- ✅ **Layout glitches:** Team *Add member* / Vendors *Add vendor* became pills beside the title. Fixed the Design
+  carousel overflow and the date-chip overflow, the duplicated ticket description, the checklist's last divider and
+  the off-centre hint. Pushed screens' loading / error states keep the back button.
+- ✅ **Logic:**
+  - Delivered builds are excluded from active shares and on-track %. Admin and PM got a Delivered chip and label.
+  - Notifications group by local day, not UTC.
+  - Every role's bell shows the unread count (Procurement's used to show a different number).
+  - PM at-risk / today rows open the build.
+  - Workshop Start / Submit are double-tap guarded.
+  - Approval cards are keyed by id and fold away after a decision.
+  - Delete-requirement errors are handled. The role-load error has Retry + Sign out.
+  - Full list in `PROJECT_LOG.md` §6.
+- ✅ **Verified:** `flutter analyze --no-fatal-infos`: 0 errors, 0 warnings, 33 infos (down from 51).
+  `flutter test`: **44/44** (26 model + 18 new widget tests). No dependency or schema change.
+- ⏭️ **On device:** haptics feel, iOS edge-swipe-back on pushed screens, the 3D truck card (a WebView, so it
+  can't render in tests), and real-network loading → content reveals.
+
+---
+
 ## 7 Oct 2026: Full code audit + docs refresh ✅
 
 PR #46 merged. Then every line of the app, the 25 migrations, both Edge Functions, the test

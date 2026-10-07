@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../../shared/photo_picker.dart';
 import 'scan_install.dart';
@@ -26,13 +27,7 @@ class TaskDetailScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
                 decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
                 child: Text(task.projectCode, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: BT.mut))),
@@ -42,12 +37,11 @@ class TaskDetailScreen extends ConsumerWidget {
             const SizedBox(height: 4),
             Text(task.projectName, style: const TextStyle(color: BT.mut, fontSize: 13)),
             const SizedBox(height: 16),
-            bundle.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 40),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load task.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: bundle.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load task.\n${friendlyError(e)}', onRetry: () => ref.invalidate(stageBundleProvider(task.stageId))),
               data: (b) => _content(context, ref, b),
-            ),
+            )),
           ],
         ),
       )),
@@ -115,14 +109,19 @@ class TaskDetailScreen extends ConsumerWidget {
         const EmptyState(icon: Icons.checklist_rounded, tint: BT.lime, title: 'No checklist', subtitle: 'This stage has no checklist items.')
       else
         AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(
-          children: b.checklist.map((c) => _ChecklistTile(c: c, stageId: task.stageId)).toList())),
+          children: [
+            // No divider under the last row (it doubled up with the card's edge).
+            for (var i = 0; i < b.checklist.length; i++)
+              _ChecklistTile(key: ValueKey(b.checklist[i].id), c: b.checklist[i], stageId: task.stageId,
+                divider: i < b.checklist.length - 1),
+          ])),
 
       // actions
       const SizedBox(height: 16),
       Row(children: [
-        Expanded(child: _btn('Photo', Icons.photo_camera_outlined, false, () => _addPhoto(context, ref))),
+        Expanded(child: SecondaryButton('Photo', icon: Icons.photo_camera_outlined, onTap: () => _addPhoto(context, ref))),
         const SizedBox(width: 11),
-        Expanded(child: _btn('Install part', Icons.qr_code_scanner_rounded, false, () =>
+        Expanded(child: SecondaryButton('Install part', icon: Icons.qr_code_scanner_rounded, onTap: () =>
           Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
       ]),
       const SizedBox(height: 11),
@@ -133,24 +132,28 @@ class TaskDetailScreen extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
           decoration: BoxDecoration(color: BT.amber.withOpacity(0.35),
             borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-          child: Row(children: [
-            const Icon(Icons.hourglass_top_rounded, size: 19, color: BT.ink),
-            const SizedBox(width: 10),
-            const Expanded(child: Text('Waiting for your PM to approve this stage.',
+          child: const Row(children: [
+            Icon(Icons.hourglass_top_rounded, size: 19, color: BT.ink),
+            SizedBox(width: 10),
+            Expanded(child: Text('Waiting for your PM to approve this stage.',
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.3))),
           ]),
         )
       else if (task.canStart)
         // The transition nothing used to make: until a stage is started it stays
         // 'todo', which kept it out of the PM's day view and the workload numbers.
-        _btn('Start work', Icons.play_arrow_rounded, true, () => _start(context, ref))
+        // AsyncPrimaryButton: a double-tap on site can't start or submit twice.
+        AsyncPrimaryButton('Start work', icon: Icons.play_arrow_rounded, bg: BT.ink, fg: Colors.white,
+          onTap: () => _start(context, ref))
       else
-        _btn(allDone || total == 0 ? 'Submit for approval' : 'Mark stage complete',
-          Icons.check_rounded, true, () => _submit(context, ref)),
+        AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Mark stage complete',
+          icon: Icons.check_rounded, bg: BT.ink, fg: Colors.white,
+          onTap: () => _submit(context, ref)),
       if (!task.awaitingApproval && !task.canStart && !allDone && total > 0)
         Padding(padding: const EdgeInsets.only(top: 10),
-          child: Text('$done of $total checks done — finish all before final approval.',
-            textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12))),
+          // Full width so textAlign.center actually centres it (it sat left).
+          child: SizedBox(width: double.infinity, child: Text('$done of $total checks done — finish all before final approval.',
+            textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12)))),
 
       // installed parts on this stage
       if (b.parts.isNotEmpty) ...[
@@ -253,18 +256,6 @@ class TaskDetailScreen extends ConsumerWidget {
         SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
     }
   }
-
-  Widget _btn(String label, IconData icon, bool dark, VoidCallback onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque, onTap: onTap,
-    child: Container(height: 54, alignment: Alignment.center,
-      decoration: BoxDecoration(color: dark ? BT.ink : BT.card, borderRadius: BorderRadius.circular(16),
-        border: dark ? null : Border.all(color: BT.line)),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Icon(icon, size: 19, color: dark ? BT.lime : BT.ink),
-        const SizedBox(width: 8),
-        Text(label, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: dark ? Colors.white : BT.ink)),
-      ])),
-  );
 }
 
 
@@ -276,7 +267,8 @@ class TaskDetailScreen extends ConsumerWidget {
 class _ChecklistTile extends ConsumerStatefulWidget {
   final ChecklistItem c;
   final String stageId;
-  const _ChecklistTile({required this.c, required this.stageId});
+  final bool divider;
+  const _ChecklistTile({super.key, required this.c, required this.stageId, this.divider = true});
   @override
   ConsumerState<_ChecklistTile> createState() => _ChecklistTileState();
 }
@@ -296,6 +288,7 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
     if (_busy) return;
     final target = !(_optimistic ?? widget.c.done);
     setState(() { _optimistic = target; _busy = true; });
+    Haptic.tap();
     try {
       await ref.read(workshopRepoProvider).toggleChecklist(widget.c.id, target);
       ref.invalidate(stageBundleProvider(widget.stageId));
@@ -312,21 +305,34 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
   @override
   Widget build(BuildContext context) {
     final done = _optimistic ?? widget.c.done;
+    // The tick is optimistic and instant: the box fills, the check pops in
+    // with a small overshoot, and the label fades to struck-through, all
+    // before the server answers.
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: _toggle,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 13),
-        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
+        decoration: BoxDecoration(border: widget.divider ? const Border(bottom: BorderSide(color: BT.line)) : null),
         child: Row(children: [
-          Container(width: 26, height: 26, alignment: Alignment.center,
+          AnimatedContainer(
+            duration: Motion.fast, curve: Motion.move,
+            width: 26, height: 26, alignment: Alignment.center,
             decoration: BoxDecoration(color: done ? BT.lime : Colors.transparent, borderRadius: BorderRadius.circular(9),
-              border: done ? null : Border.all(color: BT.mut2, width: 2)),
-            child: done ? const Icon(Icons.check_rounded, size: 15, color: BT.ink) : null),
+              border: Border.all(color: done ? BT.lime : BT.mut2, width: 2)),
+            child: AnimatedScale(
+              scale: done ? 1 : 0,
+              duration: done ? Motion.base : Motion.fast,
+              curve: done ? Curves.easeOutBack : Motion.exit,
+              child: const Icon(Icons.check_rounded, size: 15, color: BT.ink))),
           const SizedBox(width: 13),
-          Expanded(child: Text(widget.c.label, style: TextStyle(fontSize: 14.5,
-            color: done ? BT.mut2 : BT.ink,
-            decoration: done ? TextDecoration.lineThrough : null, decorationColor: BT.mut2))),
+          Expanded(child: AnimatedDefaultTextStyle(
+            duration: Motion.fast,
+            // Merge onto the ambient style so the app font is kept.
+            style: DefaultTextStyle.of(context).style.merge(TextStyle(fontSize: 14.5,
+              color: done ? BT.mut2 : BT.ink,
+              decoration: done ? TextDecoration.lineThrough : TextDecoration.none, decorationColor: BT.mut2)),
+            child: Text(widget.c.label))),
         ]),
       ),
     );

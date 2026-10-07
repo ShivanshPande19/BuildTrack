@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **7 Oct 2026** (full code audit after PR #46. Every section re-checked against the code.)
+Last updated: **7 Oct 2026** (premium motion + UI polish pass on `feat/premium-motion-ui-polish`, after the full code audit.)
 
 ---
 
@@ -13,9 +13,9 @@ Last updated: **7 Oct 2026** (full code audit after PR #46. Every section re-che
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0025`: 33 tables, 5 views, 53 functions (about 30 called by the app), 2 Edge Functions |
-| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is PR #46 (Tier 1–3 hardening and one canonical build screen), merged **7 Oct 2026**. The known gaps are real and listed in §3. The biggest ones: Design and Service can't submit their own stages, and several DB rules can be bypassed. |
-| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). |
-| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`). See §6 and `WORKLOG.md`. |
+| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. PR #46 (Tier 1–3 hardening and one canonical build screen) merged **7 Oct 2026**. The latest work is an app-wide motion and UI polish pass with logic fixes (§6), with no schema change. The known gaps are real and listed in §3. The biggest ones: Design and Service can't submit their own stages, and several DB rules can be bypassed. |
+| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). The polish branch: `flutter analyze` 0 errors / 0 warnings, `flutter test` **44/44** (26 model + 18 widget), run locally on Flutter 3.44.8. |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish (no migration). See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
 | **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
@@ -60,16 +60,16 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 
 | Role | Tabs · FAB | What works | Known gap (see §3) |
 |---|---|---|---|
-| 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **No PM** chip, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, Add member (admin sets the password), sub-teams, swipe to remove, **Company details** (GST buyer block). **Insights:** on-track %, distribution. **Onboard:** create a client login inline, **create a template inline** (stages, days, BOM, checklist). | No delivered filter. Templates can't be listed or edited. |
-| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. | At-risk rows on Home aren't tappable. PM bell has no badge. |
+| 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **Delivered** and **No PM** chips, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, **Add member** pill beside the title (admin sets the password), sub-teams, swipe to remove, **Workspace → Company details** (GST buyer block). **Insights:** on-track % of active builds, distribution. **Onboard:** create a client login inline, **create a template inline** (stages, days, BOM, checklist). | Templates can't be listed or edited. |
+| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. Home's at-risk and today rows open the build. | Approvals stranded on PM hand-over (§3 #5). |
 | 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
 | 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | Inline "New item" is blocked by RLS for Store. No incoming-PO / GRN list. |
-| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval. **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. Start and Submit have no double-tap guard. |
+| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. |
 | 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats. **Designs:** library + filters. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | Can't start or submit its **stage**. Submitting a design doesn't notify the client. |
 | 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | Can't start or submit its **stage**. "Linked component" never shows (nothing sets it). |
 | 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | Document "download" only shows a snackbar. No priority picker on requests. |
 
-**Shared:** login · set-password (email-invite path) · notifications feed (Today / Earlier, mark all read) · profile (Admin, PM, Procurement, Store, Workshop and Design use the shared `ProfileScreen`; Service and Client have their own Profile tab) · role-based routing.
+**Shared:** login · set-password (email-invite path) · notifications feed (Today / Yesterday / Earlier by local day, mark all read; every role's bell shows the unread count) · profile (Admin, PM, Procurement, Store, Workshop and Design use the shared `ProfileScreen`; Service and Client have their own Profile tab) · role-based routing.
 
 **The build screen** (`BuildScreen`): every entry point opens it, from Admin Projects, the Command Center, PM Projects and PM Schedule. Its tabs are **Overview · Pipeline · Materials · Record**. The Overview banner states the mode: *Oversight · read-only* for Admin, *You manage this build* for the PM.
 
@@ -79,7 +79,7 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 
 Known gaps, found by reading the code line by line on 7 Oct 2026 and verified where marked ✔︎.
 This is one continuous numbered list. Items 1–11 hurt a real build, 12–21 are DB rules that can be
-bypassed, and 22–34 are smaller. The full write-up is in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md) §7.
+bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the numbers other docs cite stay stable. The full write-up is in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md) §7.
 
 ### Workflow gaps
 1. ✔︎ **Design- and Service-discipline stages can't be started or submitted from the app.** Only Workshop has
@@ -132,9 +132,9 @@ bypassed, and 22–34 are smaller. The full write-up is in [`WORKFLOW_AUDIT.md`]
 22. Add member (Team) always sets a password. The email-invite path is only reachable from Onboard →
     New client with "Set a password now" unticked.
 23. Profile "My details", "Account details", "Company profile" and "Roles & permissions" are coming-soon.
-24. Only Admin's bell shows an unread badge (Procurement's shows the order-today count). `unreadCountProvider` is unused.
-25. Workshop Start / Submit have no in-flight guard. "Mark stage complete" submits with checks open.
-26. Admin Projects has no Delivered chip, and a delivered build shows a raw grey "delivered" pill.
+24. ✅ ~~Only Admin's bell shows an unread badge~~. Fixed by the polish pass: every role's bell (shared `RoleHeader`) shows the unread count, Procurement's included. `unreadCountProvider` is still unused (#31).
+25. ✅ Workshop Start / Submit now use `AsyncPrimaryButton` (no double submit). Still open: "Mark stage complete" submits with checks open.
+26. ✅ ~~Admin Projects has no Delivered chip~~. Fixed: a Delivered chip (Admin and PM) and a mint *Delivered* pill.
 27. Log delay doesn't refresh the Pipeline delay ledger. Assign-PM, onboarding and approvals don't
     refresh the Command Center (`opsBoardProvider`) or Schedule.
 28. Some providers aren't auth-aware: `purchaseOrders`, `vendors`, `items`, `essentialItems`,
@@ -143,8 +143,8 @@ bypassed, and 22–34 are smaller. The full write-up is in [`WORKFLOW_AUDIT.md`]
 29. ✔︎ **Fresh / demo databases have no essentials.** `seed.sql` runs after `0019`'s backfill, so *Steel sheet* is
     not `is_essential`, and Store's "Request from procurement" picker is empty.
 30. Test gaps. The backend has no tests for `fn_receive_po` / stock, `fn_request_stock`, the rebaseline flag,
-    `0012` checklist copying, `0014` or `0025`. App tests cover models only, not `slaLabel`,
-    warranty state or `rupeesInWords`.
+    `0012` checklist copying, `0014` or `0025`. App tests cover models plus the shared widgets / motion layer
+    (`test/widgets_test.dart`), but not `slaLabel`, warranty state or `rupeesInWords`.
 31. Dead code: the non-embedded navigation in `ProjectDetailScreen` / `ProjectDossierScreen`,
     `poDocProvider`, `unreadCountProvider`, and `RoleHome._titles` / `_navs`.
 32. Client tickets aren't visible to Admin or PM anywhere.
@@ -229,6 +229,10 @@ cd supabase && sh build_full_setup.sh
   resubmit), not a dead end. Dispatch and receive are refused until the PO is approved.
 - **One build, one screen.** Every "open a build" entry point lands on `BuildScreen` (Overview ·
   Pipeline · Materials · Record). Capability comes from flags, and the mode banner makes it visible.
+- **Motion is part of the design system** (`shared/animations.dart`). It uses Material 3 tokens (`Motion.fast/base/slow`,
+  emphasized easing), no animation packages, and it respects *Reduce motion*. Pushed screens use the native **Cupertino** transition on
+  iOS so edge-swipe-back keeps working (a custom fade broke it) and predictive back on Android. Tabs and async slots
+  **fade through** (the old one leaves before the new one arrives) instead of cross-fading, which ghosts.
 - **A role is a team, not a person.** Several PMs, designers, technicians and so on work at once. Scope "my work"
   by user id, guard every mutating action against double-taps, put numbering and claims in the DB (row
   lock / unique index), and invalidate every affected provider. See `.kiro/steering/product.md`.
@@ -236,6 +240,55 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 7 Oct 2026: Premium motion + UI polish, with logic fixes (app only, no migration)
+
+Branch `feat/premium-motion-ui-polish`. Every screen of all 8 roles was touched. No new dependencies.
+
+- **Motion layer** (`shared/animations.dart`) rebuilt on Material 3 tokens:
+  - `Motion.fast/base/slow` durations with emphasized easing, and `Haptic` (tap / confirm).
+  - Building blocks: `staggered()` page cascades, `PressableScale` springs on every tappable card and button,
+    `CountUp` glides from the old value, `BadgePop`, `AnimatedSwap`.
+  - Loading: shimmer `SkeletonList` replaces bare spinners. `ContentReveal` makes skeleton → content
+    **fade through** while the slot's height glides.
+  - Navigation: `TabSwitcher` fades through, and the leaving tab keeps its state, so it no longer rebuilds and
+    replays mid-fade (regression test added). Route transitions are native Cupertino on iOS, which keeps
+    edge-swipe-back, and predictive back on Android. Every bottom sheet uses `sheetMotion`.
+  - *Reduce motion* is respected throughout.
+- **Design system** (`shared/widgets.dart`, new `shared/role_header.dart`):
+  - Headers: `RoleHeader` (bell + avatar on every role), `BackChip` on every pushed screen.
+  - Buttons: `PrimaryButton(busy:)` morphs label ↔ spinner in place, so forms no longer jump. New
+    `SecondaryButton`, and `PillAction` for in-section actions.
+  - Lists and states: `AppChip` / `ChipBar`, `SegmentTabs` with a sliding indicator, `ErrorCard` with **Retry**.
+  - `PillNav` gets a gliding ink bubble.
+- **Glitches fixed:**
+  - Admin Team's *Add member* is a pill beside the Members title. Company details moved to a *Workspace*
+    section, and Procurement's *Add vendor* got the same treatment.
+  - The Design carousel is sized from a real card, so it no longer overflows or leaves an empty band. The date chips wrap.
+  - Two-button rows (approve design, new design, log component, onboard client, materials sheet) keep both
+    buttons. The tapped one spins and the other locks.
+  - Ticket detail no longer prints a short description twice. The workshop checklist lost its stray last divider,
+    and its hint is centred.
+- **Logic fixes:**
+  - Home *Active builds* and Insights *on-track %* exclude delivered builds, so the shares sum to 100% and the % no
+    longer drops when a truck ships.
+  - Admin and PM have a *Delivered* chip and label. A removed member no longer flashes back after the swipe.
+  - PM Home: the at-risk and today rows open the build. Schedule opens the right build header. Team hides disabled members.
+  - Service's *overdue* filter falls back when it empties. The client's *Raise a request* card is tappable.
+  - Notifications group by **local** day (a UTC bug misfiled evening items). They have icons for the real backend
+    types, and *Mark all read* is optimistic and guarded.
+  - Every role's bell shows the **unread** count. Procurement's used to show "order today" (§3 #24).
+  - Workshop Start / Submit can't double-fire (§3 #25). Approval cards are keyed by id, so the next card can't
+    inherit a decided card's state, and a decided card folds away before the list refreshes.
+  - Deleting a material requirement is guarded and shows failures. Before, the error was unhandled.
+  - Loading and error states on pushed screens keep the back button. Company details, Ticket detail and the
+    account-load error used to be dead ends. The role-load error now has Retry + Sign out.
+- **Tests:** `test/widgets_test.dart` has 18 widget tests (nav, buttons, sheets, chips, tabs, motion,
+  fade-through, `ContentReveal`, busy buttons). Each screen was also checked as rendered frames, mid-animation
+  included, with a local harness that isn't committed.
+
+**Watch out when deploying:** nothing server-side. On device, check the haptics, iOS edge-swipe-back on pushed
+screens, and the 3D truck card, which can't render in tests.
 
 ### 7 Oct 2026: Full code audit + docs refresh (no code change)
 

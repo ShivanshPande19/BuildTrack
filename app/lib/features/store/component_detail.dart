@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Component detail (st6) — digital record + warranty + recall check.
@@ -21,13 +22,7 @@ class ComponentDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             if (c.projectCode != null) Container(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
               decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
@@ -133,23 +128,16 @@ class RecallCheckScreen extends ConsumerWidget {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
-            const StatusPill('Recall', color: BT.coral),
+          const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            BackChip(),
+            StatusPill('Recall', color: BT.coral),
           ]),
           const SizedBox(height: 14),
           Text('Recall check', style: display(29, w: FontWeight.w500)),
           const SizedBox(height: 14),
-          recall.when(
-            loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-              child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not run recall.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ContentReveal(child: recall.when(
+            loading: () => const SkeletonList(count: 3),
+            error: (e, _) => ErrorCard('Could not run recall.\n${friendlyError(e)}', onRetry: () => ref.invalidate(recallProvider(itemCatalogId))),
             data: (rows) {
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Container(
@@ -213,7 +201,7 @@ class RecallCheckScreen extends ConsumerWidget {
                 ],
               ]);
             },
-          ),
+          )),
         ],
       )),
     );

@@ -30,13 +30,7 @@ class ProfileScreen extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             Text('Profile', style: display(19, w: FontWeight.w600)),
             const SizedBox(width: 42),
           ]),

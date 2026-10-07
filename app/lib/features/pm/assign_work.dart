@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../admin/project_detail.dart' show openAssignSheet;
 
@@ -27,14 +28,8 @@ class AssignWorkScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+            const Row(children: [
+              BackChip(),
             ]),
             const SizedBox(height: 14),
             Text('Assign work', style: display(29, w: FontWeight.w500)),
@@ -42,11 +37,9 @@ class AssignWorkScreen extends ConsumerWidget {
             const Text('Stages on your builds that still need an owner.',
               style: TextStyle(color: BT.mut, fontSize: 12.5)),
             const SizedBox(height: 16),
-            pending.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: pending.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}', onRetry: () => ref.invalidate(stagesToAssignProvider)),
               data: (list) {
                 if (list.isEmpty) {
                   return const EmptyState(icon: Icons.task_alt_rounded, tint: BT.lime,
@@ -65,7 +58,7 @@ class AssignWorkScreen extends ConsumerWidget {
                   ],
                 ]);
               },
-            ),
+            )),
           ],
         ),
       )),

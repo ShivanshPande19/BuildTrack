@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
-import '../common/notifications.dart';
-import '../common/profile.dart';
 import 'task_detail.dart';
 import 'scan_install.dart';
 
@@ -42,41 +40,10 @@ class _WorkshopHomeState extends ConsumerState<WorkshopHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating nav (extendBody)
 
-Widget _wsHeader(BuildContext context, String title) => Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('WORKSHOP',
-      style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
-    const SizedBox(height: 2),
-    Text(title, style: display(29, w: FontWeight.w500)),
-  ]),
-  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-    GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-      child: Container(width: 42, height: 42, alignment: Alignment.center,
-        decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-        child: const Icon(Icons.notifications_none_rounded, size: 20, color: BT.ink)),
-    ),
-    const SizedBox(width: 10),
-    GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
-      child: Builder(builder: (_) {
-        final u = sb.auth.currentUser;
-        final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'A';
-        return Container(width: 42, height: 42, alignment: Alignment.center,
-          decoration: const BoxDecoration(shape: BoxShape.circle,
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFFF4D07A), Color(0xFFE9B84A)])),
-          child: Text(nm.isNotEmpty ? nm[0].toUpperCase() : 'A',
-            style: display(15, w: FontWeight.w600, c: const Color(0xFF4A3410))));
-      }),
-    ),
-  ])),
-]);
+Widget _wsHeader(BuildContext context, String title) =>
+    FadeSlideIn(child: RoleHeader(role: 'workshop', eyebrow: 'Workshop', title: title));
 
 ({String label, Color color}) _taskPill(String s) => switch (s) {
   'in_progress' => (label: 'In progress', color: BT.amber),
@@ -98,9 +65,8 @@ class _TasksTab extends ConsumerWidget {
         _wsHeader(context, 'My Tasks'),
         const SizedBox(height: 20),
         tasks.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 80),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load tasks.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load tasks.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) {
               return const EmptyState(icon: Icons.checklist_rounded, tint: BT.amber,
@@ -129,9 +95,7 @@ class _TasksTab extends ConsumerWidget {
 
   Widget _bigCard(BuildContext context, WorkshopTask t) {
     final p = _taskPill(t.status);
-    return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskDetailScreen(task: t))),
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskDetailScreen(task: t))),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -182,9 +146,7 @@ class _TasksTab extends ConsumerWidget {
   }
 
   Widget _row(BuildContext context, WorkshopTask t) => Padding(padding: const EdgeInsets.only(bottom: 11),
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskDetailScreen(task: t))),
+    child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TaskDetailScreen(task: t))),
       child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14), child: Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(t.stageName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
@@ -215,9 +177,8 @@ class _PartsTab extends ConsumerWidget {
         _wsHeader(context, 'Components'),
         const SizedBox(height: 16),
         parts.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.sky,
                 title: 'No parts installed', subtitle: 'Parts you scan-to-install appear here.')
@@ -254,9 +215,8 @@ class _WeekTab extends ConsumerWidget {
         _wsHeader(context, 'My Week'),
         const SizedBox(height: 16),
         tasks.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) => list.isEmpty
             ? const EmptyState(icon: Icons.calendar_today_rounded, tint: BT.sky,
                 title: 'Nothing scheduled', subtitle: 'Your assigned stages will show here.')

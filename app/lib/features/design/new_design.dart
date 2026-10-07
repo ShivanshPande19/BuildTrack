@@ -30,6 +30,7 @@ class _NewDesignState extends ConsumerState<NewDesign> {
   String? _imageUrl, _imageName;
   bool _uploadingModel = false, _uploadingImage = false;
   bool _saving = false;
+  bool _submitting = false; // draft vs submit, so the right button spins
   String? _error;
 
   bool get _isVersion => widget.artifactId != null;
@@ -104,7 +105,7 @@ class _NewDesignState extends ConsumerState<NewDesign> {
       setState(() => _error = 'Upload a 3D model (.glb) or a preview image first.');
       return;
     }
-    setState(() { _saving = true; _error = null; });
+    setState(() { _saving = true; _submitting = submit; _error = null; });
     try {
       final repo = ref.read(designRepoProvider);
       if (_isVersion) {
@@ -135,14 +136,8 @@ class _NewDesignState extends ConsumerState<NewDesign> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
           Text(_isVersion ? 'New version' : 'New design', style: display(29, w: FontWeight.w500)),
@@ -225,17 +220,15 @@ class _NewDesignState extends ConsumerState<NewDesign> {
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
 
           const SizedBox(height: 22),
-          if (_saving) const Center(child: CircularProgressIndicator(color: BT.ink))
-          else Row(children: [
-            Expanded(child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _save(false),
-              child: Container(height: 54, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-                child: const Text('Save as draft', style: TextStyle(fontWeight: FontWeight.w600))),
-            )),
+          // Both stay put while saving: the tapped one spins, the other locks.
+          Row(children: [
+            Expanded(child: SecondaryButton('Save as draft',
+              busy: _saving && !_submitting,
+              onTap: _saving && _submitting ? null : () => _save(false))),
             const SizedBox(width: 11),
-            Expanded(child: PrimaryButton('Submit for approval', icon: Icons.send_rounded, onTap: () => _save(true))),
+            Expanded(child: PrimaryButton('Submit for approval', icon: Icons.send_rounded,
+              busy: _saving && _submitting,
+              onTap: _saving && !_submitting ? null : () => _save(true))),
           ]),
         ],
       )),

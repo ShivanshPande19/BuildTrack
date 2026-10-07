@@ -64,14 +64,7 @@ class _ResolveTicketScreenState extends ConsumerState<ResolveTicketScreen> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle,
-                  border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
               decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999),
@@ -138,10 +131,8 @@ class _ResolveTicketScreenState extends ConsumerState<ResolveTicketScreen> {
             child: Text(_error!,
               style: const TextStyle(color: BT.coral, fontSize: 12.5, height: 1.35))),
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Mark resolved & notify client', icon: Icons.check_rounded,
-                onTap: _submit),
+          PrimaryButton('Mark resolved & notify client', icon: Icons.check_rounded,
+                onTap: _submit, busy: _saving),
         ],
       )),
     );

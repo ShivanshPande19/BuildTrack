@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Admin — the buyer identity printed at the top of every PO document.
@@ -70,32 +71,27 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(companySettingsProvider);
+    // The header (back, title) stays put while the form loads, so the screen
+    // can always be left. It used to be inside the loaded branch, which left a
+    // bare spinner with no way back, and no way back on an error either.
     return Scaffold(
-      body: SafeArea(child: settings.when(
-        loading: () => const Center(child: CircularProgressIndicator(color: BT.ink)),
-        error: (e, _) => Center(child: Padding(padding: const EdgeInsets.all(24),
-          child: Text('Could not load company details.\n${friendlyError(e)}',
-            textAlign: TextAlign.center, style: const TextStyle(color: BT.coral, fontSize: 13)))),
-        data: (c) {
-          _seed(c);
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
-            children: [
-              Row(children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.pop(context),
-                  child: Container(width: 42, height: 42, alignment: Alignment.center,
-                    decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                    child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-                ),
-              ]),
-              const SizedBox(height: 14),
-              Text('Company details', style: display(29, w: FontWeight.w500)),
-              const SizedBox(height: 4),
-              const Text('This is the buyer block printed on every purchase order.',
-                style: TextStyle(color: BT.mut, fontSize: 12.5)),
-              const SizedBox(height: 20),
+      body: SafeArea(child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+        children: [
+          const Row(children: [BackChip()]),
+          const SizedBox(height: 14),
+          Text('Company details', style: display(29, w: FontWeight.w500)),
+          const SizedBox(height: 4),
+          const Text('This is the buyer block printed on every purchase order.',
+            style: TextStyle(color: BT.mut, fontSize: 12.5)),
+          const SizedBox(height: 20),
+          ContentReveal(child: settings.when(
+            loading: () => const SkeletonList(count: 5, leading: false, trailingPill: false),
+            error: (e, _) => ErrorCard('Could not load company details.\n${friendlyError(e)}',
+              onRetry: () => ref.invalidate(companySettingsProvider)),
+            data: (c) {
+              _seed(c);
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               _field('COMPANY NAME', _name, hint: 'Azimuth Business on Wheels'),
               const SizedBox(height: 11),
               _field('ADDRESS', _address, hint: 'Street, city, PIN', lines: 2),
@@ -114,12 +110,11 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 14),
                 child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
               const SizedBox(height: 22),
-              _saving
-                ? const Center(child: CircularProgressIndicator(color: BT.ink))
-                : PrimaryButton('Save', icon: Icons.check, onTap: _save),
-            ],
-          );
-        },
+              PrimaryButton('Save', icon: Icons.check, onTap: _save, busy: _saving),
+              ]);
+            },
+          )),
+        ],
       )),
     );
   }

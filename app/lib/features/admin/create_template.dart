@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Build a custom workflow template: ordered stages (name + duration) and,
@@ -84,14 +85,8 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
           Text('New template', style: display(29, w: FontWeight.w500)),
@@ -114,9 +109,7 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 12),
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Save template', icon: Icons.check, onTap: _save),
+          PrimaryButton('Save template', icon: Icons.check, onTap: _save, busy: _saving),
         ],
       )),
     );
@@ -216,6 +209,7 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
     }.values.toList();
 
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),

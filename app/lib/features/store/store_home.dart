@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
-import '../common/notifications.dart';
-import '../common/profile.dart';
 import 'component_detail.dart';
 import 'log_component.dart';
 
@@ -41,41 +39,10 @@ class _StoreHomeState extends ConsumerState<StoreHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating nav (extendBody)
 
-Widget _storeHeader(BuildContext context, String title) => Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('STORE · INVENTORY',
-      style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
-    const SizedBox(height: 2),
-    Text(title, style: display(29, w: FontWeight.w500)),
-  ]),
-  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-    GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-      child: Container(width: 42, height: 42, alignment: Alignment.center,
-        decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-        child: const Icon(Icons.notifications_none_rounded, size: 20, color: BT.ink)),
-    ),
-    const SizedBox(width: 10),
-    GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
-      child: Builder(builder: (_) {
-        final u = sb.auth.currentUser;
-        final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'S';
-        return Container(width: 42, height: 42, alignment: Alignment.center,
-          decoration: const BoxDecoration(shape: BoxShape.circle,
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFF9FE0C8), Color(0xFF66C6A4)])),
-          child: Text(nm.isNotEmpty ? nm[0].toUpperCase() : 'S',
-            style: display(15, w: FontWeight.w600, c: const Color(0xFF0F3A2A))));
-      }),
-    ),
-  ])),
-]);
+Widget _storeHeader(BuildContext context, String title) =>
+    FadeSlideIn(child: RoleHeader(role: 'store', eyebrow: 'Store · Inventory', title: title));
 
 // ───────────────────────────────────────────────────────────── INBOX
 
@@ -99,9 +66,8 @@ class _InboxTab extends ConsumerWidget {
         ])),
         const SectionLabel('Low stock'),
         stock.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 30),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load stock.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load stock.\n${friendlyError(e)}'),
           data: (list) {
             final low = list.where((s) => s.low).toList();
             if (low.isEmpty) {
@@ -153,11 +119,10 @@ class _StockTabState extends ConsumerState<_StockTab> {
       child: ListView(padding: _pad, children: [
         _storeHeader(context, 'Stock'),
         const SizedBox(height: 14),
-        Row(children: [
+        FadeSlideIn(delay: Motion.stagger(1), child: ChipBar(chips: [
           _chip('All', !_lowOnly, () => setState(() => _lowOnly = false)),
-          const SizedBox(width: 8),
           _chip('Low', _lowOnly, () => setState(() => _lowOnly = true)),
-        ]),
+        ])),
         const SizedBox(height: 12),
         // Ask procurement to order any catalogue item — works even when the
         // inventory is empty (nothing to tap yet). Stock never changes from
@@ -166,35 +131,27 @@ class _StockTabState extends ConsumerState<_StockTab> {
           onTap: () => _openRequest()),
         const SizedBox(height: 14),
         stock.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 40),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) {
             final rows = _lowOnly ? list.where((s) => s.low).toList() : list;
             if (rows.isEmpty) {
               return const EmptyState(icon: Icons.layers_rounded, tint: BT.mint,
                 title: 'No stock lines', subtitle: 'Bulk items you keep in stock will show here.');
             }
-            return Column(children: rows.map(_row).toList());
+            return Column(children: staggered(rows.map(_row).toList()));
           },
         ),
       ]),
     );
   }
 
-  Widget _chip(String label, bool on, VoidCallback onTap) => GestureDetector(
-    behavior: HitTestBehavior.opaque, onTap: onTap,
-    child: Container(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
-      decoration: BoxDecoration(color: on ? BT.ink : BT.card, borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: on ? BT.ink : BT.line)),
-      child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: on ? Colors.white : BT.mut))));
+  Widget _chip(String label, bool on, VoidCallback onTap) => AppChip(label, selected: on, onTap: onTap);
 
   Widget _row(StockRow s) {
     final color = s.low ? BT.coral : (s.quantity <= s.threshold * 2 ? BT.amber : BT.lime);
     final label = s.low ? 'Low' : (s.quantity <= s.threshold * 2 ? 'Fair' : 'OK');
-    return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: s.itemCatalogId == null ? null : () => _openReorder(s),
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: PressableScale(pressedScale: 0.98, haptic: true, onTap: s.itemCatalogId == null ? null : () => _openReorder(s),
       child: AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       child: Row(children: [
@@ -223,6 +180,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
     final noteCtl = TextEditingController();
     var sending = false;
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -305,6 +263,7 @@ class _StockTabState extends ConsumerState<_StockTab> {
     final noteCtl = TextEditingController();
     var sending = false;
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -447,9 +406,8 @@ class _PartsTabState extends ConsumerState<_PartsTab> {
         ),
         const SizedBox(height: 14),
         comps.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 40),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load components.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load components.\n${friendlyError(e)}'),
           data: (list) {
             final filtered = _q.isEmpty ? list : list.where((c) =>
               c.serial.toLowerCase().contains(_q) || c.name.toLowerCase().contains(_q) ||
@@ -473,9 +431,7 @@ class _PartsTabState extends ConsumerState<_PartsTab> {
     );
   }
 
-  Widget _row(ComponentRow c) => Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComponentDetailScreen(component: c))),
+  Widget _row(ComponentRow c) => Padding(padding: const EdgeInsets.only(bottom: 11), child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ComponentDetailScreen(component: c))),
     child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14), child: Row(children: [
       Container(width: 46, height: 46, alignment: Alignment.center,
         decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(14)),

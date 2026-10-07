@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../admin/admin_dashboard.dart';
 import '../procurement/procurement_home.dart';
@@ -38,12 +39,27 @@ class RoleHome extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final roleAsync = ref.watch(myRoleProvider);
-    return roleAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator(color: BT.ink))),
-      error: (e, _) => Scaffold(body: Center(child: Padding(
+    // Launch → role home is a soft cross-fade, not a cut from a spinner.
+    return AnimatedSwitcher(
+      duration: Motion.slow,
+      switchInCurve: Motion.curve,
+      switchOutCurve: Motion.exit,
+      child: roleAsync.when(
+      loading: () => const _LaunchScreen(),
+      // It used to be a dead end: an error message with no retry and no way
+      // to sign out.
+      error: (e, _) => Scaffold(body: SafeArea(child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Text('Could not load your account.\n${friendlyError(e)}',
-          textAlign: TextAlign.center, style: const TextStyle(color: BT.coral, fontSize: 13))))),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          ErrorCard('Could not load your account.\n${friendlyError(e)}',
+            onRetry: () => ref.invalidate(myRoleProvider)),
+          const SizedBox(height: 16),
+          SecondaryButton('Sign out', icon: Icons.logout_rounded,
+            onTap: () => sb.auth.signOut().then((_) {
+              if (context.mounted) context.go('/login');
+            })),
+        ]),
+      ))),
       data: (role0) {
         // A signed-in user with no profile row has no role. Falling back to the
         // client experience (the old behaviour) silently showed them a customer
@@ -92,8 +108,59 @@ class RoleHome extends ConsumerWidget {
           bottomNavigationBar: PillNav(icons: nav, active: 0, activeLabel: title.split(' ').first),
         );
       },
-    );
+    ));
   }
+}
+
+/// Shown for the moment it takes to resolve the signed-in user's role: the
+/// app mark, breathing gently, on the app background. It reads as the app
+/// opening rather than as something loading.
+class _LaunchScreen extends StatelessWidget {
+  const _LaunchScreen();
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(child: FadeSlideIn(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      _Breathe(child: Container(width: 64, height: 64,
+        decoration: BoxDecoration(color: BT.ink, borderRadius: BorderRadius.circular(20)),
+        child: const Icon(Icons.home_work_rounded, color: BT.lime, size: 32))),
+      const SizedBox(height: 18),
+      Text('BuildTrack', style: display(24)),
+    ]))),
+  );
+}
+
+class _Breathe extends StatefulWidget {
+  final Widget child;
+  const _Breathe({required this.child});
+  @override
+  State<_Breathe> createState() => _BreatheState();
+}
+
+class _BreatheState extends State<_Breathe> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (reduceMotion(context)) {
+      _c.stop();
+    } else if (!_c.isAnimating) {
+      _c.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ScaleTransition(
+    scale: Tween(begin: 0.94, end: 1.0).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+    child: widget.child,
+  );
 }
 
 

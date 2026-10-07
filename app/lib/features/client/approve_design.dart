@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'truck_3d.dart';
 
@@ -17,9 +18,10 @@ class ApproveDesign extends ConsumerStatefulWidget {
 
 class _ApproveDesignState extends ConsumerState<ApproveDesign> {
   bool _saving = false;
+  bool _approving = false; // which of the two decisions is in flight
 
   Future<void> _decide(bool approve, {String? feedback}) async {
-    setState(() => _saving = true);
+    setState(() { _saving = true; _approving = approve; });
     try {
       await ref.read(clientRepoProvider).decideDesign(widget.design.id, approve, feedback: feedback);
       ref.invalidate(truckDesignsProvider(widget.projectId));
@@ -46,6 +48,7 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
   Future<void> _requestChanges() async {
     final c = TextEditingController();
     final feedback = await showModalBottomSheet<String>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
@@ -90,15 +93,9 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
-            const StatusPill('Needs approval', color: BT.amber),
+          const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            BackChip(),
+            StatusPill('Needs approval', color: BT.amber),
           ]),
           const SizedBox(height: 14),
           Text(d.type.isEmpty ? 'Design' : '${d.type[0].toUpperCase()}${d.type.substring(1)} design',
@@ -130,20 +127,16 @@ class _ApproveDesignState extends ConsumerState<ApproveDesign> {
           ])),
 
           const SizedBox(height: 20),
-          if (_saving) const Center(child: CircularProgressIndicator(color: BT.ink))
-          else Row(children: [
-            Expanded(child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: _requestChanges,
-              child: Container(height: 54, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-                child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.edit_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
-                  Text('Request changes', style: TextStyle(fontWeight: FontWeight.w600)),
-                ])),
-            )),
+          // Both buttons stay put while saving; the one that was tapped turns
+          // into a spinner and the other is locked, so the row never jumps.
+          Row(children: [
+            Expanded(child: SecondaryButton('Request changes', icon: Icons.edit_rounded,
+              busy: _saving && !_approving,
+              onTap: _saving && _approving ? null : _requestChanges)),
             const SizedBox(width: 11),
-            Expanded(child: PrimaryButton('Approve', icon: Icons.check_rounded, onTap: () => _decide(true))),
+            Expanded(child: PrimaryButton('Approve', icon: Icons.check_rounded,
+              busy: _saving && _approving,
+              onTap: _saving && !_approving ? null : () => _decide(true))),
           ]),
         ],
       )),

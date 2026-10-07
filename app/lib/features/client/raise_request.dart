@@ -70,14 +70,8 @@ class _RaiseRequestState extends ConsumerState<RaiseRequest> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
           Text('Raise a request', style: display(29, w: FontWeight.w500)),
@@ -134,9 +128,7 @@ class _RaiseRequestState extends ConsumerState<RaiseRequest> {
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 14),
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Submit request', icon: Icons.send_rounded, onTap: _submit),
+          PrimaryButton('Submit request', icon: Icons.send_rounded, onTap: _submit, busy: _saving),
         ],
       )),
     );

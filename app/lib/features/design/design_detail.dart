@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../client/truck_3d.dart';
 import 'new_design.dart';
@@ -61,21 +62,15 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
       body: SafeArea(child: RefreshIndicator(
         onRefresh: () async => ref.refresh(designDetailProvider(widget.artifactId).future),
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 30), children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
-          detail.when(
-            loading: () => const Padding(padding: EdgeInsets.only(top: 60), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load design.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ContentReveal(child: detail.when(
+            loading: () => const SkeletonList(count: 3),
+            error: (e, _) => ErrorCard('Could not load design.\n${friendlyError(e)}', onRetry: () => ref.invalidate(designDetailProvider(widget.artifactId))),
             data: (d) => _content(d),
-          ),
+          )),
         ]),
       )),
     );
@@ -113,7 +108,7 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
         Container(padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(18)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: const [
+            const Row(children: [
               Icon(Icons.rate_review_rounded, size: 17, color: BT.coral), SizedBox(width: 8),
               Text('Client requested changes', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF7A3B2A))),
             ]),
@@ -155,8 +150,7 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
       ),
 
       const SizedBox(height: 18),
-      if (_busy) const Center(child: CircularProgressIndicator(color: BT.ink))
-      else ..._actions(d),
+      ..._actions(d),
     ]);
   }
 
@@ -165,15 +159,9 @@ class _DesignDetailScreenState extends ConsumerState<DesignDetailScreen> {
     if (d.status == 'draft') {
       return [
         Row(children: [
-          Expanded(child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => _newVersion(d),
-            child: Container(height: 54, alignment: Alignment.center,
-              decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-              child: const Text('New version', style: TextStyle(fontWeight: FontWeight.w600))),
-          )),
+          Expanded(child: SecondaryButton('New version', onTap: _busy ? null : () => _newVersion(d))),
           const SizedBox(width: 11),
-          Expanded(child: PrimaryButton('Submit for approval', icon: Icons.send_rounded, onTap: _submit)),
+          Expanded(child: PrimaryButton('Submit for approval', icon: Icons.send_rounded, onTap: _submit, busy: _busy)),
         ]),
       ];
     }

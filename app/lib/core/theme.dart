@@ -45,20 +45,69 @@ ThemeData buildTheme() {
     colorSchemeSeed: BT.lime,
     brightness: Brightness.light,
   );
+  final text = GoogleFonts.plusJakartaSansTextTheme(base.textTheme)
+      .apply(bodyColor: BT.ink, displayColor: BT.ink);
   return base.copyWith(
-    textTheme: GoogleFonts.plusJakartaSansTextTheme(base.textTheme)
-        .apply(bodyColor: BT.ink, displayColor: BT.ink),
+    textTheme: text,
     appBarTheme: const AppBarTheme(
       backgroundColor: BT.bg, foregroundColor: BT.ink, elevation: 0,
+      surfaceTintColor: Colors.transparent, scrolledUnderElevation: 0,
     ),
-    // Every pushed route uses the same modern fade + subtle scale transition.
-    pageTransitionsTheme: const PageTransitionsTheme(builders: {
-      TargetPlatform.android: FadeThroughPageTransitionsBuilder(),
-      TargetPlatform.iOS: FadeThroughPageTransitionsBuilder(),
-      TargetPlatform.macOS: FadeThroughPageTransitionsBuilder(),
-      TargetPlatform.windows: FadeThroughPageTransitionsBuilder(),
-      TargetPlatform.linux: FadeThroughPageTransitionsBuilder(),
-    }),
+    // iOS keeps the native slide + edge-swipe-back; Android gets M3 fade-forwards
+    // with predictive back. See animations.dart → appPageTransitions().
+    pageTransitionsTheme: appPageTransitions(),
+    // No grey Material ripple splashing over the Equora cards. Taps respond with
+    // PressableScale instead; a soft highlight is kept for list tiles.
+    splashFactory: NoSplash.splashFactory,
+    highlightColor: BT.ink.withValues(alpha: 0.04),
+    // Snackbars float as rounded ink pills above the floating nav, never as a
+    // full-width bar glued to the screen edge.
+    snackBarTheme: SnackBarThemeData(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: BT.ink,
+      elevation: 0,
+      insetPadding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      contentTextStyle: text.bodyMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13.5),
+      actionTextColor: BT.lime,
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: BT.card,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      titleTextStyle: display(18, w: FontWeight.w600),
+      contentTextStyle: text.bodyMedium?.copyWith(color: BT.mut, fontSize: 13.5, height: 1.4),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: BT.bg,
+      surfaceTintColor: Colors.transparent,
+      modalBarrierColor: Color(0x661D1C18),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+    ),
+    progressIndicatorTheme: const ProgressIndicatorThemeData(
+      color: BT.ink, linearTrackColor: BT.track, refreshBackgroundColor: BT.card,
+    ),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: BT.ink,
+      selectionColor: BT.lime.withValues(alpha: 0.6),
+      selectionHandleColor: BT.ink,
+    ),
+    textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(
+      foregroundColor: BT.ink,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    )),
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: BT.card,
+      surfaceTintColor: Colors.transparent,
+      headerBackgroundColor: BT.ink,
+      headerForegroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      todayBorder: const BorderSide(color: BT.ink),
+      dayShape: WidgetStatePropertyAll(RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+    ),
+    colorScheme: base.colorScheme.copyWith(primary: BT.ink, onPrimary: Colors.white, surface: BT.bg),
   );
 }
 

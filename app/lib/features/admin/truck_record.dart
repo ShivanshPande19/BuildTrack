@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Admin — the truck's complete physical record.
@@ -49,13 +50,7 @@ class TruckRecordScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
           children: [
             if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
                 decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
@@ -67,13 +62,11 @@ class TruckRecordScreen extends ConsumerWidget {
             const SizedBox(height: 2),
             Text(name ?? 'Digital twin', style: display(27, w: FontWeight.w600)),
             const SizedBox(height: 16),
-            comps.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load the record.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: comps.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load the record.\n${friendlyError(e)}', onRetry: () => ref.invalidate(truckComponentsProvider(projectId))),
               data: (list) => _content(context, list, docs),
-            ),
+            )),
           ],
         ),
       )),

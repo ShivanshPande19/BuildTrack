@@ -42,7 +42,7 @@ Product / UX rules are in `product.md` (this folder).
 
 ```bash
 sh supabase/tests/run.sh     # backend, Docker only: 149 assertions in 7 suites as real non-superuser users
-cd app && flutter analyze    # app: must be 0 errors (no Flutter SDK in the agent sandbox, so CI is the gate)
+cd app && flutter analyze && flutter test   # app: 0 errors; CI (Flutter 3.44.8) is the gate if the sandbox has no SDK
 ```
 
 When you add a rule, add assertions to the matching suite: `10_workflow`, `20_service`, `30_po_approval`,
@@ -59,8 +59,8 @@ A command exiting 0 is not proof; check the actual result.
   never hand-edit.
 - Flutter: Riverpod providers in `data/repositories.dart`, models in `data/models.dart`, design
   tokens from `core/theme.dart` (`BT.*`, `display()`, `roleColor()`), shared widgets from
-  `shared/widgets.dart` (`AppCard`, `StatusPill`, `SectionLabel`, `PrimaryButton`,
-  `AsyncPrimaryButton`, `PillNav`, `AppSelectField`, `EmptyState`), motion from `shared/animations.dart`.
+  `shared/widgets.dart` (full list and motion rules in `product.md`), the role header from
+  `shared/role_header.dart`, motion from `shared/animations.dart`.
   Match the existing Equora visual style; don't introduce new UI primitives.
 - Builds open in `BuildScreen` (`features/admin/build_screen.dart`). Don't add a new standalone
   build or stage screen; add a tab or section there.

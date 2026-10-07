@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'create_template.dart';
 
@@ -80,6 +81,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
   /// Create the client's account + login in one go, then select it.
   Future<void> _newClient() async {
     final created = await showModalBottomSheet<OptRef>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (_) => const _NewClientSheet(),
     );
@@ -114,12 +116,11 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
 
     return Scaffold(
       body: SafeArea(child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back_ios_new, size: 18)),
-            const Spacer(),
-          ]),
+          // Same back chip + spacing as every other pushed screen.
+          const Row(children: [BackChip()]),
+          const SizedBox(height: 14),
           Text('New project', style: display(29, w: FontWeight.w500)),
           const SizedBox(height: 4),
           const Text('Creates the build, schedules its stages and hands it to a PM.',
@@ -170,9 +171,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
                 style: const TextStyle(color: BT.coral, fontSize: 12.5, height: 1.35))),
             ])),
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Onboard project', icon: Icons.check, onTap: _submit),
+          PrimaryButton('Onboard project', icon: Icons.check, onTap: _submit, busy: _saving),
         ],
       )),
     );
@@ -333,16 +332,12 @@ class _NewClientSheetState extends ConsumerState<_NewClientSheet> {
           if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 10),
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5, height: 1.35))),
           const SizedBox(height: 4),
-          _busy
-            ? const Center(child: Padding(padding: EdgeInsets.all(12),
-                child: CircularProgressIndicator(color: BT.ink)))
-            : Row(children: [
-                Expanded(child: PrimaryButton('Cancel', bg: BT.card2,
-                  onTap: () => Navigator.pop(context))),
-                const SizedBox(width: 10),
-                Expanded(child: PrimaryButton('Create client', icon: Icons.person_add_alt_1_rounded,
-                  onTap: _create)),
-              ]),
+          Row(children: [
+            Expanded(child: SecondaryButton('Cancel', onTap: _busy ? null : () => Navigator.pop(context))),
+            const SizedBox(width: 10),
+            Expanded(child: PrimaryButton('Create client', icon: Icons.person_add_alt_1_rounded,
+              onTap: _create, busy: _busy)),
+          ]),
         ]),
       ),
     ),

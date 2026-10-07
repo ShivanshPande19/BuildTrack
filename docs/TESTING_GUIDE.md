@@ -209,7 +209,7 @@ on conflict (id) do update set role = 'admin', status = 'active';
 - [ ] **Version race.** Log in as `design@` on **both** devices (the same account on two devices is fine). Open the same design →
   **Upload new version** on both → submit at the same moment. Expected: two **different** version numbers and
   nothing lost. Confirm with the SQL in §5.
-- [ ] 💻 Admin: the bell badge equals the **unread** count. **Mark all read** clears it.
+- [ ] 💻 Any role: the bell badge equals the **unread** count. **Mark all read** clears it.
 - [ ] 📱 Airplane mode → tap any action. You should see a friendly message, not raw SQL.
 - [ ] 💻 Simulator Settings → Accessibility → Display & Text Size → Larger Text at max: the Design *Assigned to me*
   card doesn't overflow.
