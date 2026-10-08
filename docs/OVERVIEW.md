@@ -33,14 +33,14 @@ office use).
 
 | Role | What they do |
 |---|---|
-| **Admin** | Onboards projects, creates logins, assigns the project manager, manages the team and workflow templates, sees fleet-wide health. |
-| **Project Manager (PM)** | Owns a set of builds: plans materials, assigns each stage to the right person with dates, approves completed work, logs delays, and hands the truck over. |
-| **Procurement** | Turns the PM's material needs into purchase orders, tracks dispatch, and receives goods. |
-| **Store** | Logs every received part (serial, warranty, bill), keeps inventory, and can trigger a recall. |
+| **Admin** | Onboards projects (creating the client's login and, if needed, a workflow template on the way), assigns the project manager, manages the team, gives purchase orders final approval, and watches fleet health and the live Command Center. |
+| **Project Manager (PM)** | Owns a set of builds: plans materials, assigns each stage to the right person with dates, signs the POs for their builds, approves completed work, logs delays, and hands the truck over. |
+| **Procurement** | Turns material needs into purchase orders, sends them for the PM's and owner's signatures, tracks dispatch, and receives goods. |
+| **Store** | Logs every part (serial, warranty, bill), keeps inventory, asks Procurement to reorder essentials, and can trigger a recall. |
 | **Workshop** | Does the physical build: works assigned stages, ticks checklists, scans and installs parts, uploads site photos, submits work for approval. |
 | **Design** | Creates the truck's designs (2D + 3D), and gets them approved by the client. |
 | **Service** | After-sales: handles support tickets on delivered trucks, schedules technician visits, tracks warranties. |
-| **Client** | Watches their truck's progress, photos and designs; approves designs; downloads documents; raises support requests. |
+| **Client** | Watches their truck's progress, photos and 3D design; approves designs; sees their documents; raises (and reopens) support requests. |
 
 *(There is no marketing/sales role and no payments module in the app — the deal,
 the client conversation and the advance payment happen outside BuildTrack. The
@@ -69,8 +69,12 @@ collected — all offline. Then:
    `needed-by − vendor lead time − buffer`.
 
 3. **Procurement orders.** The order-by dates appear as alerts. Procurement
-   raises purchase orders, marks them dispatched, and **receives** them — which
-   adds the quantities to Store's stock.
+   raises a purchase order (rates, GST, terms). On a project PO the build's
+   **PM signs** it, then an **owner/admin gives final approval**; a general stock PO
+   goes straight to the owner. A rejected PO goes back to Procurement to fix and
+   resubmit. Once approved, Procurement marks it dispatched and **receives** it,
+   which adds bulk quantities to Store's stock. A proper GST purchase-order PDF
+   can be printed or shared at any point.
 
 4. **Store logs parts.** Each received part is recorded with its serial number,
    warranty dates, vendor and **bill image** — the digital record that powers
@@ -82,7 +86,9 @@ collected — all offline. Then:
 
 6. **Workshop builds.** For each assigned stage the worker starts it, ticks the
    checklist, **scans and installs** the required parts, uploads **site photos**,
-   and submits the stage for approval.
+   and submits the stage for approval. *(Today only Workshop has this start /
+   submit screen. A stage assigned to a designer or a service member can't be
+   submitted from the app yet; see `PROJECT_LOG.md` §3.)*
 
 7. **PM approves.** The approval screen shows the submitted **photos, checklist
    and installed parts**, so the PM decides on evidence. Approving marks the
@@ -116,16 +122,25 @@ Admin onboard → PM plan + assign → Procurement order → Store receive & log
 
 ## What's live today
 
-All eight roles are usable and wired to the backend. The core chain above works
-end to end, including the two "hero" features (order-by scheduling and part
-traceability/recall), real camera photos and barcode scanning, template
-checklists, stock movement on receipt, bill capture, delay logging, document
-handover, and client-visible support tickets.
+All eight roles are usable and wired to the backend (as of 7 Oct 2026). The core chain above works
+end to end. That includes:
+- the two "hero" features: order-by scheduling, and part traceability with recall;
+- real camera photos and barcode scanning;
+- template BOMs and checklists;
+- stock movement on receipt and Store reorder requests;
+- bill capture, delay logging and document handover;
+- the multi-level PO approval chain with a GST PO document;
+- the owner's live **Command Center**;
+- one tabbed **build screen** per build (Overview · Pipeline · Materials · Record), and a per-truck digital record;
+- client-visible support tickets.
 
 ## What's not in the app (yet)
 
-- **Payments / finance** — the advance and later payments are handled outside the
+- **Payments / finance.** The advance and later payments are handled outside the
   app; there is no billing module.
+- **Known gaps** in what's built, for example stage submission for Design and Service roles,
+  a templates screen, and several database rules that can still be bypassed. They are
+  listed and numbered in [`PROJECT_LOG.md`](PROJECT_LOG.md) §3.
 - **Robustness features planned next:** offline support for the shop floor, push
   notifications, live/realtime updates, list pagination at scale, and Hindi
   localization.

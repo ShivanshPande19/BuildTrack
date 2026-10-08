@@ -1,228 +1,170 @@
-# Azimuth BuildTrack — API Design (v1)
+# Azimuth BuildTrack: API
 
-REST API derived from the data model + role UIs. Every screen maps to endpoints here. Built for a mobile app used by all 8 roles.
+There is **no custom REST server**. The app talks to Supabase directly:
 
-## Conventions
+- **PostgREST** for table and view reads, plus a few direct writes, all filtered by RLS.
+- **RPCs** (`sb.rpc('fn_…')`): Postgres functions that hold the business rules. Most are
+  `SECURITY DEFINER` and check the caller's role themselves.
+- **Edge Functions** for creating and removing logins (they need the service-role key).
+- **Storage** for files.
 
-- **Base URL:** `/api/v1`
-- **Auth:** JWT bearer token. `Authorization: Bearer <token>`. Token carries `user_id` + `role`.
-- **Access control:** every endpoint is role-guarded (see the permission matrix in the Data Model). Server always scopes data to what the role may see (e.g. a client only ever gets their own projects).
-- **Format:** JSON. Standard envelope: `{ "data": ..., "meta": {...} }`; errors: `{ "error": { "code", "message" } }`.
-- **Lists:** support `?page=`, `?limit=`, `?search=`, `?status=` where relevant. Return `meta.total`.
-- **Files:** uploads are `multipart/form-data` (bills, photos, design files) → return stored `file` URL.
-- **IDs:** UUIDs.
+The REST design in earlier versions of this file (`/api/v1/...`) was never built.
+Supabase replaced it ([`TechStack_and_BuildPlan.md`](TechStack_and_BuildPlan.md), Path 2).
+Tables are in [`DataModel.md`](DataModel.md). All app calls live in `app/lib/data/repositories.dart`.
 
 ---
 
-## 1. Auth & Me
+## 1. Auth
 
-| Method | Path | Who | Purpose |
+| What | How |
+|---|---|
+| Sign in | `auth.signInWithPassword(email, password)`. There is no sign-up and no forgot-password screen. |
+| Session | PKCE flow. The router sends you to `/login` without a session, to `/set-password` while `user_metadata.needs_password`, and to `/home` otherwise. |
+| Role → home | `profiles.role` (`fetchMyRole`). No role shows a "No role assigned yet" screen with a sign-out. |
+| Invite link | Deep link `io.supabase.buildtrack://login-callback/` → **Set your password** → `auth.updateUser(password, data:{needs_password:false})`. See [`INVITE_FLOW.md`](INVITE_FLOW.md). |
+
+---
+
+## 2. Edge Functions (admin only; the caller must have `profiles.role = 'admin'`)
+
+| Function | Body | Does | Returns |
 |---|---|---|---|
-| POST | `/auth/login` | all | email + password → token + user (role decides home screen) |
-| POST | `/auth/logout` | all | invalidate token |
-| POST | `/auth/forgot-password` | all | reset link |
-| GET | `/me` | all | current user profile + role + permissions |
-| PATCH | `/me` | all | update own profile |
+| `admin-create-member` | `full_name, email, role, phone?, password?, business_name?, redirect_to?` | **With `password`:** creates a confirmed auth user, profile `active`. **Without:** `inviteUserByEmail` (needs SMTP), profile `invited`. For `role = client` it also creates `client_accounts` (`contact_user_id` = the new user). It rolls back the auth user if a later insert fails. | `{ok, user_id, client_account_id}` |
+| `admin-delete-member` | `target_user_id` | Unlinks `client_accounts.contact_user_id`, then deletes the auth user (the profile cascades). Refuses to delete yourself. | `{ok}` |
+
+Errors: 401 unauthorized, 403 `forbidden: admin only`, 400 validation / auth errors, 405 for non-POST.
 
 ---
 
-## 2. Users & Roles — *Admin only*
+## 3. RPCs
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/users?role=&search=` | Team list |
-| POST | `/users` | **Create member + assign role** (Add Member screen). Body: `{full_name, email, phone, role}` → sends invite |
-| GET | `/users/{id}` | member detail |
-| PATCH | `/users/{id}` | change role / status (activate/disable) |
-| GET | `/roles` | role list + permission matrix |
+✅ = called by the app. "Who" is the server-side check; anyone else gets SQLSTATE `42501` with a readable message.
 
----
-
-## 3. Clients
-
-| Method | Path | Who | Purpose |
+### Builds & stages
+| ✅ | Function | Who | Effect |
 |---|---|---|---|
-| GET | `/clients?search=` | admin, pm | client accounts |
-| POST | `/clients` | admin | create client account (+ client login) |
-| GET | `/clients/{id}` | admin, pm | client + **their projects list** |
+| ✅ | `fn_onboard_project(p_project)` | admin | Requires a template with stages **and a PM**. Creates stages (with discipline) and checklists from the template, backward-schedules them, generates BOM requirements, and notifies the PM. |
+| ✅ | `fn_assign_pm(p_project, p_pm)` | admin | Target must be an active `pm`. Records who and when, notifies the new and old PM. |
+| ✅ | `fn_assign_stage(p_stage, p_assignee, p_start?, p_due?, p_override=false)` | admin · build's PM | Assignee must be an active workshop / design / store / service member. A discipline mismatch needs `p_override`. Sets `assigned_*` and notifies the new and old assignee. `p_assignee = null` unassigns. |
+| ✅ | `fn_start_stage(p_stage)` | admin · assignee · build's PM | todo / rework → in_progress, sets `actual_start`, notifies the PM. |
+| ✅ | `fn_submit_stage(p_stage) → uuid` | admin · assignee | One pending `stage_approvals` row addressed to the build's PM. Refuses duplicates and PM-less builds. |
+| ✅ | `fn_decide_stage(p_approval, p_approve, p_note?)` | admin · build's PM | **Approve:** stage done, **next todo stage auto-starts**, and the submitter, next assignee and client are notified. **Reject:** stage goes to `rework` and the note reaches the assignee. |
+| ✅ | `fn_install_component(p_component, p_stage)` | admin · stage assignee · store | Part must be `in_stock`. Links it to the truck and stage (`installed`). |
+| ✅ | `fn_mark_delivered(p_project, p_date?, p_force=false)` | admin · build's PM | Refuses while stages are open unless `p_force`. Sets the delivery date and status `delivered`, and notifies the client and every service member. |
+| ✅ | `fn_recompute_schedule(p_project, p_rebaseline_assigned=false)` | *no check* ⚠️ | Backward schedule + order-by dates. `true` also re-baselines the assigned dates. |
+| ✅ | `fn_refresh_all_statuses() → int` | *no check* ⚠️ | Recomputes every build's status. Called when the fleet, PM and Command Center screens load. |
+| | `fn_recompute_progress` · `fn_recompute_status` · `fn_recompute_current_stage` | internal | Called by triggers and the RPCs above. |
 
----
-
-## 4. Projects & Stages
-
-| Method | Path | Who | Purpose |
+### Design
+| ✅ | Function | Who | Effect |
 |---|---|---|---|
-| GET | `/projects?status=&search=&pm=` | admin (all), pm (assigned) | project list w/ progress + status |
-| POST | `/projects` | admin | **Onboard project** — body `{code,name,client_account_id,template_id,pm_id,target_delivery_date}`. Server auto-creates STAGES + PROCUREMENT_REQUIREMENTS with backward-scheduled dates |
-| GET | `/projects/{id}` | admin, pm | full project detail |
-| PATCH | `/projects/{id}` | admin, pm | update (target date, pm, advance_received…) — triggers reschedule |
-| GET | `/projects/{id}/stages` | admin, pm | stage timeline (with assignees) |
-| GET | `/projects/{id}/components` | admin, pm, store | installed components (traceability list) |
-| GET | `/projects/{id}/analytics` | admin, pm | per-project health |
+| ✅ | `fn_add_design_version(p_artifact, p_model_url?, p_image_url?, p_change_note?, p_submit=false) → uuid` | admin · design | Next `version_no` under a row lock (`0025`). Repoints the current version, sets status draft / pending_approval, clears client feedback. |
+| ✅ | `fn_client_decide_design(p_artifact, p_approve, p_feedback?)` | the build's client | Design must be `pending_approval`; feedback is required to reject. Writes `design_approvals`, notifies the designer and PM. |
 
-### Stages
-
-| Method | Path | Who | Purpose |
+### Procurement (PO chain, `0020`)
+| ✅ | Function | Who | Effect |
 |---|---|---|---|
-| GET | `/stages/{id}` | pm, workshop | stage + checklist |
-| PATCH | `/stages/{id}/assign` | pm | `{assignee_id, start, due, bay_id}` (Assign Task) |
-| PATCH | `/stages/{id}` | pm | edit dates → downstream reschedule |
-| POST | `/stages/{id}/checklist/{itemId}/toggle` | workshop | tick a sub-step |
-| POST | `/stages/{id}/photos` | workshop | add progress photo(s) (multipart, offline-syncable) |
-| POST | `/stages/{id}/submit` | workshop | Mark complete → submit for PM approval (+photos) |
-| POST | `/stages/{id}/approve` | pm | approve submitted stage |
-| POST | `/stages/{id}/reject` | pm | request changes |
-| POST | `/stages/{id}/delay` | pm | `{reason_code, days, note}` → downstream reschedule + client notified |
+| ✅ | `fn_create_po(p_vendor?, p_project?, p_order_date?, p_delivery_date?, p_lines jsonb, p_notes?, p_payment_terms?, p_ship_to?, p_requirement?, p_stock_request?) → uuid` | admin · procurement | **The only way to create a PO.** `p_lines = [{item_catalog_id, qty, unit_price, tax_rate, hsn_code, description}]`. Computes totals and the `PO-00001` number. A project PO goes to `pending_pm`; a general one to `pending_final`. Parks the linked requirement or stock request as `ordered`. |
+| ✅ | `fn_pm_sign_po(p_po, p_note?)` | admin · the PO's `pm_id` | pending_pm → pending_final, notifies admins. |
+| ✅ | `fn_final_approve_po(p_po, p_note?)` | admin | pending_final → approved, notifies the submitter and PM. |
+| ✅ | `fn_reject_po(p_po, p_reason)` | admin (either step) · PM (own, at pending_pm) | A reason is required. → rejected, notifies the submitter (and the PM if the owner rejected). |
+| ✅ | `fn_resubmit_po(p_po, p_vendor?, p_delivery_date?, p_lines?, p_notes?, p_payment_terms?, p_ship_to?)` | admin · procurement | rejected → back into the chain from the top. Header fields only apply when `p_lines` is passed. |
+| ✅ | `fn_set_po_priority(p_po, p_priority)` | admin | Override `critical / high / medium / low`; `null` = automatic. |
+| ✅ | `fn_receive_po(p_po)` | admin · procurement · store | Must be dispatched / partial. Marks the PO received and writes a GRN. Adds stock for **bulk** lines only. Closes the requirements and stock requests. ⚠️ No row lock. |
+| ✅ | `fn_request_stock(p_item, p_qty, p_note?) → uuid` | admin · store | Creates a `stock_requests` row and notifies procurement and admin. |
 
-### Templates, Schedule, Bays
+Dispatch is **not** an RPC: the app UPDATEs `purchase_orders.status = 'dispatched'`, and `trg_po_require_approval` refuses it until the PO is approved.
 
-| Method | Path | Who | Purpose |
+### Store / recall
+| ✅ | Function | Who | Effect |
 |---|---|---|---|
-| GET/POST/PATCH | `/templates`, `/templates/{id}` | admin | workflow templates + stage durations/deps |
-| GET | `/schedule?week=` | pm, workshop | week view (stages by day) |
-| GET | `/bays` | pm | bay allocation |
-| PATCH | `/bays/{id}` | pm | assign/free a bay |
+| ✅ | `fn_recall(p_item) → (project_id, project_code, serial, status)` | staff (via RLS) | Every truck with that catalog item installed. |
+| ✅ | `fn_recall_notify(p_item, p_note?) → int` | admin · store · service | Notifies each affected build's PM and client. |
 
----
-
-## 5. Scheduling & Procurement Requirements — *Hero #1*
-
-| Method | Path | Who | Purpose |
+### Service
+| ✅ | Function | Who | Effect |
 |---|---|---|---|
-| GET | `/procurement/requirements?status=&project=&due=` | procurement | **To-Order list** with computed `order_by_date`, sorted by urgency |
-| GET | `/procurement/requirements/{id}` | procurement | one requirement |
+| ✅ | `fn_create_ticket(p_project, p_category, p_description, p_priority='medium', p_component?) → uuid` | admin · service | A ticket raised on the client's behalf. Triggers set the number and SLA and notify. |
+| ✅ | `fn_assign_ticket(p_ticket, p_technician)` | admin · service | Technician must be service / workshop. open → in_progress. Notifies the technician. |
+| ✅ | `fn_schedule_visit(p_ticket, p_technician, p_when, p_note?) → uuid` | admin · service | Cancels any live booking, books a new one, notifies the technician and client. |
+| ✅ | `fn_resolve_ticket(p_ticket, p_resolution, p_note)` | admin · service | The note is required (the client reads it). Marks the ticket resolved and its visits done, and notifies the client. |
+| ✅ | `fn_close_ticket(p_ticket)` | admin · service | Only after it is resolved. |
+| ✅ | `fn_reopen_ticket(p_ticket, p_reason?)` | *no check* ⚠️ | resolved / closed → in_progress, **high** priority, new 4h SLA. Notifies service, admin and the assignee. |
+| ✅ | `fn_warranty_search(p_q?)` | staff | Searches serial, item, model and project. Limit 100. |
+| ✅ | `fn_warranty_expiring(p_days=60)` | staff | Per build: parts whose warranty ends within N days. |
 
-> `order_by_date = needed_by_date − item.lead_time_days − item.buffer_days`. A **daily scheduler job** recomputes these when any stage date shifts and pushes alerts/escalations for `pending` items whose `order_by_date` is near/past.
-
----
-
-## 6. Procurement — Vendors, POs, Receiving
-
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/vendors?search=` | admin, procurement | vendor list + reliability scores |
-| POST | `/vendors` | procurement | add vendor |
-| GET | `/vendors/{id}` | procurement | vendor detail (lead time, perf, orders) |
-| GET | `/pos?status=&project=` | procurement, admin | purchase orders |
-| POST | `/pos` | procurement | **Create PO** — `{vendor_id, project_id, lines:[{item_catalog_id, qty}], expected_date}`. Links requirements → `status=ordered` |
-| GET | `/pos/{id}` | procurement | PO detail (status stepper, lines) |
-| PATCH | `/pos/{id}/status` | procurement | ordered → dispatched |
-| POST | `/pos/{id}/receive` | store | **Goods receipt (GRN)** — `{lines:[{po_line_id, received_qty}], status, note}`. Creates COMPONENT_INSTANCE rows / updates STOCK |
+### Helpers (used inside RLS and RPCs)
+`my_role()`, `is_admin()`, `is_staff()`, `has_role(text[])`, `my_client_account()`, `is_pm_of(project)`,
+`is_pm_of_stage(stage)`, `is_stage_assignee(stage)`, `fn_infer_discipline(name)`, `fn_sla_hours(priority)`,
+`fn_notify(…)`, `fn_notify_client(…)`, `fn_notify_role(…)`, `fn_audit(…)`.
+⚠️ The definer helpers are executable by every role over RPC (no `REVOKE`); see `WORKFLOW_AUDIT.md` H2.
 
 ---
 
-## 7. Inventory & Traceability — *Hero #2*
+## 4. Views read by the app
 
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/components?search=&model=&project=&warranty=` | store, admin, service | search tracked components |
-| POST | `/components` | store | **Log component at intake** — `{item_catalog_id, serial_number, vendor_id, grn_id, warranty_start, warranty_end}` + `bill_file` (multipart) |
-| GET | `/components/{id}` | store, service | digital-twin record (serial, bill, warranty, truck) |
-| POST | `/components/{id}/install` | workshop | **Scan to install** — `{project_id, stage_id}` → sets installed_* + `status=installed`. No bill re-entry |
-| GET | `/components/recall?model=` | store, admin | **Recall check** — all trucks with a given model |
-| POST | `/components/recall/notify` | store, admin | notify all affected clients |
-| GET | `/stock?low=&category=` | store | stock levels + low flags |
-| PATCH | `/stock/{id}` | store | adjust quantity |
+`v_order_due` · `v_po_pending_approvals` · `v_ops_board` · `v_project_delays` · `v_truck_components`
+(columns in [`DataModel.md`](DataModel.md) §4).
 
 ---
 
-## 8. Design & Approvals
+## 5. Direct table writes the app makes (allowed by RLS; no RPC)
 
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/designs?status=&mine=` | design | My Designs / Library |
-| GET | `/projects/{id}/designs` | design, pm | designs for a project |
-| POST | `/projects/{id}/designs` | design | create design artifact |
-| POST | `/designs/{id}/versions` | design | **Upload new version** (multipart file + change_note) |
-| GET | `/designs/{id}` | design | design + version history |
-| POST | `/designs/{id}/send-approval` | design | send current version to client (notifies client) |
-| GET | `/designs/approvals?status=` | design | approvals tracker |
-| POST | `/design-versions/{id}/approve` | client | approve |
-| POST | `/design-versions/{id}/request-changes` | client | `{feedback}` |
-
----
-
-## 9. Service — Tickets & Visits *(post-delivery)*
-
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/tickets?status=&sla=` | service | ticket queue (SLA sorted) |
-| GET | `/tickets/{id}` | service | ticket + **auto-linked component + warranty** |
-| PATCH | `/tickets/{id}/assign` | service | assign to agent |
-| POST | `/tickets/{id}/resolve` | service | `{resolution_type, note}` → notify client |
-| POST | `/tickets/{id}/visits` | service | **Schedule visit** — `{technician_id, scheduled_date}` |
-| GET | `/service/trucks?search=` | service | delivered trucks (open-ticket flags) |
-| GET | `/service/trucks/{id}/history` | service | truck service history + components |
-| GET | `/warranty?search=` | service | warranty lookup (active/expiring/expired) |
+| Write | Where in the app |
+|---|---|
+| `projects` insert (then `fn_onboard_project`) | Admin → Onboard project |
+| `projects.target_delivery_date` update (then `fn_recompute_schedule(…, true)`) | PM → build → Delivery date; Log delay with push |
+| `procurement_requirements` insert / update / delete | PM → build → Materials |
+| `delay_logs` insert | PM → build → Log a delay |
+| `documents` insert (after upload to `builds/docs/`) | Build → Overview → Add document |
+| `workflow_templates`, `template_stages`, `template_stage_items`, `template_stage_checks` inserts | Onboard → Template "New" |
+| `item_catalog` insert | inline "New item" (New PO, Materials, Create template; also attempted by Store, which RLS refuses) |
+| `vendors` insert | Procurement → Vendors → Add vendor |
+| `company_settings` update | Admin → Team → Company details |
+| `purchase_orders` update to dispatched + `expected_date` | Procurement → Mark dispatched |
+| `component_instances` insert | Store → Log component |
+| `checklist_items.done` update | Workshop → Task detail |
+| `attachments` insert | Workshop stage photo; client ticket photo |
+| `tickets` insert | Client → Raise request |
+| `design_artifacts` insert / update, `design_versions` insert (v1) | Design → New design; Submit for approval |
+| `sub_teams` insert, `profiles.sub_team_id` update | Admin → Add member |
+| `notifications.read` update | Notifications → Mark all read |
 
 ---
 
-## 10. Client-facing — *scoped to the logged-in client (multi-project aware)*
+## 6. Storage
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/me/projects` | **My Trucks** — all projects under this client (list; app shows selector if >1) |
-| GET | `/me/projects/{id}` | one truck dashboard: progress %, current stage, ETA, status |
-| GET | `/me/projects/{id}/timeline` | friendly build journey |
-| GET | `/me/projects/{id}/photos` | build photo gallery |
-| GET | `/me/projects/{id}/documents` | contract, invoices, warranty pack, handover |
-| GET | `/me/designs/pending` | designs awaiting my approval (across my projects) |
-| POST | `/me/design-versions/{id}/approve` \| `/request-changes` | approve / feedback |
-| GET | `/me/projects/{id}/tickets` | my requests for this truck |
-| POST | `/me/projects/{id}/tickets` | **Raise a request** — `{category, description}` + photos |
-| GET | `/me/tickets` | all my requests across trucks |
-
-> All `/me/...` endpoints resolve the client from the token and enforce that the `project_id` belongs to them. This is how **one client with multiple projects** is handled end-to-end.
+`uploadToBuilds()` writes `builds/<folder>/<ms>_<name>` with `upsert`. Folders: `stages/<id>`,
+`tickets/<id>`, `bills`, `docs/<projectId>`. Design files go to `designs/<uid>/<ms>_<name>`. Both buckets are
+public-read and the app stores public URLs.
 
 ---
 
-## 11. Cross-cutting
+## 7. Errors
 
-| Method | Path | Who | Purpose |
-|---|---|---|---|
-| GET | `/notifications` | all | user's notifications |
-| POST | `/notifications/read-all` | all | mark all read |
-| POST | `/notifications/{id}/read` | all | mark one read |
-| POST | `/attachments` | internal roles | upload photo/file (multipart) `{owner_type, owner_id}` |
-| GET | `/documents/{id}/download` | admin, client(own) | download a document |
-| GET | `/analytics/fleet` | admin | on-track/at-risk/delayed, on-time %, trend |
-| GET | `/analytics/delay-reasons` | admin | top delay reasons |
-| GET | `/analytics/vendors` | admin, procurement | vendor performance |
-| GET | `/audit?entity=` | admin | activity log |
+RPCs raise readable messages ("Only this build's project manager can assign its stages.", …).
+`friendlyError(e)` shows them as-is and maps the generic codes:
 
----
-
-## 12. Key flows (endpoint sequences)
-
-**Onboard a project (Admin)**
-`POST /projects` → server generates stages + `order_by_date`s → `POST /users`(if new client login) → client & PM notified.
-
-**Order-by lifecycle (Procurement)**
-Daily job flags `GET /procurement/requirements` → `POST /pos` → `PATCH /pos/{id}/status` (dispatched) → `POST /pos/{id}/receive` (Store, creates components).
-
-**Part into a truck (Store → Workshop)**
-Store `POST /components` (serial+bill+warranty) → Workshop `POST /components/{id}/install` (scan → truck+stage).
-
-**Design approval (Design ↔ Client)**
-`POST /designs/{id}/versions` → `POST /designs/{id}/send-approval` → client `POST /me/design-versions/{id}/approve`.
-
-**Stage done (Workshop → PM → Client)**
-`POST /stages/{id}/submit` → PM `POST /stages/{id}/approve` → project progress recomputed → client sees update.
-
-**Recall (Store)**
-`GET /components/recall?model=` → `POST /components/recall/notify`.
-
-**Post-delivery issue (Client → Service)**
-Client `POST /me/projects/{id}/tickets` → Service `GET /tickets/{id}` (warranty auto-pulled) → `POST /tickets/{id}/resolve` or `/visits`.
+| Code | Message |
+|---|---|
+| `23505` duplicate | "That project code is already used by another build." / "That record already exists." |
+| `42501` / RLS | "You do not have permission to do that." |
+| `23503` | "Something this depends on is missing — refresh and try again." |
+| `23502` | "A required field is missing." |
+| Edge Function error | the function's `error` text |
 
 ---
 
-## 13. Realtime / notifications (delivery)
+## 8. Key flows as calls
 
-- **Push (FCM)** for alerts: order-by due, stage assigned, approval needed, ticket raised, SLA breach.
-- **WebSocket / polling** for live dashboards (fleet health, ticket queue).
-- **WhatsApp/SMS** (later phase) for client milestone updates.
-
----
-
-*Azimuth BuildTrack · API Design · v1 · derived from data model + role UIs*
+- **Onboard:** insert `projects` → `fn_onboard_project` (`createClientLogin` → `admin-create-member` first, if the client is new).
+- **Assign → do → approve:** `fn_assign_stage` → `fn_start_stage` → `fn_install_component` + attachments
+  insert → `fn_submit_stage` → `fn_decide_stage`.
+- **Order-by → PO → stock:** `v_order_due` → `fn_create_po(p_requirement)` → `fn_pm_sign_po` →
+  `fn_final_approve_po` → update to dispatched → `fn_receive_po`.
+- **Store reorder:** `fn_request_stock` → Procurement `fn_create_po(p_stock_request)` → …
+- **Design loop:** design_artifacts + v1 insert → status update to pending_approval → client
+  `fn_client_decide_design` → `fn_add_design_version` for revisions.
+- **Recall:** `fn_recall` → `fn_recall_notify`.
+- **After-sales:** `fn_mark_delivered` → client tickets insert, or `fn_create_ticket` → `fn_assign_ticket` →
+  `fn_schedule_visit` → `fn_resolve_ticket` → `fn_close_ticket`, or a client `fn_reopen_ticket`.

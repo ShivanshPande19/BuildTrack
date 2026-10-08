@@ -1,8 +1,14 @@
 # BuildTrack — UX / Navigation Audit (Tier 3 blueprint)
 
-**Status:** proposal / blueprint. No code changed by this document — it maps what exists,
-names the confusion, and proposes a cleaner information architecture (IA) to implement
-next, so we agree on the target before touching screens.
+**Status (7 Oct 2026):** roadmap items **#1, #2 and #5 shipped** in PR #46: the canonical `BuildScreen`,
+the role-mode banner, and a stable FAB per role. **#3, #4, #6 and #7 are open.** §1–§4 below are the
+original blueprint (written before PR #46). The ✅/⬜ marks in §5 and the new §7 give the current state.
+
+| Finding | State |
+|---|---|
+| D (Admin's 3–4 ways into a build) · C (one screen, four hidden modes) | ✅ every entry point opens `BuildScreen`; the banner shows the mode |
+| G (FAB changes per tab) | ✅ Admin = Onboard project; Procurement = New PO, on every tab |
+| E (a stage drawn by three screens) · A (two Profile patterns) · F (PO spread over 7 surfaces) · B · H | ⬜ open |
 
 **Why this exists:** the app is functionally complete, but it *feels* confusing —
 "the same thing is reachable from two places" and it isn't always clear what a screen is
@@ -20,14 +26,14 @@ Each role logs in → `role_home.dart` routes to that role's home shell (a float
 
 | Role | Tabs | FAB (＋) does | Profile reached via |
 |---|---|---|---|
-| 👑 Admin | Home · Projects · Team · Insights | **Team tab → Add member, every other tab → Onboard project** | avatar → `ProfileScreen` |
-| 📋 PM | My Builds · Projects · Schedule · Team | Assign work | avatar → `ProfileScreen` |
-| 🛒 Procurement | To Order · Orders · Receive · Vendors | **Vendors tab → Add vendor, else → New PO** | avatar → `ProfileScreen` |
+| 👑 Admin | Home · Projects · Team · Insights | **Team tab → Add member, every other tab → Onboard project** *(now always Onboard project)* | avatar → `ProfileScreen` |
+| 📋 PM | Home · Projects · Schedule · Team | Assign work | avatar → `ProfileScreen` |
+| 🛒 Procurement | To Order · Orders · Receive · Vendors | **Vendors tab → Add vendor, else → New PO** *(now always New PO)* | avatar → `ProfileScreen` |
 | 📦 Store | Inbox · Stock · Parts | Log component (scan) | avatar → `ProfileScreen` |
 | 🔧 Workshop | Tasks · Parts · Week | Scan to install | avatar → `ProfileScreen` |
 | 🎨 Design | Studio · Designs · Approvals | New design | avatar → `ProfileScreen` |
 | 🛠️ Service | Tickets · Trucks · Warranty · **Profile** | New ticket | **inline Profile tab** |
-| 🙋 Client | My Trucks · Support · **Profile** | (raise request from a truck) | **inline Profile tab** |
+| 🙋 Client | My Trucks · Support · **Profile** | Raise request (truck picker if more than one) | **inline Profile tab** |
 
 Every header carries a **bell → `NotificationsScreen`** and (for 6 roles) an
 **avatar → `ProfileScreen`**.
@@ -164,15 +170,15 @@ than four unrelated tabs. Lower priority than the build/stage work.
 
 ## 5. Prioritized roadmap
 
-| # | Change | Fixes | Impact | Effort | Notes |
+| # | Change | Fixes | Impact | Effort | State |
 |---|---|---|---|---|---|
-| 1 | **Canonical `BuildScreen` with tabs** + deep-link all entry points to it | D, C | 🔴 highest | L | Fold Detail + Dossier + Requirements + TruckRecord; Command Center becomes a lens. Do this first — it removes the biggest confusion. |
-| 2 | **Explicit role-mode banner** on the build screen | C | high | S | Can ship even before full consolidation as a quick win. |
-| 3 | **Shared `StageEvidence` widget** | E | med | M | Also removes drift bugs between the 3 copies. |
-| 4 | **Unify Profile** (one pattern, one body) | A | med | S–M | Consistency + discoverability. |
-| 5 | **Stable FAB per role**; move secondary creates into tab headers | G | med | S | Small but reduces misfires. |
-| 6 | **PO one-detail consolidation** | F | med | L | Second wave; larger. |
-| 7 | Bell-only notifications; unify back affordance | B, H | low | S | Cleanup pass. |
+| 1 | **Canonical `BuildScreen` with tabs** + deep-link all entry points to it | D, C | 🔴 highest | L | ✅ PR #46. Overview · Pipeline · Materials · Record; Command Center rows open it. |
+| 2 | **Explicit role-mode banner** on the build screen | C | high | S | ✅ PR #46 (on the Overview tab). |
+| 3 | **Shared `StageEvidence` widget** | E | med | M | ⬜ |
+| 4 | **Unify Profile** (one pattern, one body) | A | med | S–M | ⬜ (Service and Client still have their own Profile tab) |
+| 5 | **Stable FAB per role**; move secondary creates into tab headers | G | med | S | ✅ PR #46. Add member is in the Team tab, Add vendor in the Vendors tab. |
+| 6 | **PO one-detail consolidation** | F | med | L | ⬜ |
+| 7 | Bell-only notifications; unify back affordance | B, H | low | S | ⬜ |
 
 Suggested sequencing: **#2 (quick win) → #1 (the big one) → #3 → #4 → #5**, then #6/#7.
 
@@ -189,5 +195,31 @@ Suggested sequencing: **#2 (quick win) → #1 (the big one) → #3 → #4 → #5
 4. **Scope of the first PR:** just #1+#2 (the build consolidation — highest impact), or a
    wider sweep including #3–#5?
 
-> Nothing here is built yet. Once you pick answers to §6 (especially #1 and #4), the
-> first implementation PR is the canonical Build screen — everything else stacks on top.
+> **Answered by PR #46:** #2: the tabs are `Overview · Pipeline · Materials · Record` · #3: the Command
+> Center stays as a separate "needs attention" lens whose rows open the build screen · #4: the first PR
+> did #1 + #2 + #5. **Still open:** #1 (Profile pattern).
+
+---
+
+## 7. What's left after PR #46 (from the 7 Oct 2026 code read)
+
+- **Dead code from the old fork.** `ProjectDetailScreen` / `ProjectDossierScreen` still contain their
+  non-embedded navigation cards ("Materials & order-by", "Pipeline & delays", "Truck record", "Open build
+  controls"). Only the other one can open them, so they're unreachable. Delete them.
+- **Duplicates inside the build screen.**
+  - The stage list renders on Overview ("Build stages") **and** Pipeline ("The pipeline").
+  - Documents appear on Overview (with Add) **and** Record (read-only).
+  - The delivery date appears on Overview and in the Pipeline summary.
+- **Dead-end rows.** These look tappable but go nowhere:
+  - PM Home's at-risk builds ("tag reason & reschedule") and "Today's stages";
+  - Admin Home's "Needs attention";
+  - the Design carousel cards;
+  - To Order's "Upcoming" rows;
+  - notifications.
+- **Admin is "read-only" but can Add document.** That card isn't gated by any flag.
+- **PM Schedule opens `BuildScreen` without `initial`**, so the header falls back to "BUILD" / "Build".
+- **Inconsistent labels.**
+  - At-risk is sky blue on Admin Home but amber everywhere else.
+  - "Insights" (nav) vs "Analytics" (title), "Parts" vs "Components", "Trucks" vs "Delivered".
+  - "Mark dispatched" vs "Mark as dispatched", "Receive & verify" vs "Mark as received".
+- **Tab state resets on switch.** `TabSwitcher` keeps a single child, so filters reset when you change tabs.

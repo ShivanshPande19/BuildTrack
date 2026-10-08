@@ -2,18 +2,32 @@
 
 How adding a team member works end-to-end, and the one-time setup it needs.
 
-## The flow
+## Two ways to add someone (both use the `admin-create-member` Edge Function)
 
-1. **Admin** → Team tab → `+` → fills name, email, role → **Send invite**.
+| Path | Where | Needs SMTP? |
+|---|---|---|
+| **Admin sets the password** (the default) | Admin → Team → **Add member**: name, email, **password** (≥ 6), role. A dialog shows the credentials to share. | No |
+| **Email invite** (this document) | Admin → ＋ Onboard project → Client → **New**, with *"Set a password now"* **unticked** | Yes |
+
+Team → Add member **always** sends a password, so the invite path is only reachable for client
+logins created during onboarding. The Edge Function itself supports invites for every role.
+
+## The invite flow
+
+1. **Admin** → Onboard project → Client → **New** → business name, contact, login email, phone, with
+   "Set a password now" unticked → **Create client**.
 2. App calls the `admin-create-member` Edge Function, which:
    - verifies the caller is an admin,
-   - calls `inviteUserByEmail(email, { data: { full_name, role, needs_password: true }, redirectTo })` — **Supabase emails the invite**,
-   - inserts the `profiles` row with `status = 'invited'` (and a `client_accounts` row if role = client).
+   - calls `inviteUserByEmail(email, { data: { full_name, role, needs_password: true }, redirectTo })`. **Supabase emails the invite.**
+   - inserts the `profiles` row with `status = 'invited'`, plus the `client_accounts` row (`contact_user_id` = the new user).
 3. **Member** gets the email → taps the link → the app opens via the deep link
    `io.supabase.buildtrack://login-callback/` → a session is created.
 4. The router sees `needs_password == true` → shows **Set your password**.
-5. Member sets a password → `updateUser(password, data:{needs_password:false})` →
-   profile flips to `status = 'active'` → app opens to their role home.
+5. Member sets a password → `updateUser(password, data:{needs_password:false})` → the app opens to their role home.
+
+> ⚠️ **Known gap:** step 5 also tries `profiles.update({status: 'active'})`, but RLS lets only an
+> admin update `profiles`, so the update is silently refused. The member works normally but stays
+> `invited` in the Team list (`PROJECT_LOG.md` §3 #4).
 
 No password is ever generated or handled by the app. ✅
 
@@ -106,7 +120,7 @@ Inside the `<activity android:name=".MainActivity" ...>` element, add:
 > failure is silent — the app builds and runs, invites just never complete.
 
 ### 5. Re-deploy the Edge Function
-Dashboard → Edge Functions → `admin-create-member` → paste the updated
+Only if it's older than 30 Jul 2026 (the last change). Dashboard → Edge Functions → `admin-create-member` → paste
 `supabase/functions/admin-create-member/index.ts` → Deploy.
 (Optional: set a function secret `INVITE_REDIRECT_URL` = the deep link, so it works
 even if a caller doesn't pass `redirect_to`.)
@@ -115,7 +129,7 @@ even if a caller doesn't pass `redirect_to`.)
 
 ## Testing
 
-1. Add a member with a **real email you can open**.
+1. Onboard a project with a **New** client, "Set a password now" unticked, and a **real email you can open**.
 2. Open the email on the same device/simulator running the app; tap the link.
 3. App should open on **Set your password**; set one; you land on the role home.
 4. Log out and back in with that email + new password to confirm.

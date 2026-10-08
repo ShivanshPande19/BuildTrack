@@ -7,27 +7,35 @@
 ## 1. The golden data-flow chain (create → consume)
 
 ```
-MASTER DATA (templates, item_catalog, vendors)     ← Admin / Procurement set up once
+MASTER DATA  templates (+BOM +checklist), item_catalog, vendors, company_settings   ← Admin / Procurement / PM
         │
         ▼
-Admin ── onboard project ──► creates: project, stages (from template), procurement_requirements, client_account, client login
+Admin ── onboard project ──► project, stages (+discipline, +checklist), procurement_requirements (from BOM),
+        │                    client_account + client login (inline), PM assigned (required)
         │
-        ├──► Procurement  reads requirements ─► creates Purchase Orders ─► marks requirement "ordered"
-        │            │
-        │            ▼
-        ├──► Store   reads POs ─► Goods Receipt ─► creates component_instances (serial + bill + warranty)  +  stock
-        │            │
-        │            ▼
-        ├──► Workshop reads assigned stages + in_stock components ─► "scan to install" (links component → truck/stage)
-        │            │                                            ─► add photos (attachments)
-        │            ▼                                            ─► submit stage (stage_approvals)
-        ├──► PM       assigns stages (feeds Workshop) ─► approves stage_approvals ─► stage=done ─► progress recompute
-        │            │
-        │            ▼
-        ├──► Client   reads own project: progress, stages, photos, documents ─► approves designs ─► raises tickets
+        ├──► PM          assigns stages (fn_assign_stage) · edits materials · delivery date · logs delays
         │
-        ├──► Design (P2)  creates design_versions ─► send for approval ─► Client approves
-        └──► Service (P2) reads tickets (from Client) + component warranty (from Store) ─► resolves
+        ├──► Procurement reads v_order_due ─► fn_create_po ─► PM signs ─► Admin approves (0020)
+        │            │                                     ─► mark dispatched ─► fn_receive_po
+        │            │       fn_receive_po: GRN + bulk stock_items + requirement/stock_request "received"
+        │            ▼
+        ├──► Store       logs component_instances (serial + bill + warranty) ─► in_stock
+        │                low essentials ─► fn_request_stock ─► back to Procurement as a general PO
+        │            │
+        │            ▼
+        ├──► Workshop    assigned stage ─► fn_start_stage ─► fn_install_component (in-stock part → truck/stage)
+        │                ─► photos (attachments) + checklist ─► fn_submit_stage
+        │            │
+        │            ▼
+        ├──► PM          fn_decide_stage ─► done + next stage auto-starts (or rework + reason) ─► progress/status
+        │
+        ├──► Design      design_artifacts/versions for assigned builds ─► client approves (fn_client_decide_design)
+        │                approved .glb ─► 3D showcase everywhere
+        │
+        ├──► Client      own trucks: progress, stage photos, documents, designs ─► raises tickets
+        │
+        └──► Service     PM fn_mark_delivered ─► tickets (client / fn_create_ticket) ─► assign ─► visit ─► resolve ─► close
+                         client can fn_reopen_ticket
 ```
 
 ---
@@ -36,30 +44,34 @@ Admin ── onboard project ──► creates: project, stages (from template),
 
 | Role | NEEDS (must exist first) | PRODUCES (consumed by) |
 |---|---|---|
-| **Admin** | workflow_templates, item_catalog, vendors | projects, stages, procurement_requirements, client_accounts, users/roles → **everyone** |
-| **Procurement** | projects + requirements (Admin), vendors, item_catalog | purchase_orders, po_lines, requirement status → **Store** |
-| **Store** | purchase_orders (Procurement), item_catalog, vendors | component_instances (in_stock), goods_receipts, stock → **Workshop, Service** |
-| **Workshop** | stages assigned (PM/Admin), component_instances in_stock (Store) | installed components, attachments (photos), stage_approvals → **PM, Client** |
-| **PM** | projects assigned (Admin), stages, stage_approvals (Workshop) | stage assignments (→Workshop), approved stages, progress → **Client** |
-| **Client** | own project (Admin), stages/photos, documents, design_versions (Design) | design approvals (→Design), tickets (→Service) |
-| **Design** (P2) | project (Admin) | design_artifacts/versions → **Client** |
-| **Service** (P2) | delivered projects, tickets (Client), component warranty (Store) | resolutions, service_visits |
+| **Admin** | workflow templates (+BOM/checklist), item_catalog, vendors, PMs | projects, stages, requirements, client_accounts + logins, members, PM assignment, PO final approval → **everyone** |
+| **PM** | projects where `pm_id = me` (Admin), stages, stage_approvals (assignees), POs on my builds (Procurement) | stage assignments (→ doers), materials edits, delivery date, delay_logs, documents, approvals, PO signatures, delivery → **all** |
+| **Procurement** | requirements (onboarding/PM), stock_requests (Store), vendors, item_catalog, company_settings | purchase_orders (+lines, approval trail), dispatch, goods_receipts, bulk stock → **PM/Admin (to sign), Store** |
+| **Store** | item_catalog, vendors, bulk stock (from receipts) | component_instances (in_stock, bill, warranty), stock_requests, recall notices → **Workshop, Service, Procurement** |
+| **Workshop** | stages assigned (PM), component_instances in_stock (Store) | started/submitted stages, installed parts, photos, checklist ticks → **PM, Client** |
+| **Design** | builds where I hold a stage (PM) | design_artifacts/versions, approved `.glb` → **Client, Admin, PM** |
+| **Client** | own projects (Admin), stage photos, documents, designs awaiting approval | design decisions (→ Design/PM), tickets + reopen (→ Service) |
+| **Service** | delivered projects (PM `fn_mark_delivered`), tickets (Client), component warranty (Store) | assignments, visits, resolutions → **Client** |
 
 ---
 
 ## 3. Shared repositories (touched by multiple roles)
 
-Build these as **shared** methods so no role re-implements them:
+All in `app/lib/data/repositories.dart` (one Riverpod `Provider` per repo, e.g. `projectsRepoProvider`).
+Extend the repo that owns the data. Don't re-query it from a screen.
 
-| Repository | Tables | Used by |
+| Repository | Owns | Used by |
 |---|---|---|
-| `ProjectsRepo` | projects, stages | Admin(create/read), PM(read/update), Procurement(read), Store(read), Workshop(read/update), Client(read) |
-| `CatalogRepo` | item_catalog, vendors | Admin/Procurement(write), Store/Workshop(read) |
-| `ProcurementRepo` | procurement_requirements, purchase_orders, po_lines | Admin(create reqs), Procurement(read/write) |
-| `ComponentsRepo` | component_instances, goods_receipts, stock_items | Store(create), Workshop(install), Store/Service(read), recall |
-| `PeopleRepo` | profiles, client_accounts | Admin(manage), all(read own) |
-| `NotificationsRepo` | notifications | all |
-| `AttachmentsRepo` | attachments | Workshop(create), Client(read) |
+| `ProjectsRepo` | projects, stages, `v_order_due`, `v_ops_board`, `v_project_delays`, `v_truck_components`, requirements, assignment (`fn_assign_stage`), delay_logs, documents, delivery date, `fn_mark_delivered`, stage approvals (`fn_decide_stage`), stage bundle (photos/checklist/parts/delays) | Admin, PM, Design (assigned builds), Client (detail) |
+| `AdminRepo` | templates (+items/checks), client accounts, PMs, members + sub-teams (Edge Functions), onboarding, `fn_assign_pm` | Admin |
+| `PmRepo` | my projects, active stages, schedule, workload | PM |
+| `ProcurementRepo` | POs + approval chain RPCs, `v_po_pending_approvals`, priority, dispatch, `fn_receive_po`, vendors, item_catalog (+essentials, `createItem`), stock_requests, company_settings, PO document data | Procurement, PM, Admin, Store (`createItem`) |
+| `StoreRepo` | components, stock (bulk + serialized on-hand), `fn_request_stock`, recall, log component, bills | Store |
+| `WorkshopRepo` | my tasks, `fn_start_stage` / `fn_submit_stage`, checklist toggle, `fn_install_component`, stage photos, serial lookup | Workshop |
+| `DesignRepo` | design artifacts/versions, `fn_add_design_version`, uploads to `designs`, approved model URL | Design, Client/Admin/PM (3D showcase) |
+| `ClientRepo` | my trucks, photos, documents, designs, `fn_client_decide_design`, tickets + ticket photos, `fn_reopen_ticket` | Client |
+| `ServiceRepo` | tickets + service RPCs, visits, technicians, delivered trucks, truck history, warranty search | Service |
+| `NotificationsRepo` | notifications, mark all read | everyone |
 
 ---
 
@@ -73,14 +85,20 @@ Build these as **shared** methods so no role re-implements them:
 
 ## 5. Screen-level dependency matrix (detailed)
 
+Writes in **bold** are direct table writes; everything else goes through the named RPC.
+
 ### Admin
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| Dashboard | projects, v_order_due | — | projects onboarded |
-| Onboard project | templates, clients, PMs | projects, stages, requirements | master data (templates/items/vendors) |
-| Projects / detail | projects, stages | project fields | — |
-| Team / Add member | profiles | profiles (create+role); **if role=client → also create client_account** (contact_user_id = new user) | — |
-| Analytics | projects, delay_logs, vendors | — | data over time |
+| Home (fleet) | projects (after `fn_refresh_all_statuses`), v_order_due, v_po_pending_approvals, notifications | — | projects onboarded |
+| Command Center | v_ops_board | — | stages started (`days_in_stage`), assignees |
+| PO approvals | v_po_pending_approvals | `fn_final_approve_po`, `fn_reject_po`, `fn_set_po_priority` | Procurement raised / PM signed |
+| Onboard project | templates, client_accounts (with login), PMs | **projects** → `fn_onboard_project`; client login via `admin-create-member` | template with stages; a PM exists |
+| Create template | item_catalog | **workflow_templates, template_stages, template_stage_items, template_stage_checks** | catalog items |
+| Projects → build screen | projects, stages, profiles (PMs) | `fn_assign_pm`; **documents** | — |
+| Team / Add member | profiles, sub_teams | `admin-create-member` (+ client_account if role = client), `admin-delete-member`; **sub_teams, profiles.sub_team_id** | — |
+| Company details | company_settings | **company_settings** | — |
+| Insights | projects | — | statuses computed |
 
 > **Client sourcing rule:** a `client_account` and its **login are always created together** —
 > either from Team → Add member (`role='client'`) or inline from **Onboard Project → Client → ＋ New**
@@ -90,48 +108,71 @@ Build these as **shared** methods so no role re-implements them:
 > login is unreachable (`my_client_account()` returns null, so RLS matches no rows) and the client
 > could never see their truck. Legacy login-less rows are hidden and counted in a hint on the screen.
 
+### PM
+| Screen | Reads | Writes | Depends on |
+|---|---|---|---|
+| Home / Projects | projects (`pm_id = me`), stages (in progress) | — | Admin set `pm_id` |
+| Assign work / assign sheet | stages (unassigned or rework), profiles (doers), workload | `fn_assign_stage` | stage has a discipline |
+| Approvals | stage_approvals (`approver_id = me`) + stage bundle | `fn_decide_stage` | **assignee submitted** |
+| PO approvals | v_po_pending_approvals (`pm_id = me`) | `fn_pm_sign_po`, `fn_reject_po` | Procurement raised a project PO |
+| Build → Materials | procurement_requirements | **requirements** → `fn_recompute_schedule` | onboarding (BOM) |
+| Build → Overview | projects, stages, documents | **target_delivery_date**, **delay_logs**, **documents**; `fn_mark_delivered` | — |
+| Schedule | stages (`assigned_due` → `planned_end`), profiles | — | assigned dates / backward schedule |
+| Team | stages (open, per assignee) | — | — |
+
 ### Procurement
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| To-Order | v_order_due | purchase_orders, po_lines, requirement status | Admin onboarded (requirements exist) |
-| POs / detail | purchase_orders, po_lines | po status | POs created |
-| Receive/GRN | purchase_orders | goods_receipts, component_instances/stock | PO exists |
-| Vendors | vendors | vendors | — |
+| To Order | v_order_due, stock_requests | → New PO | requirements exist (onboarding/PM); Store requests |
+| New PO / Fix & resubmit | projects, vendors, item_catalog | `fn_create_po` / `fn_resubmit_po`; **item_catalog** (inline) | vendor exists |
+| Orders / PO detail | purchase_orders, po_lines, po_approval_events | **status → dispatched**; `fn_receive_po` | PO approved (trigger) |
+| PO document | PO detail + company_settings + vendor | — (PDF on device) | Company details filled |
+| Receive | purchase_orders (approved) | **dispatch**; `fn_receive_po` (GRN + bulk stock) | approved PO |
+| Vendors | vendors | **vendors** | — |
 
 ### Store
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| Inbox / Receive | purchase_orders | goods_receipts | Procurement PO |
-| Log component | item_catalog, vendors | component_instances (+bill+warranty) | GRN/PO |
-| Inventory | stock_items | stock qty | — |
-| Components / detail | component_instances | — | logged components |
-| Recall | component_instances (by model) | notifications | components installed |
+| Inbox | component_instances, stock | — | — |
+| Stock | stock_items (bulk) + component_instances (serialized in_stock), item_catalog (essentials) | `fn_request_stock` | receipts (bulk) / logged parts (serialized) |
+| Log component | item_catalog, vendors, projects | **component_instances** (+ bill upload to `builds/bills/`) | catalog item exists |
+| Parts / component record | component_instances | — | logged components |
+| Recall check | `fn_recall` | `fn_recall_notify` | components installed |
 
 ### Workshop
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| My Tasks | stages (assignee=me) | — | PM assigned / Admin stages |
-| Task detail | stages, checklist_items | checklist, status | — |
-| Scan to install | component_instances (in_stock) | component install fields | **Store logged component** |
-| Add photo | — | attachments | — |
-| Mark complete | — | stage_approvals | — |
+| My Tasks / Week | stages (`assignee_id = me`) + stage_approvals | — | **PM assigned** |
+| Task detail | stage bundle | `fn_start_stage`, **checklist_items.done**, **attachments** (photo), `fn_submit_stage` | — |
+| Scan to install | component_instances (in_stock, by serial) | `fn_install_component` | **Store logged the part** |
+| Parts | component_instances on my builds | — | parts installed |
 
-### PM
+### Design
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| Dashboard/Projects | projects (pm=me) | — | Admin set pm_id |
-| Assign task | profiles(workshop), stages | stages.assignee/dates | — |
-| Approvals | stage_approvals | stage=done | **Workshop submitted** |
-| Schedule | stages (assigned_due → planned_end), profiles | — | PM assigned dates / backward schedule |
+| Studio / Designs / Approvals | stages (`assignee_id = me`) → projects, design_artifacts, design_versions | — | **PM assigned a stage on the build** |
+| New design | assigned projects | **design_artifacts + design_versions (v1)**, uploads to `designs/` | assigned build |
+| Design detail | artifact + versions | **status → pending_approval**; `fn_add_design_version` | — |
 
 ### Client
 | Screen | Reads | Writes | Depends on |
 |---|---|---|---|
-| My Trucks / dashboard | projects (client=me), stages | — | Admin onboarded with this client |
-| Photos | attachments | — | Workshop photos |
-| Approve design | design_versions | design_approvals | Design sent |
-| Documents | documents | — | Admin/system |
-| Raise request | — | tickets | — |
+| My Trucks | projects (own account), approved model URL | — | Admin onboarded with this client's login |
+| Truck | project detail, stages, documents (available), pending designs | — | — |
+| Stage photos | attachments (stage) | — | Workshop photos |
+| Approve design | design_artifacts/versions | `fn_client_decide_design` | Design submitted |
+| Raise request | — | **tickets**, **attachments** (+ `builds/tickets/`) | — |
+| Support | tickets on own trucks | `fn_reopen_ticket` | — |
+
+### Service
+| Screen | Reads | Writes | Depends on |
+|---|---|---|---|
+| Tickets | tickets (SLA order) | — | client / service raised |
+| Ticket detail | ticket, attachments, visits, linked component | `fn_assign_ticket`, `fn_close_ticket` | — |
+| Schedule visit / Resolve | profiles (service + workshop) | `fn_schedule_visit`, `fn_resolve_ticket` | — |
+| Trucks / history | projects (delivered), tickets, `fn_warranty_expiring` | — | **PM marked delivered** |
+| Warranty | `fn_warranty_search` | — | Store logged warranty |
+| New ticket | delivered projects | `fn_create_ticket` | delivered truck |
 
 ---
 *Keep this file updated whenever a role's screens or data flows change.*
@@ -165,14 +206,19 @@ Demo seed for testing before those roles exist: `supabase/seed_stage_demo.sql`.
 
 Define once → auto-generate → customize per project → alerts:
 
-1. **Template BOM** (`template_stage_items`): which catalog items each template stage needs (+ qty). *(editing UI: TODO — currently via `seed_bom_demo.sql` or SQL)*
+1. **Template BOM** (`template_stage_items`): which catalog items each template stage needs (+ qty).
+   Edited in **Create template** (Admin → Onboard → Template "New" → "+ item" per stage). The seed
+   template has **no BOM**; run `supabase/seed_bom_demo.sql` or create a template with items.
 2. **Onboarding** (`fn_onboard_project`): creates stages → backward-schedules them → **auto-generates `procurement_requirements`** from the BOM with `needed_by = stage.planned_start` → computes `order_by`.
-3. **View / customize per project** (`ProjectRequirementsScreen`, has `editable` flag):
-   - **Admin = read-only (monitor)** — sees materials + order-by risk, cannot edit. Admin's job is oversight only.
-   - **Editing owner = PM (Project Manager)** — opens it `editable: true` to add / change qty / change needed-by / remove. Any change calls `fn_recompute_schedule` to refresh `order_by`.
-   - *(PM role not built yet — editable entry point ships with the PM role.)*
+3. **View / customize per project** (build screen → **Materials** tab, `ProjectRequirementsScreen`):
+   - **Admin = read-only (monitor).** Sees materials and order-by risk, but cannot edit.
+   - **PM = editing owner** (`materialsEditable: true`). Can add, change qty, change needed-by or remove. Add and
+     edit call `fn_recompute_schedule` to refresh `order_by`. Remove doesn't.
 4. **Alerts**: `order_by = needed_by − item.lead_time − item.buffer`. Surfaced via `v_order_due` (`days_left`) in Admin "Needs attention" + Procurement "To Order".
-5. **Act**: Procurement Create PO → requirement `pending → ordered` (drops off the due list).
+5. **Act**: Procurement → To Order hero → **Create Purchase Order** passes `p_requirement` to `fn_create_po`,
+   so the requirement goes `pending → ordered` and drops off the list. The PO then needs the PM's signature and
+   admin approval before it can be dispatched and received. A blank PO from the FAB is **not** linked to a
+   requirement (gap).
 
 Editing requirements invalidates `requirementsProvider`, `toOrderProvider`, `fleetProvider`.
 
@@ -181,20 +227,19 @@ Editing requirements invalidates `requirementsProvider`, `toOrderProvider`, `fle
 
 ## ⭐ Role ownership — build planning belongs to PM (decided)
 
-**Admin = oversight only** (monitor dashboards, team/user management). Admin does NOT do
-operational data entry.
+**Admin = oversight + people.** Admin monitors the dashboards, manages the team, onboards builds (and today creates
+templates inside onboarding), assigns the PM and gives POs final approval. Admin does NOT assign stages or edit
+materials, the delivery date or delays.
 
 **PM (Project Manager) owns build planning**, i.e. all of:
-- **Workflow templates + their BOM** (define "which parts each stage needs" per truck type) — the one-time setup that powers auto-generated requirements.
-- **Per-project materials / requirements** — add / edit qty / edit needed-by / remove (`ProjectRequirementsScreen` with `editable: true`).
-- (later) schedule / bays, task assignment, stage approvals.
+- **Per-project materials / requirements.** Add, edit qty, edit needed-by, remove (Materials tab, editable for the PM). ✅
+- **Stage assignment, delivery date, delays, approvals, PO signatures, delivery.** ✅
+- **Workflow templates + their BOM.** Decided as PM-owned, and RLS lets the PM write them, **but there is no
+  PM screen**. Today a template can only be created from **Admin → Onboard project → Template "New"**,
+  and nothing can list, edit or delete templates. ⬜ (`PROJECT_LOG.md` §3 #2)
 
-**Procurement** consumes what PM plans: sees order-by alerts (To Order) and creates POs.
-**Store / Workshop** execute intake + install. **Client** views progress.
-
-> These planning features currently sit under Admin only because PM isn't built yet.
-> When the PM role is built, Create-Template(+BOM) and the editable Materials screen
-> move/attach there; Admin keeps them **read-only**.
+**Procurement** consumes what PM plans: it sees order-by alerts (To Order) and raises POs for the PM and
+admin to sign. **Store / Workshop** execute intake and install. **Client** views progress.
 
 
 ---
@@ -207,7 +252,7 @@ See `docs/WORKFLOW_AUDIT.md` for the problems this replaced and
 **Level 1 — Admin assigns the PM** (`projects.pm_id`)
 
 - Set at **Onboard Project** (PM dropdown, **required**) and changeable any time from
-  **Project detail → Project manager → Assign / Change** (`canAssignPm: true`, Admin only).
+  **build screen → Overview → Project manager → Assign / Change** (`canAssignPm: true`, Admin only).
 - Goes through `fn_assign_pm(project, pm)`, which checks the target is an *active* member with
   `role='pm'`, records `pm_assigned_by` / `pm_assigned_at`, notifies the new PM and (on a
   hand-over) the previous one.
@@ -227,7 +272,7 @@ See `docs/WORKFLOW_AUDIT.md` for the problems this replaced and
   (`assignableForDisciplineProvider(discipline)` sorts the stage's own discipline first).
   Never admin / pm / procurement / client.
 - Entry points: **PM → ＋ Assign work** (every unassigned or rework stage across their builds,
-  `stagesToAssignProvider`) and **Project detail → stage → Assign / Reassign / Unassign**.
+  `stagesToAssignProvider`) and **build screen → Overview → Build stages → Assign / Reassign / Unassign**.
 - `assignStage(stageId, uid, start:, due:, override:)` → `fn_assign_stage`, which enforces:
   caller is that build's PM (or admin) · target role matches the stage discipline unless the PM
   explicitly confirms an `override` · account not disabled · `due >= start`. It stores
@@ -248,6 +293,9 @@ See `docs/WORKFLOW_AUDIT.md` for the problems this replaced and
 - `fn_decide_stage` → approve: stage `done` + `actual_end`, **next stage auto-starts**, submitter
   and client notified; reject: stage `rework` with a note the assignee sees on their task card.
 - `fn_install_component` (Hero #2) validates the part is in stock and the caller owns the stage.
+- ⚠️ **Only Workshop has a Start / Submit UI** (`workshop/task_detail.dart`). A stage assigned to a
+  design or service member can't be started or submitted from the app (`PROJECT_LOG.md` §3 #1).
 
-`ProjectDetailScreen` flags: PM opens with `canAssign / materialsEditable / canEditTimeline = true`;
-Admin opens with `canAssignPm: true` and everything else read-only (oversight).
+`BuildScreen` flags (passed to every tab): the PM opens with `canAssign / materialsEditable /
+canEditTimeline = true`, and the Overview banner says "You manage this build". Admin opens with
+`canAssignPm: true` only, and the banner says "Oversight · read-only".

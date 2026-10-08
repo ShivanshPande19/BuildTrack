@@ -13,7 +13,12 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ Flutter app skeleton (theme, auth/login, role routing, design-system widgets)
 - ✅ Data layer (models + repositories) — extended per role as we go
 
-## 1. Admin 🔨
+> **Status (7 Oct 2026):** every role below is built and wired to Supabase. This file is the
+> per-role *build history*. For the current state and known gaps, read
+> [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md); for exact screens, read [`docs/Roles.md`](docs/Roles.md).
+> Lines marked ⚠️ were corrected on 7 Oct 2026 after a full code read.
+
+## 1. Admin ✅
 - ✅ Dashboard (fleet, live)
 - ✅ **Onboard project** (create → auto stages + order-by) — live via fn_onboard_project
 - ✅ **Create custom template** (name + stages/durations → saved, selectable) + **add new client**
@@ -24,11 +29,16 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Analytics / Insights** (on-track %, counts, fleet distribution)
 - ✅ **Stage detail** (photos + installed parts + checklist + delays, per stage)
 - ✅ **Notifications** (grouped Today/Earlier, mark all read)
-- ✅ **Profile / Settings** (identity + settings + log out)
+- ✅ **Profile / Settings** (identity + log out; settings rows are still coming-soon)
+- ✅ **Command Center** (`v_ops_board`): by department, needs attention, every build's stage + assignee + sub-team
+- ✅ **PO approvals** inbox (final sign-off, priority override) · **Company details** (PO buyer block)
+- ✅ **Team by department** + sub-teams (Welding / Paint / Electrical / Fitter seeded)
+- ⚠️ "Projects list / Project detail / Stage detail" are now all reached through the tabbed **build screen**
+  (Overview · Pipeline · Materials · Record). Admin opens it read-only, except for assign/change PM and documents.
 
 **→ ADMIN ROLE COMPLETE (Phase-1)**
 
-## 2. Procurement 🔨  *(Hero #1)*
+## 2. Procurement ✅  *(Hero #1)*
 - ✅ **Tab shell** (To Order · Orders · Receive · Vendors) with bell/avatar
 - ✅ **To Order** (hero order-today card + upcoming list + Create PO inline)
 - ✅ **Orders list** (status filters, tappable → detail)
@@ -53,7 +63,7 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ `common/notifications.dart`, `common/profile.dart` — reused across roles
 - ✅ `EmptyState` widget — friendly placeholders everywhere
 
-## 3. Store 🔨  *(Hero #2 — traceability + recall)*
+## 3. Store ✅  *(Hero #2 — traceability + recall)*
 - ✅ **Tab shell** (Inbox · Stock · Parts) + bell/avatar + scan FAB
 - ✅ **Inbox** (stats: tracked/low-stock/lines + low-stock list)
 - ✅ **Stock** (inventory list, All/Low filter, OK/Fair/Low)
@@ -62,9 +72,12 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Recall check** (Hero #2 — every truck with a model installed → Notify all) via `fn_recall`
 - ✅ **Log component** (item + serial + warranty + assign to build → feeds traceability)
 - ✅ Notifications · Profile (shared common)
-- ⬜ Receive/GRN link from Procurement (round 2)
+- ✅ **Bill capture** at intake (photo → `builds/bills/`) + full-screen bill viewer
+- ✅ **Request from procurement** (essentials only) + reorder from a stock row (`fn_request_stock`)
+- ⬜ Receive/GRN link from Procurement (round 2): Store still has no incoming-PO list
+- ⬜ Inline "New item" is refused by RLS for the Store role (`item_catalog` writes are admin/procurement/pm)
 
-## 4. Workshop 🔨  *(Hero #2 — install)*
+## 4. Workshop ✅  *(Hero #2 — install)*
 - ✅ **Tab shell** (Tasks · Parts · Week) + bell/avatar + scan FAB
 - ✅ **My Tasks** (stages assigned to me: in-progress + queued)
 - ✅ **Task detail** (checklist toggle, progress, photo, install, submit)
@@ -76,8 +89,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 **Chain live:** Store logs component (in-stock) → Workshop scan-to-install → assigned to truck/stage → traceable + recall-able. Workshop submits → PM approves → stage done → progress updates.
 
-## 5. Project Manager 🔨  *(owns build planning)*
-- ✅ **Tab shell** (My Builds · Projects · Schedule · Team) + bell/avatar
+## 5. Project Manager ✅  *(owns build planning)*
+- ✅ **Tab shell** (Home "My Builds" · Projects · Schedule · Team) + bell/avatar + ＋ Assign work
 - ✅ **My Builds** dashboard (assigned counts, needs-you, today's stages) — pm-scoped
 - ✅ **My Projects** (pm_id = me, filters) → project detail with **editable Materials**
 - ✅ **Schedule** (open stages by due date: overdue · today · next 7 days · later · no date)
@@ -86,7 +99,10 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 - ✅ **Assign / reassign / unassign** stages to team (from project detail)
 - ✅ **Approvals** (approve/reject stage completions → stage done/rework)
 - ✅ **Edit timeline** (change delivery date → re-schedules + order-by)
-- ✅ **Create Template + BOM UI** (items per stage → onboarding auto-generates requirements, no SQL)
+- ⚠️ **Create Template + BOM UI** exists, but it is reached **only from Admin → Onboard project →
+  Template "New"**. The PM has no path to it, and templates can't be listed or edited.
+- ✅ **Log delay** (reason + days + optional push of delivery) · **Mark delivered** · **Documents**
+- ✅ **PO approvals** (sign or reject POs on my builds) · **Approvals with evidence** (photos, checklist, parts)
 - ✅ Notifications · Profile (shared common)
 
 **→ PROJECT MANAGER ROLE COMPLETE (Phase-1)**
@@ -96,10 +112,11 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 
 ## 6. Client ✅
 - ✅ **My Trucks** (multi-project entry, progress + status)
-- ✅ **Truck view** — tabbed (Progress · Photos · Docs · Support)
+- ⚠️ **Truck view**: one scrolling screen, **not tabbed**. Progress ring, approve-design cards, build
+  journey, documents, raise request. Support and Profile are home tabs.
 - ✅ **Progress** (build % ring + current stage + build-journey timeline)
-- ✅ **Photos** (build photos — needs migration 0006 for client read)
-- ✅ **Documents** (available client docs)
+- ✅ **Photos**, per stage (tap a stage in the journey; needs migration 0006 for client read)
+- ⚠️ **Documents** are listed, but tapping one only shows "Opening document…". The file never opens.
 - ✅ **Approve design** (approve / request changes) — feeds Design role later
 - ✅ **Raise request** (creates ticket) + **Support** (my requests)
 - ✅ Notifications · Profile (shared common)
@@ -107,7 +124,8 @@ Legend: ✅ done · 🔨 in progress · ⬜ not started
 **→ CLIENT ROLE COMPLETE (Phase-1) · 6/6 core roles done**
 
 ## 7. Design ✅ *(Phase 2)*
-- ✅ **Tab shell** (Studio · Designs · Approvals · Profile) + bell + New-design FAB
+- ✅ **Tab shell** (Studio · Designs · Approvals) + bell + avatar → Profile + New-design FAB
+- ⚠️ A designer **can't start or submit their assigned stage**. Only Workshop has that UI.
 - ✅ **Studio** (stat tiles: drafts/awaiting/changes/approved + "needs your attention")
 - ✅ **Designs** (full library, status filter chips)
 - ✅ **Approvals** (submitted designs + client outcome + feedback surfaced)
@@ -191,9 +209,10 @@ The roles were all built, but the **chain between them** was not. Full audit in
 - ✅ Offboarding a PM / assignee no longer fails on a foreign key
 - ✅ Recall "Notify all" actually notifies · scan-to-install validated server-side
 - ✅ `full_setup.sql` is **generated** (`build_full_setup.sh`) — it had drifted and was missing 0005/0006
-- ✅ `supabase/tests/run.sh` — Docker-only backend verification, ~40 assertions as real users
+- ✅ `supabase/tests/run.sh` — Docker-only backend verification as real users (≈40 assertions then;
+  **149** across 7 suites today)
 
-## 9. Real photos + barcode scanning ✅ *(migration 0011)*
+## 10. Real photos + barcode scanning ✅ *(migration 0011)*
 - ✅ **Workshop site photos** — camera / gallery via `image_picker`, downscaled on device, uploaded
   to the new public **`builds`** bucket. Previously a random `picsum.photos` URL, so the client's
   build gallery showed stock photography.
@@ -206,10 +225,36 @@ The roles were all built, but the **chain between them** was not. Full audit in
   `tickets/`) + ticket-attachment RLS for the client.
 - 📄 Native permissions documented in `docs/NATIVE_SETUP.md`.
 
+## 11. Phase 1: broken loops closed ✅ *(migrations 0012–0014, PRs #7–#13)*
+- ✅ PM approvals show the evidence (photos + checklist + installed parts)
+- ✅ Template checklists (`template_stage_checks`), copied onto every stage at onboarding
+- ✅ Stock movement: receiving a PO adds to `stock_items` (`fn_receive_po`)
+- ✅ Client sees every ticket on their trucks, including Service-raised ones
+- ✅ Bill capture + viewer · delay logging (+ push delivery) · documents / handover pack
+
+## 12. Inventory truthfulness ✅ *(migrations 0015–0019, PRs #17–#23)*
+- ✅ Delivery-date change re-baselines assigned dates · receive requires dispatch + ETA
+- ✅ Store → Procurement stock requests (general POs) · bulk vs serialized on-hand · essentials-only picker
+
+## 13. PO approvals + ops backbone ✅ *(migrations 0020–0024, PRs #24–#31)*
+- ✅ Multi-level PO approval + GST PO document (details under §2)
+- ✅ Command Center (`v_ops_board`), sub-teams, PO priority (`0021`)
+- ✅ Pipeline + delay attribution (`v_project_delays`, `0022`) · truck record (`v_truck_components`, `0023`)
+- ✅ Status honours the delivery date (`0024`)
+
+## 14. UI polish + Tier 1–3 hardening ✅ *(PRs #32–#46, migration 0025)*
+- ✅ Floating pill nav, edge-to-edge, motion layer, `AppSelectField`, Team by department (PRs #32–#45)
+- ✅ Double-tap guards (`AsyncPrimaryButton`), atomic design versions (`0025`), live SLA, `friendlyError`
+  everywhere, and the **canonical build screen** with a role-mode banner and a stable FAB per role (PR #46)
+
 ---
-*Next: stock movement, bill capture at intake, PM approvals with photos, template checklists,
-delay logging, handover documents, Admin/PM visibility of client tickets.*
-*Migrations to run: 0005_bom, 0006_client_attachments, 0007_design_model, 0008_design_storage
-(public 'designs' bucket), **0009_workflow**. Edge functions: admin-create-member (re-deploy — it now
-returns `client_account_id`), admin-delete-member.*
-*After 0009: assign a PM to any pre-existing build under Admin → Projects → No PM.*
+*Next (Oct 2026), from `docs/PROJECT_LOG.md` §3:*
+1. *Stage Start/Submit for Design and Service.*
+2. *Fix Store's "New item" RLS.*
+3. *Close the DB bypasses: reopen ticket, guard triggers, PO self-approval, definer helpers.*
+4. *Fix the `profiles` FKs that block member removal.*
+5. *Add a templates screen for Admin and PM.*
+6. *Then Phase 2: offline, push, realtime, pagination, localization.*
+
+*Deploying: run `supabase/check_migrations.sql` and apply whatever it marks `RUN THIS`
+(see `docs/TESTING_GUIDE.md` §1).*

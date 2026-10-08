@@ -1,249 +1,236 @@
-# Azimuth BuildTrack — Roles & Responsibilities
+# Azimuth BuildTrack: Roles & Screens
 
-**One app, role-based access.** Every user logs into the same app. The **Admin** creates each user's ID and assigns a role — the app then opens straight to that role's own set of screens. Nobody sees more than their role needs (e.g. Workshop can't see costs, Client can't see vendors).
+**One app, eight role experiences.** An admin creates every login and gives it a role. On sign-in,
+`role_home.dart` opens that role's home. Every home is a floating `PillNav` with 3–4 tabs and a
+round **＋ action button (FAB)**. The FAB does one thing per role, whatever tab is open.
+Permissions are enforced in Postgres (RLS + RPCs), not just in the UI. See [`DataModel.md`](DataModel.md) §8.
 
-Design language is consistent across all roles: warm beige canvas, cream cards, candy-coloured status pills, lime accent, and a floating pill navigation bar with a prominent action button.
+**A role is a team.** There can be several PMs, designers, technicians or client contacts. "My
+work" is always scoped by user id: a PM sees builds where `pm_id = me`, and an assignee sees stages where
+`assignee_id = me`.
+
+The design language (Equora) is a warm beige canvas, cream cards, candy-coloured status pills, a lime accent and the floating
+pill nav. It lives in `core/theme.dart` and `shared/widgets.dart`.
 
 ---
 
-## Roles at a glance
+## At a glance
 
-| Role | Primary job | Data scope | Nav tabs | Key action |
-|---|---|---|---|---|
-| 👑 **Admin / Owner** | Run the whole operation | Fleet-wide (all 35+) | Home · Projects · Team · Analytics | Create user + assign role |
-| 📋 **Project Manager** | Deliver assigned builds on time | Assigned projects | Home · Projects · Schedule · Team | Assign task |
-| 🛒 **Procurement** | Order the right thing on time | All materials/POs | Home · Orders · Receive · Vendors | Create PO |
-| 🔧 **Workshop** | Build the truck, log parts | Own tasks only | Tasks · Parts · Week · Profile | Scan & log part |
-| 📦 **Store / Inventory** | Receive, track, stock, recall | All components/stock | Inbox · Stock · Parts · Profile | Log component |
-| 🎨 **Design** | Layouts + client approvals | Own design tasks | Home · Library · Approvals · Profile | Upload design |
-| 🛠️ **Service** | Post-delivery support | Delivered trucks | Tickets · Trucks · Warranty · Profile | New ticket |
-| 🙋 **Client** | Track their truck | Their 1 truck only | Progress · Photos · Docs · Support | Raise request |
+| Role | Tabs | ＋ FAB | Scope |
+|---|---|---|---|
+| 👑 Admin | Home · Projects · Team · Insights | Onboard project | Whole fleet |
+| 📋 PM | Home · Projects · Schedule · Team | Assign work | Builds where I'm the PM |
+| 🛒 Procurement | To Order · Orders · Receive · Vendors | New PO | All requirements and POs |
+| 📦 Store | Inbox · Stock · Parts | Log component | All stock and components |
+| 🔧 Workshop | Tasks · Parts · Week | Scan to install | Stages assigned to me |
+| 🎨 Design | Studio · Designs · Approvals | New design | Builds where I hold a stage |
+| 🛠️ Service | Tickets · Trucks · Warranty · Profile | New ticket | All tickets, delivered trucks |
+| 🙋 Client | My Trucks · Support · Profile | Raise request | My client account's trucks |
+
+**Shared:**
+- The bell opens **Notifications** (Today / Earlier, Mark all read; rows aren't tappable).
+- The avatar opens **Profile** (identity + log out; the settings rows are coming-soon). Service and Client have their own Profile tab instead.
 
 ---
 
 ## 👑 Admin / Owner
 
-**Who:** The owner / operations head. The master account.
+**Job:** oversight and people. Onboard builds, create logins, assign the PM, give POs final approval, and watch the fleet.
 
-**Owns & manages**
-- The entire fleet of builds (35+ in parallel)
-- All users and their roles (only Admin can create IDs and assign roles)
-- Master setup: workflow templates, stage durations, item lead-times, vendors, holiday calendar
-- Company-wide analytics and health
+- **Home:**
+  - fleet status (active builds, on-track / at-risk / delayed);
+  - **Command Center**, a live factory board: by department, a needs-attention list (delayed, at-risk,
+    > 7 days in one stage, order-by passed), and every build's current stage, assignee + sub-team and PM;
+  - **PO approvals** (final sign-off, sorted by priority; tap the badge to override);
+  - **Needs attention** (order-by items due within 3 days);
+  - the bell's unread badge.
+- **Projects:** All / On-track / At-risk / Delayed chips, plus **No PM** (shown when a build has no PM). A row opens
+  the **build screen**.
+- **Team:**
+  - members grouped by department, with a department filter;
+  - **Add member**: the admin sets the email and **password**, picks the role (all 8) and optionally a sub-team (with a new-team option). A credentials dialog follows;
+  - swipe to remove a member (Edge Function);
+  - **Company details**: the buyer name, address, GSTIN and state printed on every PO.
+- **Insights** (screen title "Analytics"): on-track %, on-track / at-risk / delayed counts, distribution bars.
+- **＋ Onboard project:**
+  - code, name and template, with **New**, which opens *Create template*: stages, days, BOM items per stage, checklist per stage;
+  - client, with **New**, which creates the client account + login (password, or an email invite);
+  - PM (required) and target delivery date.
+- **On the build screen:** *Oversight · read-only*. Admin can **assign / change the PM** and add documents.
+  Materials, Pipeline and Record are read-only.
 
-**How they work:** Lands on a fleet dashboard, spots at-risk/delayed builds, drills into any project, reviews analytics, and manages the team. Approves template changes the system suggests from real data.
-
-**Screens (9):** Login · Dashboard (fleet health) · Projects (all) · Project detail · Analytics · Team & Roles · **Add Member (assign role)** · Notifications · Profile/Settings
-
-**Features**
-- Fleet status: On-track / At-risk / Delayed counts + "needs attention today"
-- All-projects list with filters & search
-- Analytics: on-time %, trend chart, top delay reasons, vendor performance
-- User management: create ID, assign any role, view team
-- Roles & permissions control
-
-**Sees:** everything. **Only role that can:** create users, assign roles, edit master settings.
+**Admin has no UI to** assign stages, edit materials, change the delivery date, log delays or mark delivered (all PM).
+The database does let an admin do these through the RPCs.
 
 ---
 
 ## 📋 Project Manager
 
-**Who:** Owns delivery of a set of assigned builds.
+**Job:** plan and run their builds.
 
-**Owns & manages**
-- Timelines & milestones for assigned projects
-- Task assignment to workshop/design members
-- Workshop bay & resource allocation *(deferred — not built; see below)*
-- Delays: tag reason, reschedule, see cascade impact
-- Approving stage completions submitted by workshop
+- **Home (My Builds):**
+  - assigned / at-risk / delayed / delivered counts;
+  - **Assign work** (stages with no owner or in rework);
+  - **Approvals**: each card shows the stage's **photos, checklist and installed parts**. Approve auto-starts the next stage.
+    **Reject** opens a *Send back* dialog ("What needs fixing?"; a blank reason is accepted) and puts the stage into rework;
+  - **PO approvals**: sign or reject POs on my builds;
+  - at-risk / delayed builds;
+  - today's in-progress stages.
+- **Projects:** my builds with status chips. A row opens the **build screen** as *You manage this build*:
+  - **Assign / Reassign** a stage. The sheet recommends the stage's discipline first and shows each person's open load.
+    Another role needs a second tap (override). Start and due dates. Unassign.
+  - **Materials** (editable): add or edit an item, qty and needed-by. The order-by date recomputes. Delete.
+  - **Delivery date**: tap to change it. The plan and assigned dates re-baseline.
+  - **Log a delay**: reason, days, note, and "push delivery date" (on by default).
+  - **Mark delivered**: asks *Deliver anyway?* if stages are still open.
+  - **Documents**: contract / invoice / warranty pack / handover certificate. The client sees them.
+- **Schedule:** open stages grouped as Overdue · Due today · Next 7 days · Later · No date yet.
+- **Team:** read-only workload (open stages per workshop / design / store / service member).
+- **＋ Assign work.**
 
-**How they work:** Reviews "needs you today" (approvals + at-risk), assigns stages to team members with dates, works the schedule by due date, and keeps builds on track.
-
-**Screens (9):** Dashboard (my builds) · My Projects · Project detail (with assignees) · **Assign Task** · Schedule · Team workload · Approvals · Notifications · Profile
-
-**Features**
-- My builds status + today's focus
-- Assign task: pick member + set start/due dates
-- Schedule: open stages by due date — overdue / due today / next 7 days / later / no date
-- Team workload view (who's overloaded)
-- Approve/reject workshop stage completions (with photos)
-
-**Deferred**
-- **Bay allocation.** The `bays` table and `stages.bay_id` exist in the schema, but nothing ever
-  wrote to them, so the bay board could only ever show "No bays set up". It has been removed from
-  the app rather than shipped empty. Bringing it back means allocating a bay in the assign flow and
-  keeping `bays.current_stage_id` in step — then the board becomes real.
-
-**Sees:** assigned projects, team, schedule. **Cannot:** create users.
+**PM can't:** create builds, take over another PM's build, or change a build's code / client / template (DB-enforced).
+Templates have no PM screen (§ gaps).
 
 ---
 
 ## 🛒 Procurement
 
-**Who:** Orders all materials and equipment; manages vendors. *(Core of Hero Feature #1 — never miss a lead time.)*
+**Job:** turn needs into approved POs, and get the goods in.
 
-**Owns & manages**
-- "To-Order" list driven by auto-calculated order-by dates
-- Purchase Orders (ordered → dispatched → received)
-- Vendors, their lead-times and reliability scores
-- Goods receipt handoff to Store
+- **To Order:**
+  - the most urgent order-by item as a hero card; **Create Purchase Order** pre-fills the PO;
+  - upcoming order-by dates;
+  - **Essentials to reorder · from Store**; each opens a *general* PO.
+- **Orders:** All / For approval / Ordered / Dispatched / Received. A row opens **PO detail**:
+  - approval stepper (Raised → PM signed → Approved) and the signature trail;
+  - **Fix & resubmit** after a rejection;
+  - fulfilment stepper; **Mark as dispatched** (expected arrival date); **Mark as received**;
+  - **View / print PO document**: a GST purchase order PDF with buyer + supplier GSTIN, HSN, CGST+SGST (same state) or
+    IGST, the amount in words with paise, and signatories filled from the trail.
+- **Receive:** *Awaiting dispatch* (Mark dispatched) and *Ready to receive* (Receive & verify; bulk stock goes up).
+- **Vendors:** list with lead time and reliability %, **Add vendor** (GSTIN, address, state, email).
+- **＋ New PO:**
+  - project or *General (no project)*, vendor;
+  - lines (item, qty, rate, GST %, HSN; inline new item);
+  - expected delivery, payment terms, totals.
+  - A project PO goes to the PM to sign, then to admin for final approval. A general PO goes straight to admin.
 
-**How they work:** Opens to order-by alerts (order today / X days left), creates POs to vendors, tracks dispatch/receipt, and watches vendor performance.
-
-**Screens (9):** To-Order (dashboard) · Purchase Orders · PO detail (status tracker) · **Create PO** · Receive / GRN · Vendors · Vendor detail · Notifications · Profile
-
-**Features**
-- Backward-scheduled order-by alerts + escalation
-- Create PO: vendor + items + dates
-- PO status stepper (Ordered → Dispatched → Received)
-- Vendor reliability scores + lead-times
-- Low-lead vs long-lead handling (e.g. 45-day imports flagged early)
-
-**Sees:** materials, POs, vendors, costs. **Cannot:** manage team/timelines.
-
----
-
-## 🔧 Workshop / Fabrication
-
-**Who:** The people physically building the truck. Mobile-first, on the floor. *(Core of Hero Feature #2 — traceability capture.)*
-
-**Owns & manages**
-- Their assigned stages/tasks only
-- Progress photos
-- Confirming each part **installed** into the truck (scan serial → linked to truck + stage). Bill/warranty are **not** re-entered here — Store already captured them at intake.
-- Submitting completed stages for PM approval
-
-**How they work:** Big-button, offline-friendly screens. Opens their current task, updates a checklist, adds photos, scans & logs each component, and marks the stage complete.
-
-**Screens (9):** My Tasks · Task detail (checklist) · Add photo · **Scan to install** · Components (installed) · Mark complete · My week · Notifications · Profile
-
-**Features**
-- My tasks (in-progress + up next) with offline sync
-- Stage checklist + progress
-- Add progress photo (works offline)
-- **Scan to install**: scan a part's serial → it matches a component already logged by Store (bill on file) → confirm it's installed in this truck & stage
-- Mark stage complete → sends to PM for approval
-
-> **Store vs Workshop (clear split):** **Store** creates the component record — serial + bill + warranty — when goods arrive. **Workshop** only *scans to install* — linking that existing record to the truck & stage. No duplicate data entry.
-
-**Sees:** only their tasks. **Cannot:** see fleet data, costs, vendors.
+**Procurement can't:** sign or approve POs, or dispatch / receive before approval (DB-enforced).
 
 ---
 
 ## 📦 Store / Inventory
 
-**Who:** Receives deliveries, tracks every component, manages stock. *(Completes Hero Feature #2 — the traceability master + recall.)*
+**Job:** log every part (Hero #2), keep stock, and run recalls.
 
-**Owns & manages**
-- Incoming deliveries (goods receipt / GRN)
-- Component instances: serial, bill, warranty, which truck
-- Stock levels + low-stock alerts
-- **Recall check** — find every truck with a defective part model
+- **Inbox:** tracked components, low-stock count, stock lines, and the low-stock list.
+- **Stock:**
+  - All / Low; OK / Fair / Low against the item's threshold;
+  - bulk items come from `stock_items`; serialized items count their in-stock units;
+  - tap a row to **request a reorder**; **Request from procurement** picks from essentials.
+- **Parts** (screen title "Components"): search by serial, model or truck. A row opens the **component record**:
+  - warranty banner;
+  - **View bill**;
+  - **Recall check**: every truck with that model, then **Notify all** (each build's PM and client).
+- **＋ Log component:** item, serial (**scan** the label, or type it), vendor, warranty end, **bill photo**,
+  optional *assign to build*. "Save & log another" keeps the fields for the next unit.
 
-**How they work:** Opens an inbox of arriving deliveries, verifies items, logs each with bill+warranty, and monitors stock. Can search any component and run a recall across the fleet.
+---
 
-**Screens (9):** Inbox · Receive / GRN · Log component · Inventory · Components (search) · Component detail · **Recall check** · Notifications · Profile
+## 🔧 Workshop / Fabrication
 
-**Features**
-- Goods receipt with item verification (qty check)
-- Log component: serial + bill + warranty + assign to build
-- Inventory with low-stock flags
-- Search 1,000s of tracked components by serial/model/truck
-- Recall: pick a model → list all affected trucks → notify all (in-build + delivered)
+**Job:** build the assigned stages and record the evidence.
 
-**Sees:** all components, stock, bills, warranties.
+- **Tasks** (My Tasks):
+  - *In progress* (with rework reason, *Awaiting approval*, due / overdue) and *Up next*;
+  - a row opens **Task detail**:
+    - **Start work**;
+    - checklist (instant tick);
+    - **Photo** (camera or gallery, with caption);
+    - **Install part**;
+    - **Submit for approval**. The button reads "Mark stage complete" while checks are open; it does the same thing.
+- **Parts:** parts installed on builds where I have a stage.
+- **Week:** all my stages with status.
+- **＋ Scan to install:**
+  - scan a serial (torch, manual entry if the label is damaged) or pick an in-stock part;
+  - confirm → installed into the chosen stage.
+  - Refused unless the part is in stock and you are the assignee.
+
+**Only role with a stage Start / Submit UI.** Design and Service stages can't be submitted (see gaps).
 
 ---
 
 ## 🎨 Design
 
-**Who:** Creates layouts/designs and manages client approvals.
+**Job:** designs and client approvals, for builds where a PM gave me a stage.
 
-**Owns & manages**
-- Design tasks per project
-- Design versions (v1, v2, v3…)
-- Sending designs to client for approval
-- Client feedback & revisions
+- **Studio:** *Assigned to me* carousel (stage, due, delivery), draft / awaiting / changes / approved counts, *Needs your attention*.
+- **Designs:** library with filters (All / Drafts / Awaiting / Changes / Approved).
+- **Approvals:** everything sent to clients, with their outcome and feedback.
+- **Design detail:**
+  - interactive 3D (`.glb`) or 2D preview, client feedback, version history;
+  - **Submit for approval** (drafts);
+  - **Upload revised version** / **Upload new version**: atomic `vN` numbering, which is safe with several designers.
+- **＋ New design:**
+  - pick an assigned build and a type (layout / interior / exterior / branding);
+  - upload a `.glb` (≤ 25 MB, or Demo) and/or a preview image;
+  - add a note, then save as draft or submit.
+- Profile is reached from the header avatar.
 
-**How they work:** Works through design tasks, uploads new versions, sends to the client, and handles revision requests — all versioned.
-
-**Screens (9):** My Designs · Design detail (versions) · Upload version · **Send for approval** · Client feedback · Library · Approvals · Notifications · Profile
-
-**Features**
-- Design status: Draft / Pending / Revise / Approved
-- Version history with preview
-- Send for approval → client notified instantly
-- Client feedback thread → upload revised version
-- Design library across all projects
-
-**Sees:** design tasks, client feedback. **Cannot:** see costs, vendors, workshop tasks.
+An **approved** model becomes the truck's 3D showcase for the Client, Admin and PM.
 
 ---
 
 ## 🛠️ Service & Support
 
-**Who:** Handles issues after the truck is delivered.
+**Job:** after-sales on delivered trucks.
 
-**Owns & manages**
-- Post-delivery tickets with SLA timers
-- Linking tickets to the exact installed component + its warranty
-- Scheduling technician visits
-- Delivered-truck service history & warranty lookups
-
-**How they work:** Works a ticket queue sorted by SLA, opens a ticket to see the linked part & warranty, resolves (warranty replacement or repair), or schedules a visit.
-
-**Screens (9):** Tickets queue · Ticket detail (linked component) · Resolve · Schedule visit · Delivered trucks · Truck history · Warranty lookup · Notifications · Profile
-
-**Features**
-- Ticket queue with SLA countdown (Open / Overdue / Resolved)
-- Ticket → auto-linked component + warranty status
-- Resolve: warranty replace / on-site repair + notify client
-- Schedule technician visit
-- Warranty lookup across delivered fleet
-
-**Sees:** delivered trucks, tickets, warranties.
+- **Tickets:**
+  - Open / Overdue / Resolved / All, sorted by SLA deadline, with a live countdown;
+  - stats: open, overdue, fixed today.
+  - A ticket opens **Ticket detail**:
+    - client photos, assign technician (service or workshop), visits and the resolution;
+    - **Schedule visit** (technician, date, time, note; re-booking cancels the old one);
+    - **Resolve**: Replaced under warranty / Repaired on-site / Guided remotely, plus a note the client reads;
+    - **Close ticket** once resolved.
+- **Trucks** (screen title "Delivered"): every delivered build, tagged *N open*, *Wty soon* or *Healthy*. A truck opens its history
+  (client, parts, warranty, every request).
+- **Warranty:** search by serial, model or truck.
+- **Profile** tab: assigned to me, resolved today, log out.
+- **＋ New ticket:** delivered truck, category, priority (sets the SLA: high 4h, medium 24h, low 72h), issue.
 
 ---
 
 ## 🙋 Client
 
-**Who:** The customer whose truck is being built. Simplest, read-mostly, fully transparent.
+**Job:** follow their truck, approve designs and ask for help. They never see costs, vendors or other clients.
 
-**Owns & manages**
-- Tracking their own single truck
-- Approving designs sent to them
-- Their documents
-- Raising post-delivery requests
-
-**How they work:** Opens to a big progress ring and current status, browses build photos, approves designs, downloads documents, and can raise a request any time.
-
-**Screens (10):** **My Trucks (list)** · Truck dashboard (progress) · Build journey · Photos · **Approve design** · Documents · Raise request · Support · Notifications · Profile
-
-> If the client has more than one truck, the app opens on **My Trucks** (a list of all their builds); tapping one opens that truck's dashboard. With a single truck it opens the dashboard directly.
-
-**Features**
-- Live progress % + current stage + ETA (and delay reasons if any)
-- Build photo gallery
-- Approve / request changes on designs
-- Documents: contract, invoices, warranty pack, handover certificate
-- Raise a request + track it; chat with Azimuth
-
-**Sees:** only their own truck. **Never sees:** costs, vendors, other clients, internal data.
+- **My Trucks:** one card per truck with a live **3D model** (the approved design, else a demo), status and progress.
+  A card opens the truck.
+- **Truck** (one scrolling screen):
+  - progress ring, current stage, delivery date;
+  - **Approve design** cards when a design waits for them (approve, or *Request changes* with feedback);
+  - the **build journey**; tapping a stage shows its photos;
+  - documents;
+  - **Raise a request**.
+- **Support:**
+  - every request on their trucks, including ones Service logged for them;
+  - status, the resolution note;
+  - **Still not fixed** to reopen, which puts it back at high priority.
+- **Profile** tab: notifications, log out.
+- **＋ Raise request:** pick the truck (if more than one), category, description, optional photo.
 
 ---
 
-## How the roles connect (a build's flow)
+## Known gaps by role (Oct 2026)
 
-1. **Admin** onboards the project → app auto-builds the timeline & order-by dates.
-2. **Design** creates the layout → **Client** approves it.
-3. **Procurement** gets order-by alerts → creates POs → items arrive.
-4. **Store** receives & logs each part (serial + bill + warranty).
-5. **PM** assigns stages → **Workshop** builds, logs parts, submits for approval.
-6. **PM** approves stages; **Client** watches progress + photos live.
-7. On delivery, **Store** generates the handover pack (all bills/warranties).
-8. Post-delivery, **Client** raises tickets → **Service** resolves (warranty-linked).
-9. If a part is faulty, **Store** runs a **recall check** across the whole fleet.
+Full list: [`PROJECT_LOG.md`](PROJECT_LOG.md) §3.
 
----
-
-*Azimuth BuildTrack · Roles reference · v1.0*
+| Role | Gap |
+|---|---|
+| Design, Service | Can't **start or submit** an assigned stage. Workaround: the PM reassigns it to a workshop member with an override. |
+| Admin, PM | Templates can't be listed or edited, and there's no per-stage discipline picker. The PM has no template screen at all. |
+| Store | Inline **New item** is refused by RLS. No incoming-PO / GRN list. |
+| Procurement | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
+| Client | Documents don't open (the tap only shows a snackbar). No priority on requests. |
+| Everyone | Notifications aren't tappable. No realtime; pull to refresh. Disabled accounts can still sign in. |
