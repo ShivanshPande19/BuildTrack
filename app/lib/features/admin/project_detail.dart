@@ -55,38 +55,39 @@ class ProjectDetailScreen extends ConsumerWidget {
           children: [
             // top row: back + code pill
             if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               if (initial != null) Container(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
                 decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
                 child: Text(initial!.code, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: BT.mut))),
             ]),
             const SizedBox(height: 14),
-            detail.when(
+            ContentReveal(child: detail.when(
               loading: () => _headerFromInitial(),
-              error: (e, _) => AppCard(child: Text('Could not load project.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+              error: (e, _) => ErrorCard('Could not load project.\n${friendlyError(e)}',
+                onRetry: () => ref.invalidate(projectDetailProvider(projectId))),
               data: (d) => _content(context, ref, d),
-            ),
+            )),
           ],
         ),
       )),
     );
   }
 
-  Widget _headerFromInitial() => Padding(
-    padding: const EdgeInsets.only(top: 40),
-    child: Center(child: Column(children: [
-      if (initial != null) Text(initial!.name, style: display(24, w: FontWeight.w600)),
-      const SizedBox(height: 24),
-      const CircularProgressIndicator(color: BT.ink),
-    ])),
+  /// While the detail loads, show what we already know (the name from the
+  /// list we came from) in its final spot, plus card-shaped placeholders. Then
+  /// the title doesn't jump when the data lands.
+  // KeyedSubtree (not a bare Column like the content) so ContentReveal sees a
+  // different widget and plays the reveal when the data lands.
+  Widget _headerFromInitial() => KeyedSubtree(
+    key: const ValueKey('loading'),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (initial != null) ...[
+        Text(initial!.name, style: display(27, w: FontWeight.w600)),
+        const SizedBox(height: 14),
+      ],
+      const SkeletonList(count: 4, leading: false),
+    ]),
   );
 
   /// Make the current mode explicit. The same screen opens read-only for an
@@ -305,7 +306,8 @@ class ProjectDetailScreen extends ConsumerWidget {
 
     Future<void> pick() async {
       final chosen = await showModalBottomSheet<OptRef>(
-        context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      sheetAnimationStyle: sheetMotion,
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
         builder: (_) => _PickPmSheet(currentPmId: pmId),
       );
       if (chosen == null) return;
@@ -378,7 +380,8 @@ class ProjectDetailScreen extends ConsumerWidget {
 
     Future<void> open() async {
       final res = await showModalBottomSheet<_DelayResult>(
-        context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      sheetAnimationStyle: sheetMotion,
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
         builder: (_) => _LogDelaySheet(stageName: current.name),
       );
       if (res == null) return;
@@ -408,9 +411,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       }
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: open,
+    return PressableScale(pressedScale: 0.98, haptic: true, onTap: open,
       child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(children: [
@@ -436,7 +437,8 @@ class ProjectDetailScreen extends ConsumerWidget {
 
     Future<void> add() async {
       final type = await showModalBottomSheet<String>(
-        context: context, backgroundColor: Colors.transparent,
+      sheetAnimationStyle: sheetMotion,
+      context: context, backgroundColor: Colors.transparent,
         builder: (ctx) => Container(
           decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
           padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
@@ -580,9 +582,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       }
     }
 
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => deliver(force: false),
+    return PressableScale(pressedScale: 0.98, haptic: true, onTap: () => deliver(force: false),
       child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         child: Row(children: [
@@ -756,7 +756,8 @@ Widget _disciplineChip(String discipline) => Container(
 void openAssignSheet(BuildContext context, WidgetRef ref, Stage stage, String projectId,
     {VoidCallback? onDone}) {
   showModalBottomSheet<void>(
-    context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      sheetAnimationStyle: sheetMotion,
+      context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
     builder: (_) => _AssignSheet(stage: stage, projectId: projectId, onDone: onDone),
   );
 }
@@ -892,9 +893,8 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
           if (_busy)
             const Padding(padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator(color: BT.ink)))
-          else members.when(
-            loading: () => const Padding(padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+          else ContentReveal(child: members.when(
+            loading: () => const SkeletonList(count: 3),
             error: (e, _) => Text('Could not load team.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13)),
             data: (list) {
@@ -933,7 +933,7 @@ class _AssignSheetState extends ConsumerState<_AssignSheet> {
                   )),
               ]);
             },
-          ),
+          )),
         ]),
       ),
     );
@@ -995,9 +995,8 @@ class _PickPmSheet extends ConsumerWidget {
           const Text('They will see this build, assign its stages and approve the work.',
             style: TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)),
           const SizedBox(height: 14),
-          pms.when(
-            loading: () => const Padding(padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+          ContentReveal(child: pms.when(
+            loading: () => const SkeletonList(count: 3),
             error: (e, _) => Text('Could not load PMs.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13)),
             data: (list) {
@@ -1030,7 +1029,7 @@ class _PickPmSheet extends ConsumerWidget {
                 ));
               }).toList());
             },
-          ),
+          )),
         ]),
       ),
     );

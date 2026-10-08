@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Procurement — prepare a proper purchase order (pr4).
@@ -175,6 +176,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     bool busy = false;
     String? err;
     return showModalBottomSheet<OptRef>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheet) {
         Widget field(String label, TextEditingController c, {String? hint, bool number = false}) => Container(
@@ -209,9 +211,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
               if (err != null) Padding(padding: const EdgeInsets.only(bottom: 8),
                 child: Text(err!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
               const SizedBox(height: 4),
-              busy
-                ? const Center(child: CircularProgressIndicator(color: BT.ink))
-                : PrimaryButton('Add item', icon: Icons.check, onTap: () async {
+              PrimaryButton('Add item', icon: Icons.check, onTap: () async {
                     if (nameC.text.trim().isEmpty) { setSheet(() => err = 'Item name is required.'); return; }
                     setSheet(() { busy = true; err = null; });
                     try {
@@ -221,9 +221,9 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
                         leadTimeDays: int.tryParse(leadC.text.trim()) ?? 0);
                       if (ctx.mounted) Navigator.pop(ctx, created);
                     } catch (e) {
-                      setSheet(() { busy = false; err = '${friendlyError(e)}'; });
+                      setSheet(() { busy = false; err = friendlyError(e); });
                     }
-                  }),
+                  }, busy: busy),
             ]),
           ),
         );
@@ -246,14 +246,8 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 14),
           Text(_isEdit ? 'Edit PO' : 'New PO', style: display(29, w: FontWeight.w500)),
@@ -363,10 +357,8 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
 
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton(_isEdit ? 'Resubmit for approval' : 'Raise & send for approval',
-                icon: Icons.send_rounded, onTap: _submit),
+          PrimaryButton(_isEdit ? 'Resubmit for approval' : 'Raise & send for approval',
+                icon: Icons.send_rounded, onTap: _submit, busy: _saving),
         ],
       )),
     );

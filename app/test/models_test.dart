@@ -249,4 +249,20 @@ void main() {
       expect(p.pmId, isNull);
     });
   });
+
+  group('FleetData active vs delivered', () {
+    Project p(String status) => Project(id: status, code: 'C', name: 'N', status: status, progressPct: 0);
+    test('delivered builds are not active, so the shares sum to 100%', () {
+      final f = FleetData([p('on_track'), p('on_track'), p('at_risk'), p('delayed'), p('delivered'), p('delivered')], []);
+      expect(f.total, 6);
+      expect(f.delivered, 2);
+      expect(f.active, 4);
+      expect(f.onTrack + f.atRisk + f.delayed, f.active);
+    });
+    test('an all-delivered fleet has no active builds', () {
+      final f = FleetData([p('delivered')], []);
+      expect(f.active, 0);
+      expect(f.onTrack, 0);
+    });
+  });
 }

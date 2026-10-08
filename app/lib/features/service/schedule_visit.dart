@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Service — schedule a technician visit (sv4): who goes, when, and what to know.
@@ -74,14 +75,7 @@ class _ScheduleVisitScreenState extends ConsumerState<ScheduleVisitScreen> {
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle,
-                  border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
               decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999),
@@ -109,9 +103,8 @@ class _ScheduleVisitScreenState extends ConsumerState<ScheduleVisitScreen> {
           ])),
 
           const SectionLabel('Assign technician'),
-          techs.when(
-            loading: () => const Padding(padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator(color: BT.ink))),
+          ContentReveal(child: techs.when(
+            loading: () => const SkeletonList(count: 3),
             error: (e, _) => Text('Could not load the team.\n${friendlyError(e)}',
               style: const TextStyle(color: BT.coral, fontSize: 13)),
             data: (list) => list.isEmpty
@@ -148,7 +141,7 @@ class _ScheduleVisitScreenState extends ConsumerState<ScheduleVisitScreen> {
                       ),
                     ));
                 }).toList()),
-          ),
+          )),
 
           const SectionLabel('When'),
           Row(children: [
@@ -183,9 +176,7 @@ class _ScheduleVisitScreenState extends ConsumerState<ScheduleVisitScreen> {
             child: Text(_error!,
               style: const TextStyle(color: BT.coral, fontSize: 12.5, height: 1.35))),
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : PrimaryButton('Confirm visit', icon: Icons.event_available_rounded, onTap: _submit),
+          PrimaryButton('Confirm visit', icon: Icons.event_available_rounded, onTap: _submit, busy: _saving),
         ],
       )),
     );

@@ -1445,6 +1445,7 @@ class PmRepo {
       id: e['id'] as String,
       name: e['name'] as String? ?? '',
       projectCode: codeById[e['project_id']] ?? '',
+      projectId: e['project_id'] as String? ?? '',
     )).toList();
   }
 

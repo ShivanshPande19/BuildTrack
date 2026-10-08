@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Materials & order-by (Hero #1) — a project's procurement requirements,
@@ -53,14 +54,8 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            if (!widget.embedded) Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+            if (!widget.embedded) const Row(children: [
+              BackChip(),
             ]),
             const SizedBox(height: 14),
             if (widget.projectCode != null)
@@ -73,11 +68,9 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
               : 'Read-only overview. Order-by = needed-by − lead time − buffer.',
               style: const TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)),
             const SizedBox(height: 16),
-            reqs.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load materials.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: reqs.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load materials.\n${friendlyError(e)}', onRetry: () => ref.invalidate(requirementsProvider(widget.projectId))),
               data: (list) => list.isEmpty
                 ? EmptyState(icon: Icons.inventory_2_outlined, tint: BT.lav,
                     title: 'No materials yet',
@@ -85,7 +78,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                       ? 'Add the parts this build needs — each gets an order-by alert.'
                       : 'Materials will appear here once the build plan is set.')
                 : Column(children: list.map(_row).toList()),
-            ),
+            )),
           ],
         ),
       )),
@@ -103,9 +96,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     final ordered = r.status != 'pending';
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: (widget.editable && !ordered) ? () => _openSheet(r) : null,
+      child: PressableScale(pressedScale: 0.98, haptic: true, onTap: (widget.editable && !ordered) ? () => _openSheet(r) : null,
         child: AppCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           child: Row(children: [
@@ -133,6 +124,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     int qty = existing?.qty ?? 1;
     DateTime? neededBy = existing?.neededBy;
     bool busy = false;
+    bool deleting = false; // which action is in flight: delete spins its own tile
     String? err;
 
     // catalog items available for picking (add mode)
@@ -144,6 +136,7 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     }.values.toList();
 
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
         return Padding(
@@ -222,41 +215,49 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
                 child: Text(err!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
 
               const SizedBox(height: 18),
-              busy
-                ? const Center(child: CircularProgressIndicator(color: BT.ink))
-                : Row(children: [
-                    if (isEdit) ...[
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () async {
-                          await ref.read(projectsRepoProvider).deleteRequirement(existing.id);
-                          _refresh();
-                          if (ctx.mounted) Navigator.pop(ctx);
-                        },
-                        child: Container(width: 54, height: 54, alignment: Alignment.center,
-                          decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(16)),
-                          child: const Icon(Icons.delete_outline_rounded, color: BT.coral)),
-                      ),
-                      const SizedBox(width: 12),
-                    ],
-                    Expanded(child: PrimaryButton(isEdit ? 'Save' : 'Add material', icon: Icons.check,
-                      onTap: () async {
-                        if (!isEdit && itemId == null) { setS(() => err = 'Pick an item.'); return; }
-                        setS(() { busy = true; err = null; });
-                        try {
-                          final repo = ref.read(projectsRepoProvider);
-                          if (isEdit) {
-                            await repo.updateRequirement(id: existing.id, projectId: widget.projectId, qty: qty, neededBy: neededBy);
-                          } else {
-                            await repo.addRequirement(projectId: widget.projectId, itemId: itemId!, qty: qty, neededBy: neededBy);
-                          }
-                          _refresh();
-                          if (ctx.mounted) Navigator.pop(ctx);
-                        } catch (e) {
-                          setS(() { busy = false; err = '${friendlyError(e)}'; });
-                        }
-                      })),
-                  ]),
+              Row(children: [
+                if (isEdit) ...[
+                  PressableScale(
+                    haptic: true,
+                    // Guarded like Save: one delete at a time, and a failure
+                    // shows in the sheet. It used to throw unhandled.
+                    onTap: busy ? null : () async {
+                      setS(() { busy = true; deleting = true; err = null; });
+                      try {
+                        await ref.read(projectsRepoProvider).deleteRequirement(existing.id);
+                        _refresh();
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      } catch (e) {
+                        setS(() { busy = false; deleting = false; err = friendlyError(e); });
+                      }
+                    },
+                    child: Container(width: 54, height: 54, alignment: Alignment.center,
+                      decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(16)),
+                      child: AnimatedSwap(child: deleting
+                        ? const SizedBox(key: ValueKey('spin'), width: 20, height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: BT.coral))
+                        : const Icon(Icons.delete_outline_rounded, key: ValueKey('icon'), color: BT.coral))),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(child: PrimaryButton(isEdit ? 'Save' : 'Add material', icon: Icons.check,
+                  onTap: deleting ? null : () async {
+                    if (!isEdit && itemId == null) { setS(() => err = 'Pick an item.'); return; }
+                    setS(() { busy = true; err = null; });
+                    try {
+                      final repo = ref.read(projectsRepoProvider);
+                      if (isEdit) {
+                        await repo.updateRequirement(id: existing.id, projectId: widget.projectId, qty: qty, neededBy: neededBy);
+                      } else {
+                        await repo.addRequirement(projectId: widget.projectId, itemId: itemId!, qty: qty, neededBy: neededBy);
+                      }
+                      _refresh();
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    } catch (e) {
+                      setS(() { busy = false; err = friendlyError(e); });
+                    }
+                  }, busy: busy && !deleting)),
+              ]),
             ]),
           ),
         );

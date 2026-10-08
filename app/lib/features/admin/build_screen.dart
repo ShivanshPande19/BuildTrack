@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../shared/animations.dart';
+import '../../shared/widgets.dart';
 import 'project_detail.dart';
 import 'project_dossier.dart';
 import 'project_requirements.dart';
@@ -67,17 +68,11 @@ class _BuildScreenState extends State<BuildScreen> {
       body: SafeArea(
         bottom: false,
         child: Column(children: [
-          // header — back + code + name (once, for the whole build)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 10),
+          // header: back + code + name (once, for the whole build)
+          FadeSlideIn(child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
             child: Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text((code ?? 'BUILD').toUpperCase(),
@@ -87,35 +82,10 @@ class _BuildScreenState extends State<BuildScreen> {
                   style: display(21, w: FontWeight.w600)),
               ])),
             ]),
-          ),
-          // tab pills — matches the app's chip language (no raw Material TabBar)
-          SizedBox(
-            height: 40,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              itemCount: _tabs.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final on = i == _tab;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => setState(() => _tab = i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      color: on ? BT.ink : BT.card,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: on ? Colors.transparent : BT.line)),
-                    child: Text(_tabs[i], style: TextStyle(fontSize: 13,
-                      fontWeight: FontWeight.w600, color: on ? Colors.white : BT.mut)),
-                  ),
-                );
-              },
-            ),
-          ),
+          )),
+          // Tabs with a sliding indicator, in the app's chip language (no raw Material TabBar).
+          FadeSlideIn(delay: Motion.stagger(1), child: SegmentTabs(
+            labels: _tabs, index: _tab, onChanged: (i) => setState(() => _tab = i))),
           const SizedBox(height: 6),
           Expanded(child: TabSwitcher(index: _tab, child: pages[_tab])),
         ]),

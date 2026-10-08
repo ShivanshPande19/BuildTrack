@@ -35,14 +35,30 @@ parallel builds, so nothing slips.
   points with divergent behaviour — duplicate access paths are the app's biggest source
   of confusion. If an action already lives somewhere, link to it; don't re-implement it.
 - **Own the design system, never raw Material.** Use the shared components in
-  `app/lib/shared/widgets.dart` (`AppCard`, `StatusPill`, `SectionLabel`, `PrimaryButton`,
-  `AsyncPrimaryButton`, `PillNav`, `AppSelectField`, `EmptyState`) and the tokens in
-  `app/lib/core/theme.dart` (`BT.*`, `display()`), plus the motion layer in
-  `app/lib/shared/animations.dart`. No bare `AppBar`, `DropdownButton`, `Switch`,
-  hand-rolled buttons, etc. — they read as unfinished.
+  `app/lib/shared/widgets.dart`:
+  - Cards, labels and states: `AppCard`, `StatusPill`, `SectionLabel`, `Eyebrow`, `EmptyState`, `ErrorCard`.
+  - Buttons: `PrimaryButton` (with `busy:`), `AsyncPrimaryButton`, `SecondaryButton`, `PillAction`.
+  - Navigation and pickers: `AppChip` / `ChipBar`, `SegmentTabs`, `PillNav`, `AppSelectField`, `showAppSheet`, `BackChip`.
+
+  Also use `RoleHeader` from `shared/role_header.dart` and the tokens in `app/lib/core/theme.dart` (`BT.*`,
+  `display()`). No bare `AppBar`, `DropdownButton`, `Switch`, hand-rolled buttons or back circles. They read as
+  unfinished. New sheets use `showAppSheet`. The older custom sheets still call `showModalBottomSheet`, but must
+  pass `sheetAnimationStyle: sheetMotion`.
 - **Every list needs loading / empty / error states.** Use `AsyncValue.when` — never
   `.valueOrNull ?? []`, which shows a false "empty" during load and swallows errors.
-  Show errors via `friendlyError(e)`, never a raw `$e`.
+  Loading is a `SkeletonList` (never a bare spinner), errors are an `ErrorCard` with `onRetry`, and the
+  slot is wrapped in `ContentReveal`. Show errors via `friendlyError(e)`, never a raw `$e`. Keep the
+  back button outside the async slot, so a loading or failed screen can always be left.
+- **Motion should feel fluid, never jerky** (`app/lib/shared/animations.dart`, no animation packages):
+  - Timing: use the `Motion.*` tokens and easing, not ad-hoc durations.
+  - Entrances and taps: cascade a page's top-level items with `staggered()`, and make tappable cards spring with
+    `PressableScale` (or `AppCard(onTap:)`).
+  - Changes in place: swap values with `AnimatedSwap` / `CountUp`, not hard cuts. A busy action keeps its
+    button and morphs (`busy:`) instead of being replaced by a spinner, so the layout never jumps.
+  - Switching: tabs and async slots fade *through* (old out, then new in), never cross-fade (that ghosts). Keep
+    layer widgets the same shape and keyed, so the leaving child keeps its state.
+  - Lists: key stateful rows by id (`ValueKey(x.id)`), so a removed row's state can't pass to the next one.
+  - iOS routes stay Cupertino (edge-swipe-back must work), and everything respects *Reduce motion*.
 
 ## Multiple people per role is the norm — design for it
 

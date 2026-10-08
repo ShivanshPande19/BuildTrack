@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'service_home.dart' show ticketPill, priorityColor, categoryLabel;
 import 'resolve_ticket.dart';
@@ -42,17 +43,16 @@ class TicketDetailScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            ticket.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 80),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => Column(children: [
-                _backRow(context, null),
-                const SizedBox(height: 16),
-                AppCard(child: Text('Could not load this ticket.\n${friendlyError(e)}',
-                  style: const TextStyle(color: BT.coral, fontSize: 13))),
-              ]),
+            // Back stays put through loading and errors, so the screen can
+            // always be left; only the body below swaps in.
+            _backRow(context, ticket.valueOrNull),
+            const SizedBox(height: 14),
+            ContentReveal(child: ticket.when(
+              loading: () => const SkeletonList(count: 4),
+              error: (e, _) => ErrorCard('Could not load this ticket.\n${friendlyError(e)}',
+                onRetry: () => ref.invalidate(serviceTicketProvider(ticketId))),
               data: (t) => _content(context, ref, t),
-            ),
+            )),
           ],
         ),
       )),
@@ -61,22 +61,15 @@ class TicketDetailScreen extends ConsumerWidget {
 
   Widget _backRow(BuildContext context, ServiceTicket? t) => Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => Navigator.pop(context),
-        child: Container(width: 42, height: 42, alignment: Alignment.center,
-          decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle,
-            border: Border.all(color: BT.line)),
-          child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-      ),
-      if (t != null) Container(
+      const BackChip(),
+      if (t != null) FadeSlideIn(offsetY: 0, child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
         decoration: BoxDecoration(
           color: t.isResolved ? BT.card2 : (t.isOverdue ? BT.coral : BT.amber),
           borderRadius: BorderRadius.circular(999)),
         child: Text(t.isResolved ? ticketPill(t.status).label : 'SLA · ${t.slaLabel}',
           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: BT.ink)),
-      ),
+      )),
     ]);
 
   Widget _content(BuildContext context, WidgetRef ref, ServiceTicket t) {
@@ -85,12 +78,24 @@ class TicketDetailScreen extends ConsumerWidget {
       for (final m in (ref.watch(membersProvider).valueOrNull ?? <Member>[])) m.id: m.name
     };
 
+    // The client's words are the title. A short note was printed twice (as the
+    // title and again in the quote card right under it). Now the quote card
+    // only appears when the title really got cut. That's measured at the real
+    // width and text size, not guessed from a character count, which hid the
+    // tail of the client's report at large text sizes.
+    final desc = t.description?.trim() ?? '';
+    final titleStyle = display(25, w: FontWeight.w600);
+    return LayoutBuilder(builder: (context, c) {
+    final longDesc = desc.isNotEmpty && (TextPainter(
+      text: TextSpan(text: desc, style: titleStyle),
+      maxLines: 2,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: c.maxWidth)).didExceedMaxLines;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _backRow(context, t),
-      const SizedBox(height: 14),
-      Text(t.description == null || t.description!.isEmpty
-            ? categoryLabel(t.category) : t.description!,
-        style: display(25, w: FontWeight.w600)),
+      Text(desc.isEmpty ? categoryLabel(t.category) : desc,
+        maxLines: 2, overflow: TextOverflow.ellipsis,
+        style: titleStyle),
       const SizedBox(height: 5),
       Text([
         t.number,
@@ -108,13 +113,13 @@ class TicketDetailScreen extends ConsumerWidget {
       ]),
 
       // the client's words
-      if (t.description != null && t.description!.isNotEmpty) ...[
+      if (longDesc) ...[
         const SizedBox(height: 14),
         AppCard(padding: const EdgeInsets.all(16),
           child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Icon(Icons.format_quote_rounded, size: 18, color: BT.mut2),
             const SizedBox(width: 10),
-            Expanded(child: Text(t.description!,
+            Expanded(child: Text(desc,
               style: const TextStyle(fontSize: 14, height: 1.45))),
           ])),
       ],
@@ -201,15 +206,14 @@ class TicketDetailScreen extends ConsumerWidget {
       const SizedBox(height: 18),
       _actions(context, ref, t),
     ]);
+    });
   }
 
   Widget _assigneeCard(BuildContext context, WidgetRef ref, ServiceTicket t,
       Map<String, String> names) {
     final who = t.assignedTo == null ? null : (names[t.assignedTo] ?? 'Assigned');
     final canAct = !t.isResolved;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: !canAct ? null : () => _pickTechnician(context, ref, t),
+    return PressableScale(pressedScale: 0.98, haptic: true, onTap: !canAct ? null : () => _pickTechnician(context, ref, t),
       child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         child: Row(children: [
@@ -320,6 +324,7 @@ class TicketDetailScreen extends ConsumerWidget {
         onTap: () async {
           try {
             await ref.read(serviceRepoProvider).close(t.id);
+            Haptic.confirm();
             await _refresh(ref);
             if (context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -347,6 +352,7 @@ class TicketDetailScreen extends ConsumerWidget {
   /// Triage sheet — service + workshop members only (the DB enforces this too).
   void _pickTechnician(BuildContext context, WidgetRef ref, ServiceTicket t) {
     showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => Consumer(builder: (ctx, r, _) {
         final techs = r.watch(techniciansProvider);
@@ -376,9 +382,8 @@ class TicketDetailScreen extends ConsumerWidget {
               const Text('Service and workshop members can take a ticket.',
                 style: TextStyle(color: BT.mut, fontSize: 12.5)),
               const SizedBox(height: 14),
-              techs.when(
-                loading: () => const Padding(padding: EdgeInsets.all(24),
-                  child: Center(child: CircularProgressIndicator(color: BT.ink))),
+              ContentReveal(child: techs.when(
+                loading: () => const SkeletonList(count: 3),
                 error: (e, _) => Text('Could not load the team.\n${friendlyError(e)}',
                   style: const TextStyle(color: BT.coral, fontSize: 13)),
                 data: (list) => list.isEmpty
@@ -431,7 +436,7 @@ class TicketDetailScreen extends ConsumerWidget {
                           ),
                         )),
                     ]),
-              ),
+              )),
             ])),
         );
       }),

@@ -59,13 +59,7 @@ class ProjectDossierScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
           children: [
             if (!embedded) Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
                 decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999), border: Border.all(color: BT.line)),
@@ -75,13 +69,11 @@ class ProjectDossierScreen extends ConsumerWidget {
             const Text('BUILD DOSSIER',
               style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
-            detail.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load the dossier.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: detail.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load the dossier.\n${friendlyError(e)}', onRetry: () => ref.invalidate(projectDetailProvider(projectId))),
               data: (d) => _content(context, ref, d, delays.valueOrNull ?? const [], members),
-            ),
+            )),
           ],
         ),
       )),

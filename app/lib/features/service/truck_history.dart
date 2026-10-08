@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'service_home.dart' show ticketCard;
 
@@ -24,14 +25,7 @@ class TruckHistoryScreen extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle,
-                    border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               if (history.valueOrNull != null) Container(
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
                 decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(999),
@@ -40,11 +34,9 @@ class TruckHistoryScreen extends ConsumerWidget {
                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: BT.mut))),
             ]),
             const SizedBox(height: 14),
-            history.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 70),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load this truck.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: history.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load this truck.\n${friendlyError(e)}', onRetry: () => ref.invalidate(truckHistoryProvider(projectId))),
               data: (h) {
                 final wEnd = h.earliestWarrantyEnd;
                 final wDays = wEnd?.difference(DateTime.now()).inDays;
@@ -85,7 +77,7 @@ class TruckHistoryScreen extends ConsumerWidget {
                   ],
                 ]);
               },
-            ),
+            )),
           ],
         ),
       )),

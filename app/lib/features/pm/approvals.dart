@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// PM — Approvals (p7): stage completions submitted by workshop.
@@ -24,14 +25,8 @@ class ApprovalsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+            const Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              BackChip(),
             ]),
             const SizedBox(height: 14),
             Text('Approvals', style: display(29, w: FontWeight.w500)),
@@ -39,16 +34,18 @@ class ApprovalsScreen extends ConsumerWidget {
             const Text('Review the work, then approve or send it back.',
               style: TextStyle(color: BT.mut, fontSize: 12.5)),
             const SizedBox(height: 16),
-            approvals.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load approvals.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: approvals.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load approvals.\n${friendlyError(e)}', onRetry: () => ref.invalidate(pendingApprovalsProvider)),
               data: (list) => list.isEmpty
                 ? const EmptyState(icon: Icons.verified_outlined, tint: BT.lime,
                     title: 'Nothing to approve', subtitle: 'Stage completions from workshop will show here.')
-                : Column(children: [for (final a in list) _ApprovalCard(a)]),
-            ),
+                : Column(children: [
+                    // Keyed by id: when one is decided and drops out, the next card
+                    // must not inherit its state (busy / folded away).
+                    for (final a in list) _ApprovalCard(a, key: ValueKey(a.id)),
+                  ]),
+            )),
           ],
         ),
       )),
@@ -58,7 +55,7 @@ class ApprovalsScreen extends ConsumerWidget {
 
 /// One submission: header, the evidence bundle, and the approve/reject actions.
 class _ApprovalCard extends ConsumerStatefulWidget {
-  const _ApprovalCard(this.a);
+  const _ApprovalCard(this.a, {super.key});
   final ApprovalItem a;
   @override
   ConsumerState<_ApprovalCard> createState() => _ApprovalCardState();
@@ -66,6 +63,9 @@ class _ApprovalCard extends ConsumerStatefulWidget {
 
 class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
   bool _deciding = false;
+  bool _approving = false; // which button is in flight, so that one spins
+  bool _gone = false;      // decided: fade the card out…
+  bool _folded = false;    // …then fold its space shut, before the list refreshes
   ApprovalItem get a => widget.a;
 
   Future<void> _decide(bool approve) async {
@@ -74,32 +74,64 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
     String? note;
     if (!approve) {
       note = await _askReason(context);
-      if (note == null) return; // cancelled
+      if (note == null || !mounted) return; // cancelled
     }
-    setState(() => _deciding = true);
+    // The container and messenger outlive this card, which is removed below.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() { _deciding = true; _approving = approve; });
     try {
       await ref.read(projectsRepoProvider).decideApproval(a.id, approve, note: note);
-      ref.invalidate(pendingApprovalsProvider);
-      ref.invalidate(pmDashboardProvider);
-      ref.invalidate(myProjectsProvider);
-      ref.invalidate(stagesToAssignProvider);
-      ref.invalidate(workloadProvider);
-      ref.invalidate(notificationsProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      Haptic.confirm();
+      // Fold the card shut first, then refresh the list. If the list refreshed
+      // first, the card would blink out and everything below would jump up.
+      if (mounted) setState(() => _gone = true);
+      await Future<void>.delayed(Motion.fast);
+      if (mounted) setState(() => _folded = true);
+      await Future<void>.delayed(Motion.base);
+      container
+        ..invalidate(pendingApprovalsProvider)
+        ..invalidate(pmDashboardProvider)
+        ..invalidate(myProjectsProvider)
+        ..invalidate(stagesToAssignProvider)
+        ..invalidate(workloadProvider)
+        ..invalidate(notificationsProvider);
+      if (messenger.mounted) {
+        messenger.showSnackBar(SnackBar(
           backgroundColor: BT.ink,
           content: Text(approve
             ? '${a.projectCode} · ${a.stageName} approved — next stage started'
             : '${a.projectCode} · ${a.stageName} sent back for rework')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      if (messenger.mounted) {
+        messenger.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
       }
     } finally {
       if (mounted) setState(() => _deciding = false);
     }
+  }
+
+  Widget _decisionButton(String label, IconData icon, Color bg, {required bool approve}) {
+    final busy = _deciding && _approving == approve;
+    final locked = _deciding && !busy;
+    return PressableScale(
+      haptic: true,
+      onTap: _deciding ? null : () => _decide(approve),
+      child: AnimatedOpacity(
+        duration: Motion.fast,
+        opacity: locked ? 0.5 : 1,
+        child: Container(height: 44, alignment: Alignment.center,
+          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(13)),
+          child: AnimatedSwap(child: busy
+            ? const SizedBox(key: ValueKey('busy'), width: 20, height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: BT.ink))
+            : Row(key: const ValueKey('label'), mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 17, color: BT.ink), const SizedBox(width: 6),
+                Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ]))),
+      ),
+    );
   }
 
   /// Reject reason — stored on the submission and pushed to the assignee.
@@ -130,7 +162,7 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
   @override
   Widget build(BuildContext context) {
     final bundle = ref.watch(stageBundleProvider(a.stageId));
-    return Padding(
+    final card = Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: AppCard(
         padding: const EdgeInsets.all(16),
@@ -151,47 +183,36 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
           ]),
 
           // ── the evidence ─────────────────────────────────────────────────
-          bundle.when(
-            loading: () => const Padding(padding: EdgeInsets.symmetric(vertical: 18),
-              child: Center(child: SizedBox(width: 20, height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: BT.mut)))),
+          ContentReveal(child: bundle.when(
+            loading: () => const _EvidenceSkeleton(),
             error: (e, _) => Padding(padding: const EdgeInsets.only(top: 12),
               child: Text('Could not load the submitted work.\n${friendlyError(e)}',
                 style: const TextStyle(color: BT.coral, fontSize: 12))),
             data: (b) => _evidence(context, b),
-          ),
+          )),
 
           const SizedBox(height: 13),
-          if (_deciding)
-            Container(height: 44, alignment: Alignment.center,
-              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
-              child: const SizedBox(width: 20, height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2, color: BT.ink)))
-          else
-            Row(children: [
-              Expanded(child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _decide(false),
-                child: Container(height: 44, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
-                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.close_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                    Text('Reject', style: TextStyle(fontWeight: FontWeight.w600)),
-                  ])),
-              )),
-              const SizedBox(width: 10),
-              Expanded(child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => _decide(true),
-                child: Container(height: 44, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.lime, borderRadius: BorderRadius.circular(13)),
-                  child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.check_rounded, size: 17, color: BT.ink), SizedBox(width: 6),
-                    Text('Approve', style: TextStyle(fontWeight: FontWeight.w600)),
-                  ])),
-              )),
-            ]),
+          // Both buttons stay put; the tapped one spins and the other locks.
+          Row(children: [
+            Expanded(child: _decisionButton('Reject', Icons.close_rounded, BT.card2, approve: false)),
+            const SizedBox(width: 10),
+            Expanded(child: _decisionButton('Approve', Icons.check_rounded, BT.lime, approve: true)),
+          ]),
         ]),
+      ),
+    );
+    if (reduceMotion(context)) return _gone ? const SizedBox.shrink() : card;
+    // Decided cards fade out (the card stays while it fades), then their space
+    // folds shut so the cards below glide up instead of jumping.
+    return AnimatedSize(
+      duration: Motion.base,
+      curve: Motion.move,
+      alignment: Alignment.topCenter,
+      clipBehavior: Clip.none,
+      child: AnimatedOpacity(
+        duration: Motion.fast,
+        opacity: _gone ? 0 : 1,
+        child: _folded ? const SizedBox(width: double.infinity) : card,
       ),
     );
   }
@@ -297,4 +318,26 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       )),
     )));
   }
+}
+
+/// Placeholder for the photo strip + checklist while a submission loads.
+class _EvidenceSkeleton extends StatelessWidget {
+  const _EvidenceSkeleton();
+  @override
+  Widget build(BuildContext context) => const Shimmer(
+    child: Padding(
+      padding: EdgeInsets.only(top: 14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          SkeletonBox(width: 76, height: 76, radius: 12), SizedBox(width: 8),
+          SkeletonBox(width: 76, height: 76, radius: 12), SizedBox(width: 8),
+          SkeletonBox(width: 76, height: 76, radius: 12),
+        ]),
+        SizedBox(height: 14),
+        SkeletonBox(width: 140, height: 12),
+        SizedBox(height: 9),
+        SkeletonBox(width: 200, height: 10),
+      ]),
+    ),
+  );
 }

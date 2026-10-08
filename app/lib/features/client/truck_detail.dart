@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'raise_request.dart';
 import 'approve_design.dart';
@@ -46,13 +47,7 @@ class ClientTruckDetail extends ConsumerWidget {
         },
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 30), children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             StatusPill(s.label, color: s.color, dark: project.status == 'delivered'),
           ]),
           const SizedBox(height: 14),
@@ -60,9 +55,9 @@ class ClientTruckDetail extends ConsumerWidget {
           Text(project.code, style: const TextStyle(color: BT.mut, fontSize: 12.5)),
           const SizedBox(height: 16),
 
-          detail.when(
-            loading: () => const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ContentReveal(child: detail.when(
+            loading: () => const SkeletonList(count: 3),
+            error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}', onRetry: () => ref.invalidate(projectDetailProvider(project.id))),
             data: (d) {
               final cur = d.currentStage;
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -121,7 +116,7 @@ class ClientTruckDetail extends ConsumerWidget {
                   ...List.generate(d.stages.length, (i) => _stageTile(context, d.stages[i], i == d.stages.length - 1)),
               ]);
             },
-          ),
+          )),
 
           // documents — only when there are any (no empty card / dead space)
           if (docs.isNotEmpty) ...[
@@ -181,7 +176,7 @@ class ClientTruckDetail extends ConsumerWidget {
                 const SizedBox(height: 2),
                 Text(sub, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
               ])),
-              Row(mainAxisSize: MainAxisSize.min, children: const [
+              const Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.photo_library_outlined, size: 16, color: BT.mut2),
                 SizedBox(width: 4),
                 Icon(Icons.chevron_right_rounded, size: 18, color: BT.mut2),

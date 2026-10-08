@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
-import '../common/notifications.dart';
-import '../common/profile.dart';
 import 'po_detail.dart';
 import 'new_po.dart';
 import 'add_vendor.dart';
@@ -47,48 +45,14 @@ class _ProcurementHomeState extends ConsumerState<ProcurementHome> {
   }
 }
 
-const _pad = EdgeInsets.fromLTRB(20, 8, 20, 100); // bottom clears the floating nav (extendBody)
+const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating nav (extendBody)
 
-/// Shared header: eyebrow + title + bell + avatar (bell→notifications, avatar→profile).
-Widget _header(BuildContext context, String title, {int badge = 0}) => Row(
-  crossAxisAlignment: CrossAxisAlignment.start,
-  mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('PROCUREMENT',
-      style: TextStyle(fontSize: 11, letterSpacing: 1.6, color: BT.mut, fontWeight: FontWeight.w600)),
-    const SizedBox(height: 2),
-    Text(title, style: display(29, w: FontWeight.w500)),
-  ]),
-  Padding(padding: const EdgeInsets.only(top: 4), child: Row(children: [
-    GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen())),
-      child: Stack(clipBehavior: Clip.none, children: [
-        Container(width: 42, height: 42, alignment: Alignment.center,
-          decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-          child: const Icon(Icons.notifications_none_rounded, size: 20, color: BT.ink)),
-        if (badge > 0) Positioned(top: -3, right: -3, child: Container(
-          width: 19, height: 19, alignment: Alignment.center,
-          decoration: BoxDecoration(color: BT.coral, shape: BoxShape.circle, border: Border.all(color: BT.bg, width: 2)),
-          child: Text('$badge', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFF3A1C10))))),
-      ]),
-    ),
-    const SizedBox(width: 10),
-    GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProfileScreen())),
-      child: Builder(builder: (_) {
-        final u = sb.auth.currentUser;
-        final nm = (u?.userMetadata?['full_name'] as String?) ?? u?.email ?? 'R';
-        return Container(width: 42, height: 42, alignment: Alignment.center,
-          decoration: const BoxDecoration(shape: BoxShape.circle,
-            gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-              colors: [Color(0xFFC4A5EC), Color(0xFFA98FE0)])),
-          child: Text(nm.isNotEmpty ? nm[0].toUpperCase() : 'R',
-            style: display(15, w: FontWeight.w600, c: const Color(0xFF31234A))));
-      }),
-    ),
-  ])),
-]);
+/// Shared header. The bell shows unread notifications here like every other
+/// role. It used to show the "order today" count on To Order, so it changed
+/// meaning between tabs, and a rejected-PO notification could sit unread
+/// behind a 0. The order-today items are already at the top of To Order.
+Widget _header(BuildContext context, String title) =>
+    FadeSlideIn(child: RoleHeader(role: 'procurement', eyebrow: 'Procurement', title: title));
 
 ({String label, Color color}) _duePill(int daysLeft) => daysLeft <= 0
   ? (label: 'Order today', color: BT.coral)
@@ -141,7 +105,6 @@ class _ToOrderTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(toOrderProvider);
     final reqs = ref.watch(stockRequestsProvider);
-    final badge = items.valueOrNull?.where((d) => d.daysLeft <= 0).length ?? 0;
     final bothEmpty = (items.valueOrNull?.isEmpty ?? false) && (reqs.valueOrNull?.isEmpty ?? false);
     return RefreshIndicator(
       onRefresh: () async {
@@ -149,14 +112,12 @@ class _ToOrderTab extends ConsumerWidget {
         return ref.refresh(toOrderProvider.future);
       },
       child: ListView(padding: _pad, children: [
-        _header(context, 'To Order', badge: badge),
+        _header(context, 'To Order'),
         const SizedBox(height: 20),
         // Project materials — order-by alerts (backward-scheduled requirements).
         items.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 80),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
             final sorted = [...list]..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
@@ -172,8 +133,7 @@ class _ToOrderTab extends ConsumerWidget {
         // Essentials — general reorder requests raised by Store (no project).
         reqs.when(
           loading: () => const SizedBox.shrink(),
-          error: (e, _) => AppCard(child: Text('Could not load stock requests.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          error: (e, _) => ErrorCard('Could not load stock requests.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -278,16 +238,14 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
       child: ListView(padding: _pad, children: [
         _header(context, 'Orders'),
         const SizedBox(height: 14),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
+        FadeSlideIn(delay: Motion.stagger(1), child: ChipBar(chips: [
           _chip('All', 'all'), _chip('For approval', 'approval'),
           _chip('Ordered', 'ordered'), _chip('Dispatched', 'dispatched'), _chip('Received', 'received'),
         ])),
         const SizedBox(height: 14),
         orders.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load orders.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load orders.\n${friendlyError(e)}'),
           data: (list) {
             // 'ordered'/'dispatched'/'received' only make sense for approved POs,
             // so those filters exclude ones still in approval.
@@ -300,34 +258,23 @@ class _OrdersTabState extends ConsumerState<_OrdersTab> {
               return const EmptyState(icon: Icons.receipt_long_rounded, tint: BT.sky,
                 title: 'No orders here', subtitle: 'Create a PO from the To Order tab.');
             }
-            return Column(children: filtered.map(_orderRow).toList());
+            return Column(children: staggered(filtered.map(_orderRow).toList()));
           },
         ),
       ]),
     );
   }
 
-  Widget _chip(String label, String value) {
-    final on = _filter == value;
-    return Padding(padding: const EdgeInsets.only(right: 8), child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _filter = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
-        decoration: BoxDecoration(color: on ? BT.ink : BT.card, borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: on ? BT.ink : BT.line)),
-        child: Text(label, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
-          color: on ? Colors.white : BT.mut)),
-      ),
-    ));
-  }
+  Widget _chip(String label, String value) => AppChip(label,
+    selected: _filter == value, onTap: () => setState(() => _filter = value));
 
   Widget _orderRow(PurchaseOrder o) {
     final p = _poPill(o);
-    return Padding(padding: const EdgeInsets.only(bottom: 11), child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => PoDetailScreen(poId: o.id, poNumber: o.poNumber))),
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () async {
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => PoDetailScreen(poId: o.id, poNumber: o.poNumber)));
+        ref.invalidate(purchaseOrdersProvider);
+      },
       child: AppCard(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
@@ -369,10 +316,8 @@ class _ReceiveTab extends ConsumerWidget {
           style: TextStyle(color: BT.mut, fontSize: 12.5)),
         const SizedBox(height: 8),
         orders.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) {
             // Only approved POs can move — a PO in approval isn't an order yet.
             final approved = list.where((o) => o.isApproved).toList();
@@ -424,6 +369,7 @@ class _ReceiveTab extends ConsumerWidget {
           onTap: () async {
             try {
               await ref.read(procurementRepoProvider).markReceived(o.id);
+              Haptic.confirm();
               ref.invalidate(purchaseOrdersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -459,6 +405,7 @@ class _ReceiveTab extends ConsumerWidget {
             if (eta == null) return; // ETA required to dispatch
             try {
               await ref.read(procurementRepoProvider).markDispatched(o.id, expectedDate: eta);
+              Haptic.confirm();
               ref.invalidate(purchaseOrdersProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -492,22 +439,27 @@ class _VendorsTab extends ConsumerWidget {
       onRefresh: () async => ref.refresh(vendorsProvider.future),
       child: ListView(padding: _pad, children: [
         _header(context, 'Vendors'),
-        const SizedBox(height: 16),
-        PrimaryButton('Add vendor', icon: Icons.add_business_rounded, bg: BT.ink, fg: BT.card,
-          onTap: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const AddVendorScreen()))),
+        const SizedBox(height: 14),
+        // Same fix as Admin → Team: the create action is a compact pill beside
+        // the section title, not a full-width ink bar above the list.
+        FadeSlideIn(delay: Motion.stagger(1), child: Row(children: [
+          const Expanded(child: Text('Who you buy from', style: TextStyle(color: BT.mut, fontSize: 12.5))),
+          PillAction('Add vendor', icon: Icons.add_business_rounded,
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AddVendorScreen()));
+              ref.invalidate(vendorsProvider);
+            }),
+        ])),
         const SizedBox(height: 14),
         vendors.when(
-          loading: () => const Padding(padding: EdgeInsets.only(top: 60),
-            child: Center(child: CircularProgressIndicator(color: BT.ink))),
-          error: (e, _) => AppCard(child: Text('Could not load vendors.\n${friendlyError(e)}',
-            style: const TextStyle(color: BT.coral, fontSize: 13))),
+          loading: () => const SkeletonList(count: 4),
+          error: (e, _) => ErrorCard('Could not load vendors.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) {
               return const EmptyState(icon: Icons.storefront_outlined, tint: BT.lav,
                 title: 'No vendors yet', subtitle: 'Vendors you order from will appear here.');
             }
-            return Column(children: list.map(_vendorRow).toList());
+            return Column(children: staggered(list.map(_vendorRow).toList()));
           },
         ),
       ]),

@@ -23,6 +23,7 @@ class _LogComponentState extends ConsumerState<LogComponent> {
   PickedPhoto? _bill; // bill/invoice image, uploaded on save
   final List<OptRef> _extraItems = [];
   bool _saving = false;
+  bool _another = false; // which save button is in flight
   String? _error;
 
   static final _fmt = DateFormat('d MMM yyyy');
@@ -43,7 +44,7 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       setState(() => _error = 'Item and serial number are required.');
       return;
     }
-    setState(() { _saving = true; _error = null; });
+    setState(() { _saving = true; _another = another; _error = null; });
     try {
       final repo = ref.read(storeRepoProvider);
       // Upload the bill first (if one was attached) so its URL goes in with the
@@ -95,14 +96,8 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
           Text('Log component', style: display(29, w: FontWeight.w500)),
@@ -200,23 +195,13 @@ class _LogComponentState extends ConsumerState<LogComponent> {
             child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
 
           const SizedBox(height: 20),
-          _saving
-            ? const Center(child: CircularProgressIndicator(color: BT.ink))
-            : Column(children: [
-                PrimaryButton('Save to inventory', icon: Icons.check, onTap: () => _save()),
-                const SizedBox(height: 10),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _save(another: true),
-                  child: Container(height: 50, alignment: Alignment.center,
-                    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: BT.line)),
-                    child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                      Icon(Icons.add_rounded, size: 18, color: BT.ink),
-                      SizedBox(width: 8),
-                      Text('Save & log another', style: TextStyle(fontWeight: FontWeight.w600, color: BT.ink)),
-                    ])),
-                ),
-              ]),
+          PrimaryButton('Save to inventory', icon: Icons.check,
+            busy: _saving && !_another,
+            onTap: _saving && _another ? null : () => _save()),
+          const SizedBox(height: 10),
+          SecondaryButton('Save & log another', icon: Icons.add_rounded, height: 50,
+            busy: _saving && _another,
+            onTap: _saving && !_another ? null : () => _save(another: true)),
         ],
       )),
     );

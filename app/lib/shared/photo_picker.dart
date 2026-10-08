@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'animations.dart';
 import 'package:image_picker/image_picker.dart';
 import '../core/theme.dart';
 
@@ -32,7 +33,8 @@ String _contentTypeFor(String name, String? mime) {
 /// Returns null if the user backs out or denies permission.
 Future<PickedPhoto?> pickPhoto(BuildContext context) async {
   final source = await showModalBottomSheet<ImageSource>(
-    context: context,
+      sheetAnimationStyle: sheetMotion,
+      context: context,
     backgroundColor: Colors.transparent,
     builder: (ctx) => Container(
       decoration: const BoxDecoration(color: BT.bg,

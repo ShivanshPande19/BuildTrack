@@ -75,9 +75,7 @@ class _SetPasswordScreenState extends State<SetPasswordScreen> {
             child: Text(_error!, textAlign: TextAlign.center,
               style: const TextStyle(color: BT.coral, fontSize: 12.5))),
           const SizedBox(height: 20),
-          _loading
-            ? const CircularProgressIndicator(color: BT.ink)
-            : PrimaryButton('Save & continue', icon: Icons.arrow_forward_rounded, onTap: _save),
+          PrimaryButton('Save & continue', icon: Icons.arrow_forward_rounded, onTap: _save, busy: _loading),
         ]),
       ))),
     );

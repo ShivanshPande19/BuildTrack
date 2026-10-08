@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../../shared/barcode_scanner.dart';
 
@@ -110,14 +111,8 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
         children: [
-          Row(children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+          const Row(children: [
+            BackChip(),
           ]),
           const SizedBox(height: 12),
           Text('Scan to install', style: display(29, w: FontWeight.w500)),
@@ -165,17 +160,14 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
             ),
 
           const SectionLabel('In-stock components'),
-          inStock.when(
-            loading: () => const Padding(padding: EdgeInsets.only(top: 30),
-              child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load stock.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ContentReveal(child: inStock.when(
+            loading: () => const SkeletonList(count: 3),
+            error: (e, _) => ErrorCard('Could not load stock.\n${friendlyError(e)}', onRetry: () => ref.invalidate(inStockProvider)),
             data: (list) => list.isEmpty
               ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.mint,
                   title: 'Nothing in stock', subtitle: 'Store logs components before they can be installed.')
               : Column(children: list.map((c) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => _install(c),
+                  child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => _install(c),
                     child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14), child: Row(children: [
                       Container(width: 46, height: 46, alignment: Alignment.center,
                         decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(14)),
@@ -189,7 +181,7 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
                       const Icon(Icons.add_circle_outline_rounded, color: BT.ink),
                     ])),
                   ))).toList()),
-          ),
+          )),
         ],
       )),
     );

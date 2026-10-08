@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'build_screen.dart';
 
@@ -55,13 +56,7 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
           children: [
             Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+              const BackChip(),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -79,13 +74,11 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
             const SizedBox(height: 2),
             Text('The whole floor', style: display(29, w: FontWeight.w500)),
             const SizedBox(height: 18),
-            board.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 80),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load the floor.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: board.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load the floor.\n${friendlyError(e)}', onRetry: () => ref.invalidate(opsBoardProvider)),
               data: _content,
-            ),
+            )),
           ],
         ),
       )),

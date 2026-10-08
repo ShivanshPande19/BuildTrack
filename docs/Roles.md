@@ -28,7 +28,7 @@ pill nav. It lives in `core/theme.dart` and `shared/widgets.dart`.
 | 🙋 Client | My Trucks · Support · Profile | Raise request | My client account's trucks |
 
 **Shared:**
-- The bell opens **Notifications** (Today / Earlier, Mark all read; rows aren't tappable).
+- The bell (top right on every role) shows the **unread** count and opens **Notifications**: Today / Yesterday / Earlier by local day, an icon per type, Mark all read. Rows aren't tappable yet.
 - The avatar opens **Profile** (identity + log out; the settings rows are coming-soon). Service and Client have their own Profile tab instead.
 
 ---
@@ -44,14 +44,14 @@ pill nav. It lives in `core/theme.dart` and `shared/widgets.dart`.
   - **PO approvals** (final sign-off, sorted by priority; tap the badge to override);
   - **Needs attention** (order-by items due within 3 days);
   - the bell's unread badge.
-- **Projects:** All / On-track / At-risk / Delayed chips, plus **No PM** (shown when a build has no PM). A row opens
+- **Projects:** All / On-track / At-risk / Delayed chips, plus **Delivered** and **No PM** (each shown when it has builds). A row opens
   the **build screen**.
 - **Team:**
-  - members grouped by department, with a department filter;
-  - **Add member**: the admin sets the email and **password**, picks the role (all 8) and optionally a sub-team (with a new-team option). A credentials dialog follows;
+  - members grouped by department, with a department filter. Each row shows the email, sub-team and an Invited / Disabled pill, and your own row is tagged *You*;
+  - **Add member** (the pill beside the Members title): the admin sets the email and **password**, picks the role (all 8) and optionally a sub-team (with a new-team option). A credentials dialog follows;
   - swipe to remove a member (Edge Function);
-  - **Company details**: the buyer name, address, GSTIN and state printed on every PO.
-- **Insights** (screen title "Analytics"): on-track %, on-track / at-risk / delayed counts, distribution bars.
+  - **Workspace → Company details** (bottom of the tab): the buyer name, address, GSTIN and state printed on every PO.
+- **Insights:** on-track % of *active* builds (delivered ones are left out), on-track / at-risk / delayed counts, distribution bars.
 - **＋ Onboard project:**
   - code, name and template, with **New**, which opens *Create template*: stages, days, BOM items per stage, checklist per stage;
   - client, with **New**, which creates the client account + login (password, or an email invite);
@@ -74,9 +74,9 @@ The database does let an admin do these through the RPCs.
   - **Approvals**: each card shows the stage's **photos, checklist and installed parts**. Approve auto-starts the next stage.
     **Reject** opens a *Send back* dialog ("What needs fixing?"; a blank reason is accepted) and puts the stage into rework;
   - **PO approvals**: sign or reject POs on my builds;
-  - at-risk / delayed builds;
-  - today's in-progress stages.
-- **Projects:** my builds with status chips. A row opens the **build screen** as *You manage this build*:
+  - at-risk / delayed builds ("needs you"; a row opens the build screen);
+  - today's in-progress stages (a row opens the build screen).
+- **Projects:** my builds with status chips (incl. Delivered). A row opens the **build screen** as *You manage this build*:
   - **Assign / Reassign** a stage. The sheet recommends the stage's discipline first and shows each person's open load.
     Another role needs a second tap (override). Start and due dates. Unassign.
   - **Materials** (editable): add or edit an item, qty and needed-by. The order-by date recomputes. Delete.
@@ -85,7 +85,7 @@ The database does let an admin do these through the RPCs.
   - **Mark delivered**: asks *Deliver anyway?* if stages are still open.
   - **Documents**: contract / invoice / warranty pack / handover certificate. The client sees them.
 - **Schedule:** open stages grouped as Overdue · Due today · Next 7 days · Later · No date yet.
-- **Team:** read-only workload (open stages per workshop / design / store / service member).
+- **Team:** read-only workload (open stages per active workshop / design / store / service member, busiest first).
 - **＋ Assign work.**
 
 **PM can't:** create builds, take over another PM's build, or change a build's code / client / template (DB-enforced).

@@ -5,6 +5,7 @@ import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'po_detail.dart';
 
@@ -38,14 +39,8 @@ class PoApprovalsScreen extends ConsumerWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
           children: [
-            Row(children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => Navigator.pop(context),
-                child: Container(width: 42, height: 42, alignment: Alignment.center,
-                  decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                  child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-              ),
+            const Row(children: [
+              BackChip(),
             ]),
             const SizedBox(height: 14),
             Text('PO Approvals', style: display(29, w: FontWeight.w500)),
@@ -55,11 +50,9 @@ class PoApprovalsScreen extends ConsumerWidget {
               : 'Purchase orders on your builds waiting for your signature.',
               style: const TextStyle(color: BT.mut, fontSize: 12.5)),
             const SizedBox(height: 16),
-            approvals.when(
-              loading: () => const Padding(padding: EdgeInsets.only(top: 50),
-                child: Center(child: CircularProgressIndicator(color: BT.ink))),
-              error: (e, _) => AppCard(child: Text('Could not load approvals.\n${friendlyError(e)}',
-                style: const TextStyle(color: BT.coral, fontSize: 13))),
+            ContentReveal(child: approvals.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load approvals.\n${friendlyError(e)}', onRetry: () => ref.invalidate(poApprovalsProvider)),
               data: (list) {
                 int byPriority(PoApproval a, PoApproval b) {
                   final p = a.priorityRank.compareTo(b.priorityRank);
@@ -89,7 +82,7 @@ class PoApprovalsScreen extends ConsumerWidget {
                   ],
                 ]);
               },
-            ),
+            )),
           ],
         ),
       )),
@@ -185,6 +178,7 @@ class PoApprovalsScreen extends ConsumerWidget {
       }
     }
     await showModalBottomSheet<void>(
+      sheetAnimationStyle: sheetMotion,
       context: context, backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         decoration: const BoxDecoration(color: BT.bg, borderRadius: BorderRadius.vertical(top: Radius.circular(26))),

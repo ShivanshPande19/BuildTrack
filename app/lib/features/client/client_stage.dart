@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
+import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
 /// Client — one build stage: its status + the photos uploaded for it.
@@ -35,13 +36,7 @@ class ClientStageDetail extends ConsumerWidget {
         onRefresh: () async => ref.refresh(stagePhotosProvider(stage.id).future),
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 30), children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.pop(context),
-              child: Container(width: 42, height: 42, alignment: Alignment.center,
-                decoration: BoxDecoration(color: BT.card, shape: BoxShape.circle, border: Border.all(color: BT.line)),
-                child: const Icon(Icons.chevron_left, size: 22, color: BT.ink)),
-            ),
+            const BackChip(),
             StatusPill(p.label, color: p.color),
           ]),
           const SizedBox(height: 14),
@@ -49,9 +44,9 @@ class ClientStageDetail extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(_when, style: const TextStyle(color: BT.mut, fontSize: 13)),
           const SizedBox(height: 18),
-          photos.when(
-            loading: () => const Padding(padding: EdgeInsets.only(top: 40), child: Center(child: CircularProgressIndicator(color: BT.ink))),
-            error: (e, _) => AppCard(child: Text('Could not load photos.\n${friendlyError(e)}', style: const TextStyle(color: BT.coral, fontSize: 13))),
+          ContentReveal(child: photos.when(
+            loading: () => const SkeletonList(count: 3),
+            error: (e, _) => ErrorCard('Could not load photos.\n${friendlyError(e)}', onRetry: () => ref.invalidate(stagePhotosProvider(stage.id))),
             data: (list) => list.isEmpty
               ? EmptyState(
                   icon: stage.status == 'todo' ? Icons.schedule_rounded : Icons.photo_library_outlined,
@@ -78,7 +73,7 @@ class ClientStageDetail extends ConsumerWidget {
                     ]))).toList(),
                   ),
                 ]),
-          ),
+          )),
         ]),
       )),
     );

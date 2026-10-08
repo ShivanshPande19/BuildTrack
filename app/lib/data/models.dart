@@ -152,10 +152,14 @@ class FleetData {
   final List<OrderDue> due;
   FleetData(this.projects, this.due);
 
-  int get total   => projects.length;
-  int get onTrack => projects.where((p) => p.status == 'on_track').length;
-  int get atRisk  => projects.where((p) => p.status == 'at_risk').length;
-  int get delayed => projects.where((p) => p.status == 'delayed').length;
+  int get total     => projects.length;
+  int get onTrack   => projects.where((p) => p.status == 'on_track').length;
+  int get atRisk    => projects.where((p) => p.status == 'at_risk').length;
+  int get delayed   => projects.where((p) => p.status == 'delayed').length;
+  int get delivered => projects.where((p) => p.status == 'delivered').length;
+  /// Builds still in progress. Delivered builds are finished, so they belong
+  /// in neither "active builds" nor the on-track / at-risk / delayed shares.
+  int get active    => total - delivered;
 
   /// Items whose order-by date is near/overdue — the "needs attention" feed.
   List<OrderDue> get urgent => due.where((d) => d.daysLeft <= 3).toList();
@@ -611,7 +615,8 @@ class ScheduleEntry {
 /// A PM "today" in-progress stage (project code + stage name).
 class ActiveStage {
   final String id, name, projectCode;
-  ActiveStage({required this.id, required this.name, required this.projectCode});
+  final String projectId;
+  ActiveStage({required this.id, required this.name, required this.projectCode, this.projectId = ''});
 }
 
 
