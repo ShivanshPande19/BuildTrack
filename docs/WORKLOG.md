@@ -81,9 +81,20 @@ The defects below are the ones it did **not** know about.
 **Verified.** `flutter analyze` 0 errors / 0 warnings · `flutter test` **89/89** (up from 62) ·
 `flutter build ios --simulator` succeeds and the app boots on an iPhone 15 Pro simulator. Flutter 3.47.2.
 
-⚠️ **`supabase/tests/run.sh` was not run** — no Docker on this machine. `0026` and its 42 new assertions
-(`tests/80_hardening_tests.sql`) are unverified until CI or a machine with Docker runs them. **Do that
-before the demo.**
+**The backend suite was then run by CI**, which is the first time any of `0026` met a real database — and
+it caught two things local work could not:
+
+1. `fn_reopen_ticket`'s new guard was **three-valued and therefore never fired**. For any staff member
+   `v_ca = public.my_client_account()` is NULL, so `false or false or NULL` came out NULL, and
+   `if not NULL then` is *false*. An unrelated welder could reopen anyone's ticket at high priority —
+   precisely what the guard was added to stop. The same trap as the `is_admin()` fix two sections above it
+   in the same migration, which is why both now carry a comment saying so.
+2. The essentials bootstrap **could not do what it claimed**: the migration chain finishes before
+   `seed.sql` runs, so `0026` swept an empty `item_catalog` and every seeded item kept the `false`
+   default. `seed.sql` sets `is_essential` on its own rows now.
+
+Every other guard condition added by `0026` was then swept for the same NULL-logic trap; those two were
+the only ones. **191/191 backend assertions pass**, on both the migration chain and `full_setup.sql`.
 
 **Also decided:** the iOS project's Swift Package Manager migration and its iOS 13 → 15 floor (both of
 which Flutter 3.47 applies automatically) are committed rather than reverted, and CI's Flutter pin moved

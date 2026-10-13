@@ -14,7 +14,7 @@ Last updated: **13 Oct 2026** (pre-demo audit + fix pass: migration `0026`, phot
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
 | **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0026`: 33 tables, 5 views, 55 functions (about 31 called by the app), 2 Edge Functions |
 | **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a pre-demo audit and fix pass (§6): migration `0026` closes 14 defects in the backend, and the app side fixes the photo crash, gives Settings real screens, makes notifications open what they are about, and lets Design and Service work their own stages — the gap that kept a build's progress from ever reaching 100%. The remaining gaps are in §3 and are smaller than they were. |
-| **Verified** | 13 Oct 2026: `flutter analyze` 0 errors / 0 warnings, `flutter test` **89/89** (42 model + 34 widget + 13 PO-document), and `flutter build ios --simulator` succeeds and the app boots, on Flutter 3.47.2. **`supabase/tests/run.sh` was NOT run for `0026` — this machine has no Docker.** Migration `0026` and its 42 new assertions (`tests/80_hardening_tests.sql`) are unverified until CI or a machine with Docker runs them. Run it before the demo. |
+| **Verified** | 13 Oct 2026, on `fix/pre-demo-audit-hardening` — CI green on all three jobs. **Backend: 191/191 assertions** in 8 suites on real Postgres 15, run twice (the migration chain and `full_setup.sql`), as real non-superuser users, plus "newest migration is idempotent". **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 89/89** (42 model + 34 widget + 13 PO-document). Android debug build passes. `flutter build ios --simulator` succeeds locally and the app boots, on Flutter 3.47.2. |
 | **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → **pre-demo audit + fix pass (`0026`)**. See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization |
 | **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
@@ -330,7 +330,10 @@ closed only one requirement) and the app side fixes the photo crash, gives Setti
 Design and Service work their own stages, makes notifications and documents open, and makes every cached
 provider auth-aware. Full detail: [`WORKLOG.md`](WORKLOG.md).
 
-**Not yet verified:** `supabase/tests/run.sh` (no Docker on the machine this ran on). See §1.
+**Verified by CI**, after two defects it caught that local work could not: `fn_reopen_ticket`'s new guard
+was three-valued and so never fired (`v_ca = my_client_account()` is NULL for any staff member, and
+`if not NULL` is *false*), and the essentials bootstrap swept an empty table because the migration chain
+finishes before `seed.sql` runs. Both fixed; 191/191 assertions pass.
 
 ### 7 Oct 2026: Premium motion + UI polish, with logic fixes (app only, no migration)
 
