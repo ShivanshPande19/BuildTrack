@@ -42,7 +42,7 @@ Product / UX rules are in `product.md` (this folder).
 
 ```bash
 sh supabase/tests/run.sh     # backend, Docker only: 149 assertions in 7 suites as real non-superuser users
-cd app && flutter analyze && flutter test   # app: 0 errors; CI (Flutter 3.44.8) is the gate if the sandbox has no SDK
+cd app && flutter analyze && flutter test   # app: 0 errors; CI (Flutter 3.47.2) is the gate if the sandbox has no SDK
 ```
 
 When you add a rule, add assertions to the matching suite: `10_workflow`, `20_service`, `30_po_approval`,
@@ -70,7 +70,7 @@ A command exiting 0 is not proof; check the actual result.
 ## Environment notes
 
 - `android/`, `ios/`, `web/` **are tracked**, with native config committed (camera/photo permissions,
-  `io.supabase.buildtrack` deep link, `minSdk` 23, iOS 13). `flutter create .` silently overwrites
+  `io.supabase.buildtrack` deep link, `minSdk` 23, iOS 15). `flutter create .` silently overwrites
   them, so `git diff` afterwards. CI fails if the Android manifest loses `CAMERA`, `INTERNET` or the deep link.
 - The live DB's migration level isn't recorded anywhere reliable. Ask the user to run
   `supabase/check_migrations.sql` before assuming a migration is applied.

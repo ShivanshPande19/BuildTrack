@@ -9,10 +9,20 @@ import '../../shared/widgets.dart';
 import '../../shared/photo_picker.dart';
 import 'scan_install.dart';
 
-/// Workshop — task (stage) detail: checklist, photos, install parts, submit for approval.
+/// Stage detail for whoever the stage is assigned to: checklist, site photos,
+/// parts installed, Start work and Submit for approval.
+///
+/// Not workshop-only. `fn_start_stage` / `fn_submit_stage` have always accepted
+/// any assignee, but this screen was reachable only from the Workshop tab — so a
+/// *Design & Layout* or *Testing & Delivery* stage assigned to a designer or a
+/// service member could never be started or submitted, the build's progress
+/// never reached 100%, and handover needed "Deliver anyway". Design and Service
+/// open the same screen now, with [showInstallPart] off: scanning a part into a
+/// stage is a workshop action, and offering it to a designer is noise.
 class TaskDetailScreen extends ConsumerWidget {
   final WorkshopTask task;
-  const TaskDetailScreen({super.key, required this.task});
+  final bool showInstallPart;
+  const TaskDetailScreen({super.key, required this.task, this.showInstallPart = true});
 
   static final _fmt = DateFormat('d MMM');
   String _shortDate(DateTime d) => _fmt.format(d);
@@ -120,9 +130,11 @@ class TaskDetailScreen extends ConsumerWidget {
       const SizedBox(height: 16),
       Row(children: [
         Expanded(child: SecondaryButton('Photo', icon: Icons.photo_camera_outlined, onTap: () => _addPhoto(context, ref))),
-        const SizedBox(width: 11),
-        Expanded(child: SecondaryButton('Install part', icon: Icons.qr_code_scanner_rounded, onTap: () =>
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
+        if (showInstallPart) ...[
+          const SizedBox(width: 11),
+          Expanded(child: SecondaryButton('Install part', icon: Icons.qr_code_scanner_rounded, onTap: () =>
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
+        ],
       ]),
       const SizedBox(height: 11),
       if (task.awaitingApproval)
@@ -146,9 +158,13 @@ class TaskDetailScreen extends ConsumerWidget {
         AsyncPrimaryButton('Start work', icon: Icons.play_arrow_rounded, bg: BT.ink, fg: Colors.white,
           onTap: () => _start(context, ref))
       else
-        AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Mark stage complete',
+        AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Submit with checks open',
           icon: Icons.check_rounded, bg: BT.ink, fg: Colors.white,
-          onTap: () => _submit(context, ref)),
+          // With checks still open the button used to read "Mark stage
+          // complete" and submit regardless — the PM then got a submission
+          // whose own checklist said it wasn't finished. It still goes through
+          // (sometimes a check genuinely doesn't apply), but deliberately.
+          onTap: () => _submit(context, ref, openChecks: total - done)),
       if (!task.awaitingApproval && !task.canStart && !allDone && total > 0)
         Padding(padding: const EdgeInsets.only(top: 10),
           // Full width so textAlign.center actually centres it (it sat left).
@@ -185,7 +201,10 @@ class TaskDetailScreen extends ConsumerWidget {
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(14),
-          child: Image.memory(photo.bytes, height: 150, width: double.infinity, fit: BoxFit.cover),
+          child: Image.memory(photo.bytes, height: 150, width: double.infinity, fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(height: 150, alignment: Alignment.center,
+              color: BT.card2,
+              child: const Icon(Icons.broken_image_outlined, size: 26, color: BT.mut2))),
         ),
         const SizedBox(height: 12),
         Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
@@ -242,7 +261,25 @@ class TaskDetailScreen extends ConsumerWidget {
     }
   }
 
-  Future<void> _submit(BuildContext context, WidgetRef ref) async {
+  Future<void> _submit(BuildContext context, WidgetRef ref, {int openChecks = 0}) async {
+    if (openChecks > 0) {
+      final go = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+        backgroundColor: BT.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text('$openChecks check${openChecks == 1 ? '' : 's'} still open',
+          style: display(18, w: FontWeight.w600)),
+        content: const Text('Your PM will see the checklist as it is. Submit anyway?',
+          style: TextStyle(fontSize: 13.5, height: 1.35)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false),
+            child: const Text('Keep working', style: TextStyle(color: BT.mut))),
+          TextButton(onPressed: () => Navigator.pop(c, true),
+            child: const Text('Submit anyway',
+              style: TextStyle(color: BT.ink, fontWeight: FontWeight.w700))),
+        ],
+      ));
+      if (go != true || !context.mounted) return;
+    }
     try {
       await ref.read(workshopRepoProvider).submitForApproval(task.stageId);
       Haptic.confirm();

@@ -14,6 +14,10 @@ import '../common/notifications.dart';
 import 'new_ticket.dart';
 import 'ticket_detail.dart';
 import 'truck_history.dart';
+import '../admin/company_settings.dart';
+import '../common/roles_reference.dart';
+import '../common/account_details.dart';
+import '../../shared/my_stages.dart';
 
 /// Service shell — Tickets · Trucks · Warranty · Profile.
 ///
@@ -273,6 +277,18 @@ class _TrucksTab extends ConsumerWidget {
       child: ListView(padding: _pad, children: [
         svHeader(context, 'Delivered'),
         const SizedBox(height: 18),
+        // Build stages a PM assigned to service — commissioning, testing,
+        // handover. These are pre-delivery work, so they sit above the
+        // delivered list rather than in the ticket queue. Without this they
+        // stayed on 'todo' forever and the build never reached 100%.
+        const MyStagesSection(
+          label: 'My build stages',
+          tint: BT.coral,
+          emptySubtitle: 'When a project manager assigns you a commissioning, testing or '
+                         'handover stage, you can start it and submit it here.',
+        ),
+        const SizedBox(height: 4),
+        const SectionLabel('In service'),
         trucks.when(
           loading: () => const SkeletonList(count: 4),
           error: (e, _) => ErrorCard('Could not load trucks.\n${friendlyError(e)}'),
@@ -473,8 +489,14 @@ class _ProfileTab extends ConsumerWidget {
         () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
       _row(Icons.person_outline_rounded, 'My details',
-        () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          backgroundColor: BT.ink, content: Text('Account details — coming soon')))),
+        () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AccountDetailsScreen()))),
+      _row(Icons.home_work_outlined, 'Company details',
+        () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CompanySettingsScreen()))),
+      _row(Icons.shield_outlined, 'Roles & permissions',
+        () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const RolesReferenceScreen()))),
       const SizedBox(height: 20),
       PressableScale(pressedScale: 0.98, haptic: true, onTap: () => sb.auth.signOut().then((_) {
           if (context.mounted) context.go('/login');

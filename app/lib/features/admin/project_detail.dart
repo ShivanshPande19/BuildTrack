@@ -12,6 +12,7 @@ import 'project_requirements.dart';
 import 'project_dossier.dart';
 import 'truck_record.dart';
 import '../client/truck_3d.dart';
+import '../../shared/document_viewer.dart';
 
 /// Admin / PM — Project detail (a4): progress, delivery date, who owns the build,
 /// and the build-stage timeline.
@@ -167,9 +168,7 @@ class ProjectDetailScreen extends ConsumerWidget {
                   lastDate: DateTime.now().add(const Duration(days: 730)));
                 if (picked != null) {
                   await ref.read(projectsRepoProvider).setDeliveryDate(projectId, picked);
-                  ref.invalidate(projectDetailProvider(projectId));
-                  ref.invalidate(myProjectsProvider);
-                  ref.invalidate(fleetProvider);
+                  invalidateBuild(ref, projectId);
                 }
               },
               child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
@@ -313,9 +312,7 @@ class ProjectDetailScreen extends ConsumerWidget {
       if (chosen == null) return;
       try {
         await ref.read(adminRepoProvider).assignPm(projectId, chosen.id);
-        ref.invalidate(projectDetailProvider(projectId));
-        ref.invalidate(fleetProvider);
-        ref.invalidate(myProjectsProvider);
+        invalidateBuild(ref, projectId);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: BT.ink,
@@ -393,9 +390,7 @@ class ProjectDetailScreen extends ConsumerWidget {
           final base = d.targetDelivery ?? DateTime.now();
           await repo.setDeliveryDate(projectId, base.add(Duration(days: res.days)));
         }
-        ref.invalidate(projectDetailProvider(projectId));
-        ref.invalidate(myProjectsProvider);
-        ref.invalidate(fleetProvider);
+        invalidateBuild(ref, projectId);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             backgroundColor: BT.ink,
@@ -466,9 +461,29 @@ class ProjectDetailScreen extends ConsumerWidget {
         ),
       );
       if (type == null) return;
-      final res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      // pickFiles throws on a denied storage permission; unhandled here it
+      // would take the build screen down mid-upload.
+      final FilePickerResult? res;
+      try {
+        res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: BT.coral,
+            content: Text('Could not open the file picker. ${friendlyError(e)}')));
+        }
+        return;
+      }
       if (res == null || res.files.isEmpty) return;
       final f = res.files.first;
+      if (f.size > 25 * 1024 * 1024) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            backgroundColor: BT.coral,
+            content: Text('That file is over 25 MB. Please attach a smaller copy.')));
+        }
+        return;
+      }
       final bytes = f.bytes;
       if (bytes == null) {
         if (context.mounted) {
@@ -511,16 +526,25 @@ class ProjectDetailScreen extends ConsumerWidget {
                             'handover certificate for the client.',
                   style: TextStyle(color: BT.mut, fontSize: 12.5, height: 1.35)))
             : Column(children: [
+                // Tappable: staff upload these for the client, so being able to
+                // check what actually landed is the whole point of the list.
                 for (final doc in docs) Padding(
                   padding: const EdgeInsets.only(bottom: 9),
-                  child: Row(children: [
-                    const Icon(Icons.description_rounded, size: 18, color: BT.mut),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(_docTypeLabels[doc.type] ?? doc.type,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                    StatusPill(doc.available ? 'Shared' : 'Hidden',
-                      color: doc.available ? BT.lime : BT.mut2),
-                  ]),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => openDocument(context,
+                      fileUrl: doc.fileUrl, title: _docTypeLabels[doc.type] ?? doc.type),
+                    child: Row(children: [
+                      const Icon(Icons.description_rounded, size: 18, color: BT.mut),
+                      const SizedBox(width: 10),
+                      Expanded(child: Text(_docTypeLabels[doc.type] ?? doc.type,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                      StatusPill(doc.available ? 'Shared' : 'Hidden',
+                        color: doc.available ? BT.lime : BT.mut2),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.open_in_new_rounded, size: 15, color: BT.mut2),
+                    ]),
+                  ),
                 ),
               ]),
         ),
@@ -547,9 +571,7 @@ class ProjectDetailScreen extends ConsumerWidget {
     Future<void> deliver({required bool force}) async {
       try {
         await ref.read(projectsRepoProvider).markDelivered(projectId, force: force);
-        ref.invalidate(projectDetailProvider(projectId));
-        ref.invalidate(myProjectsProvider);
-        ref.invalidate(fleetProvider);
+        invalidateBuild(ref, projectId);
         ref.invalidate(deliveredTrucksProvider);
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(

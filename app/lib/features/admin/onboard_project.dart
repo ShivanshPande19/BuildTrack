@@ -54,8 +54,16 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
       await ref.read(adminRepoProvider).onboard(
         code: _code.text.trim(), name: _name.text.trim(),
         templateId: _template!.id, clientId: _client?.id, pmId: _pm!.id, target: _target!);
+      // A new build has to show up everywhere it belongs: the fleet, the owner's
+      // Command Center, and the PM's own lists — they were just told it is
+      // theirs, so it had better be there when they look.
       ref.invalidate(fleetProvider);
       ref.invalidate(allProjectsProvider);
+      ref.invalidate(opsBoardProvider);
+      ref.invalidate(myProjectsProvider);
+      ref.invalidate(pmDashboardProvider);
+      ref.invalidate(stagesToAssignProvider);
+      ref.invalidate(toOrderProvider);   // onboarding generates the materials
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(

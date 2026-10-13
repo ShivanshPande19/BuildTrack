@@ -13,7 +13,9 @@ flutter run \
 ```
 
 The defaults in `lib/core/supabase_client.dart` are placeholders and don't connect.
-iOS: `cd ios && pod install` after any dependency change. CI pins Flutter **3.44.8**.
+iOS: plugins come through Swift Package Manager (Flutter 3.47+); only `printing` still uses
+CocoaPods, so `cd ios && pod install` after a dependency change is still worth running.
+Minimum iOS is **15.0**. CI pins Flutter **3.47.2**.
 
 ## Check
 

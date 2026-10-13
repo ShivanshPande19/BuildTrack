@@ -42,9 +42,9 @@ BuildTrack/
 │   ├── analysis_options.yaml     # lint + strict-cast rules CI enforces
 │   └── pubspec.lock              # committed: every machine resolves the same versions
 ├── supabase/                 # backend
-│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0025 atomic design versions
+│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0026 pre-demo hardening
 │   ├── functions/                # Edge Functions (admin create/delete member)
-│   ├── tests/                    # run.sh: 149 assertions on real Postgres, as real users
+│   ├── tests/                    # run.sh: 191 assertions on real Postgres, as real users
 │   ├── check_migrations.sql      # read-only: which migrations a database has
 │   ├── full_setup.sql            # GENERATED one-shot setup (build_full_setup.sh)
 │   └── seed.sql                  # demo data (+ seed_*_demo.sql extras)
@@ -58,7 +58,7 @@ BuildTrack/
 
 ## Tech stack
 
-- **Flutter 3.44.8** (iOS + Android; web works, but the camera needs HTTPS) with:
+- **Flutter 3.47.2** (iOS 15+ and Android; web works, but the camera needs HTTPS) with:
   - Riverpod 2 · go_router 14 · google_fonts;
   - `model_viewer_plus` (3D `.glb`) · `mobile_scanner` (barcodes) · `image_picker` · `file_picker`;
   - `pdf` + `printing` (GST purchase orders).
@@ -67,7 +67,7 @@ BuildTrack/
 
 ## Status
 
-*As of 7 Oct 2026 (`main` @ PR #46).*
+*As of 13 Oct 2026, after the pre-demo audit and fix pass.*
 
 | Area | State |
 |---|---|
@@ -78,9 +78,11 @@ BuildTrack/
 | PO approval chain (Procurement → PM → owner) + GST PO document | ✅ |
 | Command Center · tabbed build screen (Overview / Pipeline / Materials / Record) · truck record | ✅ |
 | Camera photos + barcode scanning · after-sales (tickets, SLA, visits, warranty) | ✅ |
-| Multi-user hardening (double-tap guards, atomic design versions, live SLA) | ✅ PR #46 |
+| Multi-user hardening (double-tap guards, atomic design versions, live SLA) | ✅ |
+| Every role works its own stages · settings that do something · notifications that open what they're about | ✅ `0026` |
+| Order-by survives a re-plan · GST document adds up · photos can't crash a screen | ✅ `0026` |
 | Reproducible build + CI (analyze, test, Android build, Postgres suite) | ✅ |
-| Known gaps: Design/Service can't submit a stage, several DB bypasses, Store "new item" RLS | ⬜ `docs/PROJECT_LOG.md` §3 |
+| Known gaps: no template management, a few DB rules still bypassable, buckets are public-read | ⬜ `docs/PROJECT_LOG.md` §3 |
 | Offline · push notifications · realtime · pagination · localization | ⏭️ not started |
 
 The gaps are real and listed deliberately. `docs/PROJECT_LOG.md` §3 has the full numbered set.
@@ -112,7 +114,7 @@ delayed statuses roll forward with the calendar.
 **Verify the backend.** This needs only Docker. It:
 - spins up a throwaway Postgres 15 and applies the migration chain;
 - proves the newest migration is idempotent;
-- runs **149 assertions** in 7 suites as real non-superuser users, so RLS and the guard triggers actually apply;
+- runs **191 assertions** in 8 suites as real non-superuser users, so RLS and the guard triggers actually apply;
 - checks that `full_setup.sql` alone produces the same database.
 
 ```bash

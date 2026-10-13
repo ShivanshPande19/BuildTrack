@@ -44,27 +44,28 @@ Errors: 401 unauthorized, 403 `forbidden: admin only`, 400 validation / auth err
 | ✅ | Function | Who | Effect |
 |---|---|---|---|
 | ✅ | `fn_onboard_project(p_project)` | admin | Requires a template with stages **and a PM**. Creates stages (with discipline) and checklists from the template, backward-schedules them, generates BOM requirements, and notifies the PM. |
-| ✅ | `fn_assign_pm(p_project, p_pm)` | admin | Target must be an active `pm`. Records who and when, notifies the new and old PM. |
+| ✅ | `fn_assign_pm(p_project, p_pm)` | admin | Target must be an active `pm`. Records who and when, notifies the new and old PM. **`0026`:** also moves pending stage approvals and unsigned POs on that build to the new PM, and tells them what is waiting. |
 | ✅ | `fn_assign_stage(p_stage, p_assignee, p_start?, p_due?, p_override=false)` | admin · build's PM | Assignee must be an active workshop / design / store / service member. A discipline mismatch needs `p_override`. Sets `assigned_*` and notifies the new and old assignee. `p_assignee = null` unassigns. |
-| ✅ | `fn_start_stage(p_stage)` | admin · assignee · build's PM | todo / rework → in_progress, sets `actual_start`, notifies the PM. |
+| ✅ | `fn_start_stage(p_stage)` | admin · assignee · build's PM | todo / rework → in_progress, sets `actual_start`, notifies the PM. Reachable by **every** discipline since `0026` — Design and Service have a stage screen too. |
 | ✅ | `fn_submit_stage(p_stage) → uuid` | admin · assignee | One pending `stage_approvals` row addressed to the build's PM. Refuses duplicates and PM-less builds. |
 | ✅ | `fn_decide_stage(p_approval, p_approve, p_note?)` | admin · build's PM | **Approve:** stage done, **next todo stage auto-starts**, and the submitter, next assignee and client are notified. **Reject:** stage goes to `rework` and the note reaches the assignee. |
-| ✅ | `fn_install_component(p_component, p_stage)` | admin · stage assignee · store | Part must be `in_stock`. Links it to the truck and stage (`installed`). |
+| ✅ | `fn_install_component(p_component, p_stage)` | admin · stage assignee · store | Part must be `in_stock`. Links it to the truck and stage (`installed`). This is the **only** path that marks a part installed: Store's intake screen only *reserves* one for a build (`0026`). |
 | ✅ | `fn_mark_delivered(p_project, p_date?, p_force=false)` | admin · build's PM | Refuses while stages are open unless `p_force`. Sets the delivery date and status `delivered`, and notifies the client and every service member. |
-| ✅ | `fn_recompute_schedule(p_project, p_rebaseline_assigned=false)` | *no check* ⚠️ | Backward schedule + order-by dates. `true` also re-baselines the assigned dates. |
+| ✅ | `fn_recompute_schedule(p_project, p_rebaseline_assigned=false)` | *no check* ⚠️ | Backward schedule + order-by dates, then refreshes the build's status (`0026`). `true` is a full re-plan: it re-baselines the assigned stage dates **and** moves each still-pending requirement's `needed_by_date` onto the new plan, so the order-by engine never alerts against a schedule that is no longer live. |
 | ✅ | `fn_refresh_all_statuses() → int` | *no check* ⚠️ | Recomputes every build's status. Called when the fleet, PM and Command Center screens load. |
 | | `fn_recompute_progress` · `fn_recompute_status` · `fn_recompute_current_stage` | internal | Called by triggers and the RPCs above. |
 
 ### Design
 | ✅ | Function | Who | Effect |
 |---|---|---|---|
-| ✅ | `fn_add_design_version(p_artifact, p_model_url?, p_image_url?, p_change_note?, p_submit=false) → uuid` | admin · design | Next `version_no` under a row lock (`0025`). Repoints the current version, sets status draft / pending_approval, clears client feedback. |
+| ✅ | `fn_create_design(p_project, p_type, p_model_url?, p_image_url?, p_change_note?, p_submit=false) → uuid` | admin · design | **`0026`.** Artifact + first version + `current_version_id` in one transaction (it was three client writes, and a failure halfway left an un-openable design). On submit, notifies the client and the PM. |
+| ✅ | `fn_add_design_version(p_artifact, p_model_url?, p_image_url?, p_change_note?, p_submit=false) → uuid` | admin · design | Next `version_no` under a row lock (`0025`). Repoints the current version, sets status draft / pending_approval, clears client feedback. **`0026`:** on submit, notifies the client and the PM — the "they've been notified" banner is now true. |
 | ✅ | `fn_client_decide_design(p_artifact, p_approve, p_feedback?)` | the build's client | Design must be `pending_approval`; feedback is required to reject. Writes `design_approvals`, notifies the designer and PM. |
 
 ### Procurement (PO chain, `0020`)
 | ✅ | Function | Who | Effect |
 |---|---|---|---|
-| ✅ | `fn_create_po(p_vendor?, p_project?, p_order_date?, p_delivery_date?, p_lines jsonb, p_notes?, p_payment_terms?, p_ship_to?, p_requirement?, p_stock_request?) → uuid` | admin · procurement | **The only way to create a PO.** `p_lines = [{item_catalog_id, qty, unit_price, tax_rate, hsn_code, description}]`. Computes totals and the `PO-00001` number. A project PO goes to `pending_pm`; a general one to `pending_final`. Parks the linked requirement or stock request as `ordered`. |
+| ✅ | `fn_create_po(p_vendor?, p_project?, p_order_date?, p_delivery_date?, p_lines jsonb, p_notes?, p_payment_terms?, p_ship_to?, p_requirement?, p_stock_request?) → uuid` | admin · procurement | **The only way to create a PO.** `p_lines = [{item_catalog_id, qty, unit_price, tax_rate, hsn_code, description}]`. Computes totals and the `PO-00001` number. A project PO goes to `pending_pm`; a general one to `pending_final`. Parks the linked requirement or stock request as `ordered` — and since `0026`, **every** still-pending requirement on that build whose item is on the PO, so a PO raised from the blank FAB stops the alert too. |
 | ✅ | `fn_pm_sign_po(p_po, p_note?)` | admin · the PO's `pm_id` | pending_pm → pending_final, notifies admins. |
 | ✅ | `fn_final_approve_po(p_po, p_note?)` | admin | pending_final → approved, notifies the submitter and PM. |
 | ✅ | `fn_reject_po(p_po, p_reason)` | admin (either step) · PM (own, at pending_pm) | A reason is required. → rejected, notifies the submitter (and the PM if the owner rejected). |
@@ -96,8 +97,14 @@ Dispatch is **not** an RPC: the app UPDATEs `purchase_orders.status = 'dispatche
 ### Helpers (used inside RLS and RPCs)
 `my_role()`, `is_admin()`, `is_staff()`, `has_role(text[])`, `my_client_account()`, `is_pm_of(project)`,
 `is_pm_of_stage(stage)`, `is_stage_assignee(stage)`, `fn_infer_discipline(name)`, `fn_sla_hours(priority)`,
-`fn_notify(…)`, `fn_notify_client(…)`, `fn_notify_role(…)`, `fn_audit(…)`.
-⚠️ The definer helpers are executable by every role over RPC (no `REVOKE`); see `WORKFLOW_AUDIT.md` H2.
+`fn_notify(…)`, `fn_notify_client(…)`, `fn_notify_role(…)`, `fn_audit(…)`, `fn_stage_rpc_begin()`.
+
+`my_role()` returns **NULL for a disabled account** (`0026`), so every role test built on it denies —
+and `is_admin()` coalesces, because `if not public.is_admin()` is *false* when `is_admin()` is NULL.
+
+`fn_notify*`, `fn_audit` and `fn_stage_rpc_begin` are **revoked from `authenticated`** (`0026`), so
+notifications can no longer be spoofed over RPC. `fn_recompute_schedule` and `fn_refresh_all_statuses`
+stay granted — the app calls both directly. See `PROJECT_LOG.md` §3 #13.
 
 ---
 

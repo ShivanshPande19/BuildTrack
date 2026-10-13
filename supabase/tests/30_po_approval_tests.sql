@@ -26,9 +26,18 @@ insert into profiles (id, full_name, email, role, status) values
   ('b0000000-0000-0000-0000-000000000003','Neha PM','pm3@az.co','pm','active')
 on conflict (id) do nothing;
 
--- give AZ-200 an active PM again (pm2 is still active)
+-- Give AZ-200 an active PM again (pm2 is still active).
+--
+-- As the admin, not as "no user". fn_assign_pm guards on is_admin(), which
+-- returned NULL with no JWT — and `if not NULL` is *false*, so the guard did not
+-- fire and this call went through as nobody. 0026 made is_admin() strictly
+-- boolean (a disabled admin was slipping through the same hole), so every
+-- is_admin()-guarded RPC now needs a real admin behind it. Which is what the
+-- test should have been doing anyway: this is a thing an admin does.
+set test.uid = 'a0000000-0000-0000-0000-000000000001';
 select public.fn_assign_pm('77777777-0000-0000-0000-000000000001',
                            'b0000000-0000-0000-0000-000000000002');
+set test.uid = '';
 
 -- the requirement AZ-200's onboarding auto-generated (item 33333333-…-2)
 select id as reqid from procurement_requirements

@@ -2,7 +2,7 @@
 # lower default and `pod install` fails with "required a higher minimum
 # deployment target". This matches IPHONEOS_DEPLOYMENT_TARGET in
 # Runner.xcodeproj, so the app target and its pods agree.
-platform :ios, '13.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'

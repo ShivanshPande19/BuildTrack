@@ -21,6 +21,22 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       await sb.auth.signInWithPassword(email: _email.text.trim(), password: _pass.text);
+
+      // Offboarding a member sets profiles.status = 'disabled', but it never
+      // touched their auth user — so the password kept working and they landed
+      // in their role's screens. 0026 makes the database refuse them any data;
+      // this says why, instead of dropping them into an app full of empty
+      // lists. Signing them back out also stops a dead session lingering.
+      final status = await fetchMyStatus();
+      if (status == 'disabled') {
+        await sb.auth.signOut();
+        if (!mounted) return;
+        Haptic.tap();
+        setState(() => _error = 'This account has been disabled. '
+                                'Ask your admin to re-enable it.');
+        return;
+      }
+
       if (mounted) context.go('/home');
     } catch (e) {
       if (!mounted) return;

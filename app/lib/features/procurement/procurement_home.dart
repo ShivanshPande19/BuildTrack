@@ -54,9 +54,18 @@ const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating 
 Widget _header(BuildContext context, String title) =>
     FadeSlideIn(child: RoleHeader(role: 'procurement', eyebrow: 'Procurement', title: title));
 
-({String label, Color color}) _duePill(int daysLeft) => daysLeft <= 0
-  ? (label: 'Order today', color: BT.coral)
-  : (daysLeft <= 3 ? (label: '${daysLeft}d left', color: BT.amber) : (label: 'On time', color: BT.lime));
+final _dayFmt = DateFormat('d MMM');
+
+/// Urgency pill for an order-by alert. A requirement with no order-by date is
+/// not urgent — it is unplanned, and saying "Order today" about it (which is
+/// what a null-to-0 default used to do) sends procurement chasing nothing.
+({String label, Color color}) _duePill(int? daysLeft) {
+  if (daysLeft == null) return (label: 'Needs a date', color: BT.mut2);
+  if (daysLeft < 0)     return (label: '${-daysLeft}d overdue', color: BT.coral);
+  if (daysLeft == 0)    return (label: 'Order today', color: BT.coral);
+  if (daysLeft <= 3)    return (label: '${daysLeft}d left', color: BT.amber);
+  return (label: 'On time', color: BT.lime);
+}
 
 /// Status pill for a PO — approval state comes first (it gates fulfilment),
 /// then the ordered → dispatched → received lifecycle once it's approved.
@@ -120,12 +129,14 @@ class _ToOrderTab extends ConsumerWidget {
           error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) {
             if (list.isEmpty) return const SizedBox.shrink();
-            final sorted = [...list]..sort((a, b) => a.daysLeft.compareTo(b.daysLeft));
-            final hero = sorted.first;
-            final rest = sorted.skip(1).toList();
+            // Soonest order-by first; requirements with no date sort last so
+            // an unplanned one never takes the hero slot.
+            final sorted = [...list]..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+            final hero = sorted.first.isPlanned ? sorted.first : null;
+            final rest = hero == null ? sorted : sorted.skip(1).toList();
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _heroCard(context, ref, hero),
-              if (rest.isNotEmpty) const SectionLabel('Upcoming order-by dates'),
+              if (hero != null) _heroCard(context, ref, hero),
+              if (rest.isNotEmpty && hero != null) const SectionLabel('Upcoming order-by dates'),
               ...rest.map((d) => _row(context, d)),
             ]);
           },
@@ -186,7 +197,7 @@ class _ToOrderTab extends ConsumerWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           StatusPill(p.label, color: p.color),
-          Text('order by ${d.orderByDate?.toString().split(' ').first ?? '—'}',
+          Text('order by ${d.orderByDate == null ? 'not set' : _dayFmt.format(d.orderByDate!)}',
             style: const TextStyle(fontSize: 12, color: BT.mut, fontWeight: FontWeight.w600)),
         ]),
         const SizedBox(height: 12),
@@ -209,7 +220,7 @@ class _ToOrderTab extends ConsumerWidget {
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(d.itemName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
           const SizedBox(height: 2),
-          Text('${d.projectCode} · order by ${d.orderByDate?.toString().split(' ').first ?? '—'}',
+          Text('${d.projectCode} · order by ${d.orderByDate == null ? 'not set' : _dayFmt.format(d.orderByDate!)}',
             style: const TextStyle(color: BT.mut, fontSize: 12)),
         ])),
         const SizedBox(width: 8),

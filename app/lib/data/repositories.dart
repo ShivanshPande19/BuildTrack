@@ -7,13 +7,110 @@ import 'models.dart';
 /// Emits on every auth change (sign in/out, token refresh, user update).
 final authStateProvider = StreamProvider<AuthState>((ref) => sb.auth.onAuthStateChange);
 
+/// Who is signed in, and nothing else.
+///
+/// **Every cached query provider watches this.** Two bugs came out of not
+/// having it:
+///
+///   * Providers that watched nothing at all kept the previous user's rows
+///     after a sign-out and sign-in on the same device — so demoing admin →
+///     PM → client on one phone showed the admin's builds under the client's
+///     login until something forced a refresh. With role-scoped RLS the rows
+///     were already fetched and cached; only the cache was wrong.
+///   * Providers that watched [authStateProvider] directly re-ran on *every*
+///     auth event, token refresh included, so dashboards refetched on a timer
+///     for no reason.
+///
+/// A `Provider` recomputes when auth changes but only notifies its listeners
+/// when the value actually differs, so this is distinct-until-changed on the
+/// user id: exactly what a cached query cares about.
+final currentUserIdProvider = Provider<String?>((ref) {
+  ref.watch(authStateProvider);
+  return sb.auth.currentUser?.id;
+});
+
 /// The signed-in user's role, fetched once and cached for the session.
 /// Re-fetches automatically when auth changes (e.g. a different user logs in),
 /// so screens never show a stale or flickering role.
 final myRoleProvider = FutureProvider<String?>((ref) {
-  ref.watch(authStateProvider); // invalidate + refetch on auth change
+  ref.watch(currentUserIdProvider); // refetch when the user changes
   return fetchMyRole();
 });
+
+/// Download a file the app stored, given the public URL it saved.
+///
+/// Goes through the Supabase Storage client rather than a bare HTTP GET, so the
+/// request carries the session. Today both buckets are public-read, but the
+/// documents under `builds/docs/` are contracts and invoices — when those are
+/// made private this keeps working, and nothing at the call sites changes.
+Future<Uint8List> downloadFromUrl(String publicUrl) async {
+  // …/storage/v1/object/public/<bucket>/<path>
+  final marker = RegExp(r'/storage/v1/object/(?:public/|sign/)?([^/]+)/(.+)$');
+  final m = marker.firstMatch(Uri.parse(publicUrl).path);
+  if (m == null) throw Exception('That document link is not one this app stored.');
+  final bucket = Uri.decodeComponent(m.group(1)!);
+  final path = Uri.decodeComponent(m.group(2)!);
+  return sb.storage.from(bucket).download(path);
+}
+
+/// The signed-in user's own profile row (Settings → Account details).
+///
+/// Read from `profiles` rather than from the auth user's metadata, because the
+/// metadata copy is only written at invite time: an admin renaming someone, or
+/// moving them to another sub-team, never touches it. The profiles row is the
+/// one the rest of the app reads, so this is what Settings should show.
+final myProfileProvider = FutureProvider<MyProfile?>((ref) async {
+  ref.watch(currentUserIdProvider);
+  final uid = sb.auth.currentUser?.id;
+  if (uid == null) return null;
+  final d = await sb.from('profiles')
+      .select('id,full_name,email,role,status,phone,created_at,sub_team_id,sub_teams(name)')
+      .eq('id', uid).maybeSingle();
+  return d == null ? null : MyProfile.fromMap(d);
+});
+
+/// Save the parts of your own profile that are yours to change.
+///
+/// Role, email, team and status stay the admin's — `trg_profiles_self_update`
+/// (0026) enforces that server-side, so a tampered client gets a clear error
+/// rather than a silent partial write. The auth user's metadata is updated too,
+/// so the name in the header and avatar changes without a re-login.
+Future<void> saveMyProfile({required String fullName, String? phone}) async {
+  final uid = sb.auth.currentUser?.id;
+  if (uid == null) throw Exception('You are signed out.');
+  final name = fullName.trim();
+  if (name.isEmpty) throw Exception('Your name cannot be empty.');
+  final tel = phone?.trim();
+  await sb.from('profiles').update({
+    'full_name': name,
+    'phone': (tel == null || tel.isEmpty) ? null : tel,
+  }).eq('id', uid);
+  await sb.auth.updateUser(UserAttributes(data: {'full_name': name}));
+}
+
+/// Invalidate everything a change to one build touches.
+///
+/// A build-level action (assign the PM, log a delay, push the delivery date,
+/// approve a stage, mark it delivered) moves data that at least six screens
+/// cache. Each call site used to invalidate the two or three providers whoever
+/// wrote it happened to think of, so there were real holes: logging a delay
+/// never refreshed the Pipeline's delay ledger, and assigning a PM or approving
+/// a stage never refreshed the owner's Command Center or the PM's Schedule —
+/// the action worked, the screen you were looking at just kept showing the old
+/// answer. One list, in one place, so the next action cannot forget one.
+void invalidateBuild(WidgetRef ref, String projectId) {
+  ref.invalidate(projectDetailProvider(projectId));
+  ref.invalidate(projectDelaysProvider(projectId));   // the Pipeline delay ledger
+  ref.invalidate(requirementsProvider(projectId));
+  ref.invalidate(truckComponentsProvider(projectId));
+  ref.invalidate(fleetProvider);                      // Admin home + Projects
+  ref.invalidate(opsBoardProvider);                   // the Command Center
+  ref.invalidate(myProjectsProvider);                 // PM Projects
+  ref.invalidate(pmDashboardProvider);                // PM home counts
+  ref.invalidate(pmScheduleProvider);                 // PM Schedule
+  ref.invalidate(pendingApprovalsProvider);
+  ref.invalidate(stagesToAssignProvider);
+}
 
 /// Turns a Supabase/Postgres failure into something a human can act on.
 ///
@@ -89,6 +186,13 @@ class ProjectsRepo {
   Future<List<OpsRow>> opsBoard() async {
     final data = await sb.from('v_ops_board').select();
     return (data as List).map((e) => OpsRow.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Which build a stage belongs to — used to turn a stage notification into
+  /// the build screen the PM or admin should land on.
+  Future<String?> projectIdForStage(String stageId) async {
+    final d = await sb.from('stages').select('project_id').eq('id', stageId).maybeSingle();
+    return d?['project_id'] as String?;
   }
 
   /// A single project + its ordered build stages (Project detail screen).
@@ -668,7 +772,7 @@ final projectsRepoProvider = Provider<ProjectsRepo>((ref) => ProjectsRepo());
 final procurementRepoProvider = Provider<ProcurementRepo>((ref) => ProcurementRepo());
 
 final fleetProvider = FutureProvider<FleetData>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   final repo = ref.read(projectsRepoProvider);
   await repo.refreshStatuses(); // statuses drift with the calendar, so refresh on load
   final projects = await repo.all();
@@ -677,71 +781,97 @@ final fleetProvider = FutureProvider<FleetData>((ref) async {
 });
 
 final toOrderProvider = FutureProvider<List<OrderDue>>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(procurementRepoProvider).toOrder();
 });
 
-final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>(
-    (ref) => ref.read(procurementRepoProvider).purchaseOrders());
-final poDetailProvider = FutureProvider.family<PoDetail, String>(
-    (ref, id) => ref.read(procurementRepoProvider).poDetail(id));
+final purchaseOrdersProvider = FutureProvider<List<PurchaseOrder>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).purchaseOrders();
+});
+final poDetailProvider = FutureProvider.family<PoDetail, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).poDetail(id);
+});
 final stockRequestsProvider = FutureProvider<List<StockRequest>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(procurementRepoProvider).stockRequests();
 });
-final vendorsProvider = FutureProvider<List<VendorRow>>(
-    (ref) => ref.read(procurementRepoProvider).vendors());
-final allProjectsProvider = FutureProvider<List<Project>>(
-    (ref) => ref.read(projectsRepoProvider).all());
-final itemsProvider = FutureProvider<List<OptRef>>(
-    (ref) => ref.read(procurementRepoProvider).items());
-final essentialItemsProvider = FutureProvider<List<OptRef>>(
-    (ref) => ref.read(procurementRepoProvider).essentials());
+final vendorsProvider = FutureProvider<List<VendorRow>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).vendors();
+});
+final allProjectsProvider = FutureProvider<List<Project>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).all();
+});
+final itemsProvider = FutureProvider<List<OptRef>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).items();
+});
+final essentialItemsProvider = FutureProvider<List<OptRef>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).essentials();
+});
 
 /// POs awaiting a signature — feeds the PM's and the final approver's inbox.
 /// (Distinct from `pendingApprovalsProvider`, which is stage-completion approvals.)
 final poApprovalsProvider = FutureProvider<List<PoApproval>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(procurementRepoProvider).poApprovals();
 });
 
 /// The buyer identity for the PO document (and the Company Settings screen).
 final companySettingsProvider = FutureProvider<CompanySettings>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(procurementRepoProvider).companySettings();
 });
 
 /// Everything needed to render a PO document, keyed by PO id.
-final poDocProvider = FutureProvider.family<PoDocData, String>(
-    (ref, id) => ref.read(procurementRepoProvider).poDocData(id));
+final poDocProvider = FutureProvider.family<PoDocData, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(procurementRepoProvider).poDocData(id);
+});
 
 /// Project detail (project + stages), keyed by project id.
-final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>(
-    (ref, id) => ref.read(projectsRepoProvider).detail(id));
+final projectDetailProvider = FutureProvider.family<ProjectDetailData, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).detail(id);
+});
 
 /// Delays logged across a build (dossier attribution), keyed by project id.
-final projectDelaysProvider = FutureProvider.family<List<ProjectDelay>, String>(
-    (ref, id) => ref.read(projectsRepoProvider).projectDelays(id));
+final projectDelaysProvider = FutureProvider.family<List<ProjectDelay>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).projectDelays(id);
+});
 
 /// Every component installed on a build (truck record), keyed by project id.
-final truckComponentsProvider = FutureProvider.family<List<TruckComponent>, String>(
-    (ref, id) => ref.read(projectsRepoProvider).truckComponents(id));
+final truckComponentsProvider = FutureProvider.family<List<TruckComponent>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).truckComponents(id);
+});
 
 /// A build's documents, staff view (keyed by project id).
-final projectDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
-    (ref, id) => ref.read(projectsRepoProvider).documents(id));
+final projectDocsProvider = FutureProvider.family<List<ClientDoc>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).documents(id);
+});
 
 /// Stage detail bundle (photos + parts + checklist + delays), keyed by stage id.
-final stageBundleProvider = FutureProvider.family<StageBundle, String>(
-    (ref, stageId) => ref.read(projectsRepoProvider).stageBundle(stageId));
+final stageBundleProvider = FutureProvider.family<StageBundle, String>((ref, stageId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).stageBundle(stageId);
+});
 
 /// A project's procurement requirements (Hero #1, editable), keyed by project id.
-final requirementsProvider = FutureProvider.family<List<Requirement>, String>(
-    (ref, projectId) => ref.read(projectsRepoProvider).requirements(projectId));
+final requirementsProvider = FutureProvider.family<List<Requirement>, String>((ref, projectId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(projectsRepoProvider).requirements(projectId);
+});
 
 /// Execution staff a PM can assign stages to (workshop/design/store/service).
 final assignableMembersProvider = FutureProvider<List<Member>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(projectsRepoProvider).assignableMembers();
 });
 
@@ -749,27 +879,27 @@ final assignableMembersProvider = FutureProvider<List<Member>>((ref) {
 /// Keyed by discipline ('design', 'workshop', 'store', 'service').
 final assignableForDisciplineProvider =
     FutureProvider.family<List<Member>, String?>((ref, discipline) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(projectsRepoProvider).assignableMembers(discipline: discipline);
 });
 
 /// The builds I personally hold a stage on — "my work" for any execution role.
 /// Design/Store/Service screens scope to this instead of the whole fleet.
 final assignedProjectsProvider = FutureProvider<List<Project>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(projectsRepoProvider).myAssignedProjects();
 });
 
 /// Same builds, enriched with my stage's due date + the delivery date, soonest
 /// first — for the "Assigned to me" carousel.
 final myAssignedBuildsProvider = FutureProvider<List<AssignedBuild>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(projectsRepoProvider).myAssignedBuilds();
 });
 
 /// Stages across the signed-in PM's builds that still need handing out.
 final stagesToAssignProvider = FutureProvider<List<AssignableStage>>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   final repo = ref.read(projectsRepoProvider);
   final mine = await ref.read(pmRepoProvider).myProjects();
   return repo.stagesNeedingAssignment(mine);
@@ -777,7 +907,7 @@ final stagesToAssignProvider = FutureProvider<List<AssignableStage>>((ref) async
 
 /// Pending stage-completion approvals for the signed-in PM's projects.
 final pendingApprovalsProvider = FutureProvider<List<ApprovalItem>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(projectsRepoProvider).pendingApprovals();
 });
 
@@ -806,45 +936,53 @@ class StoreRepo {
   /// trusting both would double-count. The component ledger is the source of
   /// truth for anything serialized.
   Future<List<StockRow>> stock() async {
-    final si = await sb.from('stock_items').select(
-        'quantity,unit,item_catalog_id,item_catalog(id,name,category,low_stock_threshold,serialized)');
-    final comps = await sb.from('component_instances')
-        .select('status,item_catalog_id,item_catalog(id,name,category,low_stock_threshold,serialized,unit)');
+    // The catalogue is the spine of the list: every tracked item should appear,
+    // whether or not it has stock yet. Building the serialized rows from the
+    // component ledger alone meant a serialized item with no units logged was
+    // absent from Store → Stock entirely — which is exactly the state in which
+    // you need to see it ("we have none of these") rather than nothing at all.
+    final catalog = await sb.from('item_catalog')
+        .select('id,name,category,low_stock_threshold,serialized,unit');
+    final si = await sb.from('stock_items').select('quantity,unit,item_catalog_id');
+    final comps = await sb.from('component_instances').select('status,item_catalog_id');
 
-    final rows = <StockRow>[];
-
-    // Bulk items straight from stock_items (skip any serialized rows here).
+    final bulkQty = <String, num>{};
+    final bulkUnit = <String, String?>{};
     for (final e in (si as List)) {
       final m = e as Map<String, dynamic>;
-      final ic = m['item_catalog'] as Map<String, dynamic>?;
-      if ((ic?['serialized'] as bool?) ?? true) continue;
-      rows.add(StockRow.fromMap(m));
+      final id = m['item_catalog_id'] as String?;
+      if (id == null) continue;
+      bulkQty[id] = (bulkQty[id] ?? 0) + ((m['quantity'] as num?) ?? 0);
+      bulkUnit[id] ??= m['unit'] as String?;
     }
 
-    // Serialized items: count in-stock units per catalog item. Keep the item
-    // in the list even when the count is 0 (all installed) so it stays visible.
-    final meta = <String, Map<String, dynamic>>{};
+    // Serialized on-hand = how many of its units are still 'in_stock'.
+    // Installing one flips it to 'installed', so the count drops on its own.
     final onHand = <String, int>{};
     for (final e in (comps as List)) {
       final m = e as Map<String, dynamic>;
       final id = m['item_catalog_id'] as String?;
       if (id == null) continue;
-      final ic = m['item_catalog'] as Map<String, dynamic>?;
-      if (!((ic?['serialized'] as bool?) ?? true)) continue;
-      meta[id] = ic ?? const {};
       onHand[id] = (onHand[id] ?? 0) + (m['status'] == 'in_stock' ? 1 : 0);
     }
-    onHand.forEach((id, qty) {
-      final ic = meta[id]!;
+
+    final rows = <StockRow>[];
+    for (final e in (catalog as List)) {
+      final ic = e as Map<String, dynamic>;
+      final id = ic['id'] as String;
+      final serialized = (ic['serialized'] as bool?) ?? true;
+      // stock_items is deliberately ignored for a serialized item: fn_receive_po
+      // leaves it alone on purpose (0018) and the component ledger is the truth.
+      final qty = serialized ? (onHand[id] ?? 0) : (bulkQty[id] ?? 0);
       rows.add(StockRow(
         itemCatalogId: id,
         name: ic['name'] as String? ?? 'Item',
         category: ic['category'] as String?,
-        unit: ic['unit'] as String? ?? 'pcs',
+        unit: (serialized ? null : bulkUnit[id]) ?? ic['unit'] as String? ?? 'pcs',
         quantity: qty,
         threshold: (ic['low_stock_threshold'] as num?)?.toInt() ?? 0,
       ));
-    });
+    }
 
     rows.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return rows;
@@ -876,7 +1014,20 @@ class StoreRepo {
     return (d as num?)?.toInt() ?? 0;
   }
 
-  /// Log a component at intake (serial + warranty + optional assign to a build).
+  /// Log a component at intake: serial + warranty + bill, and optionally
+  /// **reserve** it for a build.
+  ///
+  /// Reserving is not installing. This used to write `status: 'installed'` with
+  /// an install date and no stage the moment a build was picked — so a part that
+  /// had merely arrived was recorded as fitted, by nobody, into no stage. It then
+  /// appeared in the truck's record under "at intake" with an empty history, it
+  /// was counted out of Store's on-hand, and Workshop could no longer scan it in
+  /// (`fn_install_component` only accepts in-stock parts), which skipped the one
+  /// step that records who fitted it and where.
+  ///
+  /// So a reserved part stays `in_stock` — it is physically on the shelf — and
+  /// carries the build it is earmarked for. Workshop's scan-to-install is still
+  /// what turns it into an installed part, through `fn_install_component`.
   Future<void> logComponent({
     required String itemId, required String serial, String? vendorId,
     DateTime? warrantyEnd, String? projectId, String? billUrl,
@@ -888,9 +1039,8 @@ class StoreRepo {
       'vendor_id': vendorId,
       'warranty_start': today,
       'warranty_end': warrantyEnd?.toIso8601String().split('T').first,
-      'status': projectId != null ? 'installed' : 'in_stock',
-      'installed_in_project_id': projectId,
-      'install_date': projectId != null ? today : null,
+      'status': 'in_stock',
+      'installed_in_project_id': projectId,   // an earmark, not an installation
       'bill_url': billUrl,
     });
   }
@@ -905,15 +1055,17 @@ class StoreRepo {
 
 final storeRepoProvider = Provider<StoreRepo>((ref) => StoreRepo());
 final componentsProvider = FutureProvider<List<ComponentRow>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(storeRepoProvider).components();
 });
 final stockProvider = FutureProvider<List<StockRow>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(storeRepoProvider).stock();
 });
-final recallProvider = FutureProvider.family<List<RecallRow>, String>(
-    (ref, itemId) => ref.read(storeRepoProvider).recall(itemId));
+final recallProvider = FutureProvider.family<List<RecallRow>, String>((ref, itemId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(storeRepoProvider).recall(itemId);
+});
 
 /// Workshop — stages assigned to me, install parts (Hero #2), submit for approval.
 class WorkshopRepo {
@@ -1021,9 +1173,15 @@ class WorkshopRepo {
   Future<ComponentRow?> findBySerial(String serial) async {
     final q = serial.trim();
     if (q.isEmpty) return null;
+    // Escaped, not raw: `%` and `_` are LIKE wildcards, so a serial containing
+    // an underscore — plenty of them do — used to match a *different* part, and
+    // a scan picking up a stray `%` would match the first part in the table.
+    // Still case-insensitive and whitespace-tolerant, because labels are not
+    // consistent about case and a scanner can pick up padding.
+    final pattern = q.replaceAllMapped(RegExp(r'[\\%_]'), (m) => '\\${m[0]}');
     final d = await sb.from('component_instances')
         .select(StoreRepo._compSelect)
-        .ilike('serial_number', q)
+        .ilike('serial_number', pattern)
         .limit(1);
     final list = (d as List);
     if (list.isEmpty) return null;
@@ -1040,15 +1198,15 @@ class WorkshopRepo {
 
 final workshopRepoProvider = Provider<WorkshopRepo>((ref) => WorkshopRepo());
 final myTasksProvider = FutureProvider<List<WorkshopTask>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(workshopRepoProvider).myTasks();
 });
 final inStockProvider = FutureProvider<List<ComponentRow>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(workshopRepoProvider).inStock();
 });
 final workshopPartsProvider = FutureProvider<List<ComponentRow>>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   final repo = ref.read(workshopRepoProvider);
   final tasks = await repo.myTasks();
   final ids = tasks.map((t) => t.projectId).toSet().toList();
@@ -1188,19 +1346,27 @@ class ClientRepo {
 
 final clientRepoProvider = Provider<ClientRepo>((ref) => ClientRepo());
 final myTrucksProvider = FutureProvider<List<Project>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(clientRepoProvider).myTrucks();
 });
-final truckPhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
-    (ref, id) => ref.read(clientRepoProvider).photos(id));
-final stagePhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
-    (ref, stageId) => ref.read(clientRepoProvider).stagePhotos(stageId));
-final truckDocsProvider = FutureProvider.family<List<ClientDoc>, String>(
-    (ref, id) => ref.read(clientRepoProvider).documents(id));
-final truckDesignsProvider = FutureProvider.family<List<DesignRow>, String>(
-    (ref, id) => ref.read(clientRepoProvider).designs(id));
+final truckPhotosProvider = FutureProvider.family<List<StagePhoto>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(clientRepoProvider).photos(id);
+});
+final stagePhotosProvider = FutureProvider.family<List<StagePhoto>, String>((ref, stageId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(clientRepoProvider).stagePhotos(stageId);
+});
+final truckDocsProvider = FutureProvider.family<List<ClientDoc>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(clientRepoProvider).documents(id);
+});
+final truckDesignsProvider = FutureProvider.family<List<DesignRow>, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(clientRepoProvider).designs(id);
+});
 final myTicketsProvider = FutureProvider<List<TicketRow>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(clientRepoProvider).myTickets();
 });
 
@@ -1398,9 +1564,15 @@ class AdminRepo {
 class NotificationsRepo {
   Future<List<AppNotification>> all() async {
     final d = await sb.from('notifications')
-        .select('id,title,body,type,read,created_at')
+        .select('id,title,body,type,read,created_at,entity_type,entity_id')
         .order('created_at', ascending: false);
     return (d as List).map((e) => AppNotification.fromMap(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Mark one notification read — what tapping it should do, on top of opening
+  /// whatever it is about.
+  Future<void> markRead(String id) async {
+    await sb.from('notifications').update({'read': true}).eq('id', id);
   }
 
   /// Mark every unread notification as read (RLS keeps this to the current user).
@@ -1411,14 +1583,19 @@ class NotificationsRepo {
 
 final notificationsRepoProvider = Provider<NotificationsRepo>((ref) => NotificationsRepo());
 final notificationsProvider = FutureProvider<List<AppNotification>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(notificationsRepoProvider).all();
 });
 
 /// Unread count for the bell badges. Now that assignments and approvals actually
 /// write notifications, this is a real number.
-final unreadCountProvider = Provider<int>((ref) =>
-    ref.watch(notificationsProvider).valueOrNull?.where((n) => !n.read).length ?? 0);
+final unreadCountProvider = Provider<int>((ref) {
+  final list = ref.watch(notificationsProvider).valueOrNull;
+  if (list == null) return 0;
+  var n = 0;
+  for (final x in list) { if (!x.read) n++; }
+  return n;
+});
 
 /// Project Manager — builds assigned to the signed-in PM, schedule, workload.
 class PmRepo {
@@ -1544,11 +1721,11 @@ final pmRepoProvider = Provider<PmRepo>((ref) => PmRepo());
 // Auth-aware: re-fetch when the signed-in user changes, so data is correct
 // immediately after login (no manual refresh needed).
 final myProjectsProvider = FutureProvider<List<Project>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(pmRepoProvider).myProjects();
 });
 final pmDashboardProvider = FutureProvider<({List<Project> projects, List<ActiveStage> stages})>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   await ref.read(projectsRepoProvider).refreshStatuses(); // statuses drift with the calendar
   final repo = ref.read(pmRepoProvider);
   final projects = await repo.myProjects();
@@ -1557,12 +1734,12 @@ final pmDashboardProvider = FutureProvider<({List<Project> projects, List<Active
 });
 /// The signed-in PM's schedule — open stages across their builds, soonest first.
 final pmScheduleProvider = FutureProvider<List<ScheduleEntry>>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   final projects = await ref.read(pmRepoProvider).myProjects();
   return ref.read(pmRepoProvider).schedule(projects);
 });
 final workloadProvider = FutureProvider<Map<String, int>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(pmRepoProvider).workload();
 });
 
@@ -1572,19 +1749,30 @@ final subTeamsProvider  = FutureProvider<List<SubTeam>>((ref) { ref.watch(authSt
 
 /// The factory board for the admin command center.
 final opsBoardProvider  = FutureProvider<List<OpsRow>>((ref) async {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   final repo = ref.read(projectsRepoProvider);
   await repo.refreshStatuses(); // keep the board honest as the calendar moves
   return repo.opsBoard();
 });
-final templatesProvider = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).templates());
-final clientsProvider   = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).clients());
-final pmsProvider       = FutureProvider<List<OptRef>>((ref) => ref.read(adminRepoProvider).pms());
+final templatesProvider = FutureProvider<List<OptRef>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).templates();
+});
+final clientsProvider = FutureProvider<List<OptRef>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).clients();
+});
+final pmsProvider = FutureProvider<List<OptRef>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).pms();
+});
 
 /// Legacy client accounts with no login (e.g. the demo seed row). Onboarding
 /// hides them from the picker, so it explains the gap using this count.
-final loginlessClientsProvider = FutureProvider<int>(
-    (ref) => ref.read(adminRepoProvider).loginlessClientCount());
+final loginlessClientsProvider = FutureProvider<int>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).loginlessClientCount();
+});
 
 
 /// Designer — create designs, upload versions (2D image + .glb model),
@@ -1642,21 +1830,25 @@ class DesignRepo {
   }
 
   /// Create a brand-new design artifact with its first version.
+  ///
+  /// Goes through fn_create_design (0026) rather than three separate client
+  /// writes. Two reasons: it is one transaction, so a failure halfway can no
+  /// longer leave an artifact with no version and a null current_version_id
+  /// (which rendered as a broken, un-openable design); and it notifies the
+  /// client and the PM when the design is submitted. The screen has always said
+  /// "they've been notified" — now that is true.
   Future<void> create({
     required String projectId, required String type,
     String? modelUrl, String? imageUrl, String? changeNote, required bool submit,
   }) async {
-    final a = await sb.from('design_artifacts').insert({
-      'project_id': projectId, 'type': type,
-      'status': submit ? 'pending_approval' : 'draft',
-      'created_by': sb.auth.currentUser?.id,
-    }).select('id').single();
-    final aid = a['id'] as String;
-    final v = await sb.from('design_versions').insert({
-      'artifact_id': aid, 'version_no': 1,
-      'file_url': _clean(imageUrl), 'model_url': _clean(modelUrl), 'change_note': _clean(changeNote),
-    }).select('id').single();
-    await sb.from('design_artifacts').update({'current_version_id': v['id']}).eq('id', aid);
+    await sb.rpc('fn_create_design', params: {
+      'p_project': projectId,
+      'p_type': type,
+      'p_model_url': _clean(modelUrl),
+      'p_image_url': _clean(imageUrl),
+      'p_change_note': _clean(changeNote),
+      'p_submit': submit,
+    });
   }
 
   /// Add a new version to an existing artifact (e.g. after a change request).
@@ -1678,8 +1870,34 @@ class DesignRepo {
     });
   }
 
+  /// Send an existing draft to the client for approval.
+  ///
+  /// Routed through fn_add_design_version with the *current* files so the
+  /// client and the PM are notified, exactly as they are for a new design or a
+  /// revision. The old direct `status = 'pending_approval'` write changed the
+  /// row and told nobody, so a design could sit "awaiting approval" while the
+  /// client had no idea it was waiting on them.
   Future<void> submitForApproval(String artifactId) async {
-    await sb.from('design_artifacts').update({'status': 'pending_approval'}).eq('id', artifactId);
+    final cur = await sb.from('design_artifacts')
+        .select('current_version_id,design_versions!design_versions_artifact_id_fkey(id,model_url,file_url)')
+        .eq('id', artifactId).single();
+    String? model, image;
+    final vs = cur['design_versions'] as List?;
+    for (final v in (vs ?? const [])) {
+      final m = v as Map<String, dynamic>;
+      if (m['id'] == cur['current_version_id']) {
+        model = m['model_url'] as String?;
+        image = m['file_url'] as String?;
+        break;
+      }
+    }
+    await sb.rpc('fn_add_design_version', params: {
+      'p_artifact': artifactId,
+      'p_model_url': _clean(model),
+      'p_image_url': _clean(image),
+      'p_change_note': 'Submitted for client approval.',
+      'p_submit': true,
+    });
   }
 
   /// Upload a design file (.glb model or preview image) to the public 'designs'
@@ -1743,16 +1961,18 @@ class DesignRepo {
 
 final designRepoProvider = Provider<DesignRepo>((ref) => DesignRepo());
 final myDesignsProvider = FutureProvider<List<DesignItem>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(designRepoProvider).myDesigns();
 });
-final designDetailProvider = FutureProvider.family<DesignDetailData, String>(
-    (ref, artifactId) => ref.read(designRepoProvider).detail(artifactId));
+final designDetailProvider = FutureProvider.family<DesignDetailData, String>((ref, artifactId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(designRepoProvider).detail(artifactId);
+});
 
 /// The approved .glb for a project (null = none yet). Powers the 3D showcase
 /// on the client My Trucks card and the admin/PM project detail screen.
 final truckModelUrlProvider = FutureProvider.family<String?, String>((ref, projectId) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(designRepoProvider).approvedModelUrl(projectId);
 });
 
@@ -1801,7 +2021,8 @@ class ServiceRepo {
       projectCode: '',
       compStatus: d['status'] as String? ?? '',
       warrantyEnd: end,
-      daysLeft: end?.difference(DateTime.now()).inDays,
+      // Calendar days, so a warranty ending today reads 0 rather than -1.
+      daysLeft: end == null ? null : daysUntil(end),
     );
   }
 
@@ -1946,28 +2167,40 @@ class ServiceRepo {
 final serviceRepoProvider = Provider<ServiceRepo>((ref) => ServiceRepo());
 
 final serviceTicketsProvider = FutureProvider<List<ServiceTicket>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(serviceRepoProvider).tickets();
 });
-final serviceTicketProvider = FutureProvider.family<ServiceTicket, String>(
-    (ref, id) => ref.read(serviceRepoProvider).ticket(id));
-final ticketVisitsProvider = FutureProvider.family<List<ServiceVisitRow>, String>(
-    (ref, ticketId) => ref.read(serviceRepoProvider).visits(ticketId));
-final ticketPhotosProvider = FutureProvider.family<List<StagePhoto>, String>(
-    (ref, ticketId) => ref.read(serviceRepoProvider).ticketPhotos(ticketId));
-final ticketComponentProvider = FutureProvider.family<WarrantyRow?, String>(
-    (ref, componentId) => ref.read(serviceRepoProvider).linkedComponent(componentId));
+final serviceTicketProvider = FutureProvider.family<ServiceTicket, String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).ticket(id);
+});
+final ticketVisitsProvider = FutureProvider.family<List<ServiceVisitRow>, String>((ref, ticketId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).visits(ticketId);
+});
+final ticketPhotosProvider = FutureProvider.family<List<StagePhoto>, String>((ref, ticketId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).ticketPhotos(ticketId);
+});
+final ticketComponentProvider = FutureProvider.family<WarrantyRow?, String>((ref, componentId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).linkedComponent(componentId);
+});
 final techniciansProvider = FutureProvider<List<Member>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(serviceRepoProvider).technicians();
 });
 final deliveredTrucksProvider = FutureProvider<List<DeliveredTruck>>((ref) {
-  ref.watch(authStateProvider);
+  ref.watch(currentUserIdProvider);
   return ref.read(serviceRepoProvider).deliveredTrucks();
 });
-final truckHistoryProvider = FutureProvider.family<TruckHistory, String>(
-    (ref, projectId) => ref.read(serviceRepoProvider).truckHistory(projectId));
+final truckHistoryProvider = FutureProvider.family<TruckHistory, String>((ref, projectId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).truckHistory(projectId);
+});
 
 /// Warranty lookup, keyed by the search box text (empty = the first 100 parts).
-final warrantySearchProvider = FutureProvider.family<List<WarrantyRow>, String>(
-    (ref, q) => ref.read(serviceRepoProvider).warrantySearch(q));
+final warrantySearchProvider = FutureProvider.family<List<WarrantyRow>, String>((ref, q) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(serviceRepoProvider).warrantySearch(q);
+});

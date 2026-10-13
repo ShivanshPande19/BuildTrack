@@ -39,7 +39,9 @@ class ApprovalsScreen extends ConsumerWidget {
               error: (e, _) => ErrorCard('Could not load approvals.\n${friendlyError(e)}', onRetry: () => ref.invalidate(pendingApprovalsProvider)),
               data: (list) => list.isEmpty
                 ? const EmptyState(icon: Icons.verified_outlined, tint: BT.lime,
-                    title: 'Nothing to approve', subtitle: 'Stage completions from workshop will show here.')
+                    title: 'Nothing to approve',
+                    subtitle: 'Stages your team submits — workshop, design or service — '
+                              'show up here for your decision.')
                 : Column(children: [
                     // Keyed by id: when one is decided and drops out, the next card
                     // must not inherit its state (busy / folded away).
@@ -89,12 +91,21 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       await Future<void>.delayed(Motion.fast);
       if (mounted) setState(() => _folded = true);
       await Future<void>.delayed(Motion.base);
+      // Approving marks the stage done, auto-starts the next one and moves the
+      // build's progress and status — so the owner's fleet view and Command
+      // Center and the PM's Schedule are all stale too, not just this queue.
+      // (A ProviderContainer, not a WidgetRef: this card can be disposed while
+      // the fold animation above runs, and a disposed ref throws.)
       container
         ..invalidate(pendingApprovalsProvider)
         ..invalidate(pmDashboardProvider)
         ..invalidate(myProjectsProvider)
+        ..invalidate(pmScheduleProvider)
         ..invalidate(stagesToAssignProvider)
         ..invalidate(workloadProvider)
+        ..invalidate(fleetProvider)
+        ..invalidate(opsBoardProvider)
+        ..invalidate(stageBundleProvider(a.stageId))
         ..invalidate(notificationsProvider);
       if (messenger.mounted) {
         messenger.showSnackBar(SnackBar(

@@ -1,4 +1,7 @@
 /// Domain models (map 1:1 to Supabase tables / views).
+library;
+
+import 'package:intl/intl.dart';
 
 class Project {
   final String id, code, name, status;
@@ -22,11 +25,17 @@ class Project {
 
 class OrderDue {
   final String id, itemName, projectCode, projectId, itemCatalogId;
-  final int qty, daysLeft;
+  final int qty;
+  /// `order_by_date - today`, straight from v_order_due. **Null when the
+  /// requirement has no order-by date yet** (the PM hasn't given it a needed-by,
+  /// so nothing can be computed). It used to default to 0, which made every
+  /// undated material shout "Order today" on Admin's home and Procurement's
+  /// To-Order list — a false alarm on data that simply isn't planned yet.
+  final int? daysLeft;
   final DateTime? orderByDate;
   OrderDue({required this.id, required this.itemName, required this.projectCode,
     required this.projectId, required this.itemCatalogId, required this.qty,
-    this.orderByDate, required this.daysLeft});
+    this.orderByDate, this.daysLeft});
   factory OrderDue.fromMap(Map<String, dynamic> m) => OrderDue(
     id: m['id'] as String,
     projectId: m['project_id'] as String? ?? '',
@@ -35,8 +44,44 @@ class OrderDue {
     itemName: m['item_name'] as String? ?? '',
     projectCode: m['project_code'] as String? ?? '',
     orderByDate: m['order_by_date'] != null ? DateTime.tryParse(m['order_by_date'].toString()) : null,
-    daysLeft: (m['days_left'] as num?)?.toInt() ?? 0,
+    daysLeft: (m['days_left'] as num?)?.toInt(),
   );
+
+  /// Is this material actually planned? An unplanned one can't be urgent.
+  bool get isPlanned => daysLeft != null && orderByDate != null;
+  /// Sort key that pushes unplanned materials to the end instead of the front.
+  int get sortKey => daysLeft ?? 1 << 20;
+  /// "Order today" / "3d left" / "Needs a date".
+  String get urgencyLabel {
+    final d = daysLeft;
+    if (d == null) return 'Needs a date';
+    if (d < 0) return '${-d}d overdue';
+    if (d == 0) return 'Order today';
+    return '${d}d left';
+  }
+}
+
+/// One line in a role's "needs attention" feed: a build or a material that
+/// someone has to act on, newest problem first. Admin's home used to build this
+/// from order-by alerts alone, so a build sitting in `delayed` with no material
+/// alert showed "All caught up" — the exact thing the screen exists to prevent.
+enum AttentionKind { delayed, atRisk, noPm, orderBy }
+
+class AttentionItem {
+  final AttentionKind kind;
+  final String title, detail;
+  /// The build to open when the row is tapped (null for a material with no build).
+  final String? projectId;
+  const AttentionItem(this.kind, {required this.title, required this.detail, this.projectId});
+
+  /// Lower sorts first: a delayed build outranks an at-risk one, a build with
+  /// no PM outranks a material that is merely due soon.
+  int get rank => switch (kind) {
+    AttentionKind.delayed => 0,
+    AttentionKind.noPm    => 1,
+    AttentionKind.atRisk  => 2,
+    AttentionKind.orderBy => 3,
+  };
 }
 
 /// Lightweight id+label option (for dropdowns: templates, clients, PMs).
@@ -96,6 +141,31 @@ class Member {
       status: m['status'] as String? ?? 'active',
       subTeamId: m['sub_team_id'] as String?,
       subTeamName: st?['name'] as String?,
+    );
+  }
+}
+
+/// The signed-in user's own profile row, for Settings → Account details.
+/// Separate from [Member] because this one carries the fields a person edits
+/// about themselves (phone) and the ones that are the admin's to set (role,
+/// department, status, when the account was created).
+class MyProfile {
+  final String id, name, email, role, status;
+  final String? phone, subTeamName;
+  final DateTime? createdAt;
+  MyProfile({required this.id, required this.name, required this.email,
+    required this.role, required this.status, this.phone, this.subTeamName, this.createdAt});
+  factory MyProfile.fromMap(Map<String, dynamic> m) {
+    final st = m['sub_teams'] as Map<String, dynamic>?;
+    return MyProfile(
+      id: m['id'] as String,
+      name: m['full_name'] as String? ?? '',
+      email: m['email'] as String? ?? '',
+      role: m['role'] as String? ?? '',
+      status: m['status'] as String? ?? 'active',
+      phone: (m['phone'] as String?)?.trim().isEmpty ?? true ? null : (m['phone'] as String?),
+      subTeamName: st?['name'] as String?,
+      createdAt: parseDate(m['created_at']),
     );
   }
 }
@@ -160,14 +230,81 @@ class FleetData {
   /// Builds still in progress. Delivered builds are finished, so they belong
   /// in neither "active builds" nor the on-track / at-risk / delayed shares.
   int get active    => total - delivered;
+  /// Builds nobody can work on: no PM means no assignment and no approval.
+  List<Project> get noPm => projects.where((p) => !p.hasPm && p.status != 'delivered').toList();
 
-  /// Items whose order-by date is near/overdue — the "needs attention" feed.
-  List<OrderDue> get urgent => due.where((d) => d.daysLeft <= 3).toList();
+  /// Materials whose order-by date is near or already passed. Undated
+  /// requirements are excluded — they are unplanned, not urgent.
+  List<OrderDue> get urgent =>
+      due.where((d) => d.isPlanned && d.daysLeft! <= 3).toList()
+        ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+
+  /// Everything the owner has to act on, worst first: builds that have slipped,
+  /// builds with no project manager, builds at risk, then materials that must be
+  /// ordered now. Empty here genuinely means "all caught up".
+  List<AttentionItem> get attention {
+    final out = <AttentionItem>[];
+    for (final p in projects.where((p) => p.status == 'delayed')) {
+      out.add(AttentionItem(AttentionKind.delayed, projectId: p.id,
+        title: '${p.code} · ${p.name}',
+        detail: 'Behind schedule · ${p.progressPct}% complete — open it to log the delay or re-plan.'));
+    }
+    for (final p in noPm) {
+      out.add(AttentionItem(AttentionKind.noPm, projectId: p.id,
+        title: '${p.code} · ${p.name}',
+        detail: 'No project manager — nobody can assign or approve this build.'));
+    }
+    for (final p in projects.where((p) => p.status == 'at_risk')) {
+      out.add(AttentionItem(AttentionKind.atRisk, projectId: p.id,
+        title: '${p.code} · ${p.name}',
+        detail: 'At risk · ${p.progressPct}% complete — a stage or an order is about to slip.'));
+    }
+    for (final d in urgent) {
+      out.add(AttentionItem(AttentionKind.orderBy, projectId: d.projectId,
+        title: '${d.projectCode} · ${d.itemName}',
+        detail: 'Order by ${d.orderByDate == null ? '—' : _dayMon.format(d.orderByDate!)} · qty ${d.qty}'));
+    }
+    out.sort((a, b) => a.rank.compareTo(b.rank));
+    return out;
+  }
 }
+
+final _dayMon = DateFormat('d MMM');
 
 
 /// Safe date parser for nullable Supabase date columns.
 DateTime? parseDate(dynamic v) => v == null ? null : DateTime.tryParse(v.toString());
+
+/// Whole days from today until [end], by the calendar.
+///
+/// `warranty_end` is a DATE, so it parses to local midnight. Comparing that to
+/// `DateTime.now()` made a warranty that runs out *today* read as already
+/// expired — midnight this morning is before now. Both sides are normalised to
+/// a date here, so "ends today" is 0 days, not −1. Both are taken as UTC so the
+/// subtraction is calendar arithmetic and `inDays` can't truncate a 23-hour day
+/// across a DST boundary.
+int daysUntil(DateTime end) {
+  final now = DateTime.now();
+  return DateTime.utc(end.year, end.month, end.day)
+      .difference(DateTime.utc(now.year, now.month, now.day)).inDays;
+}
+
+/// How much warranty is left on a part: `none` · `expired` · `expiring` · `active`.
+///
+/// One definition, used by every screen that shows a warranty. The truck record
+/// used to call anything inside 30 days "expiring" while Service's warranty
+/// search used 60, so the same part read *active* on one screen and *expiring*
+/// on the other. 60 days is the one that matters operationally — it is enough
+/// notice to get a part replaced under cover before it lapses.
+const warrantyExpiringDays = 60;
+
+String warrantyStateFor(DateTime? end, {int? daysLeft}) {
+  if (end == null) return 'none';
+  final d = daysLeft ?? daysUntil(end);
+  if (d < 0) return 'expired';
+  if (d <= warrantyExpiringDays) return 'expiring';
+  return 'active';
+}
 
 /// One build stage (stages row) shown on the project timeline.
 class Stage {
@@ -332,18 +469,30 @@ class ProjectDetailData {
 class AppNotification {
   final String id, title;
   final String? body, type;
+  /// What this notification is about: `project` | `stage` | `purchase_order` |
+  /// `ticket` | `design`, plus that row's id. Every `fn_notify` call sets them,
+  /// but the feed never selected them, so nothing could be opened from a
+  /// notification — the whole point of telling someone was lost at the last step.
+  final String? entityType;
+  final String? entityId;
   final bool read;
   final DateTime? createdAt;
   AppNotification({required this.id, required this.title, this.body, this.type,
-    this.read = false, this.createdAt});
+    this.entityType, this.entityId, this.read = false, this.createdAt});
   factory AppNotification.fromMap(Map<String, dynamic> m) => AppNotification(
     id: m['id'] as String,
     title: m['title'] as String? ?? '',
     body: m['body'] as String?,
     type: m['type'] as String?,
+    entityType: m['entity_type'] as String?,
+    entityId: m['entity_id'] as String?,
     read: m['read'] as bool? ?? false,
     createdAt: parseDate(m['created_at']),
   );
+
+  /// Is there somewhere to go when this row is tapped?
+  bool get isOpenable => entityId != null &&
+      const {'project', 'stage', 'purchase_order', 'ticket'}.contains(entityType);
 }
 
 
@@ -661,14 +810,8 @@ class TruckComponent {
     this.model, this.vendorName, this.billUrl, this.stageName, this.stageDiscipline,
     this.installedByName, this.warrantyStart, this.warrantyEnd, this.installDate});
   bool get hasBill => billUrl != null && billUrl!.isNotEmpty;
-  /// none | active | expiring | expired
-  String get warrantyState {
-    if (warrantyEnd == null) return 'none';
-    final now = DateTime.now();
-    if (warrantyEnd!.isBefore(now)) return 'expired';
-    if (warrantyEnd!.isBefore(now.add(const Duration(days: 30)))) return 'expiring';
-    return 'active';
-  }
+  /// none | active | expiring | expired — see [warrantyStateFor].
+  String get warrantyState => warrantyStateFor(warrantyEnd);
   factory TruckComponent.fromMap(Map<String, dynamic> m) => TruckComponent(
     id: m['id'] as String,
     itemName: m['item_name'] as String? ?? 'Component',
@@ -693,17 +836,8 @@ class StockRow {
   final num quantity;
   final int threshold;
   StockRow({required this.name, required this.unit, this.itemCatalogId, this.category, required this.quantity, required this.threshold});
-  factory StockRow.fromMap(Map<String, dynamic> m) {
-    final ic = m['item_catalog'] as Map<String, dynamic>?;
-    return StockRow(
-      itemCatalogId: m['item_catalog_id'] as String? ?? ic?['id'] as String?,
-      name: ic?['name'] as String? ?? 'Item',
-      category: ic?['category'] as String?,
-      unit: m['unit'] as String? ?? 'pcs',
-      quantity: (m['quantity'] as num?) ?? 0,
-      threshold: (ic?['low_stock_threshold'] as num?)?.toInt() ?? 0,
-    );
-  }
+  /// Composed in [StoreRepo.stock] rather than mapped from one row: on-hand for
+  /// a serialized item is a count over the component ledger, not a column.
   bool get low => quantity <= threshold;
 }
 
@@ -981,19 +1115,13 @@ class WarrantyRow {
     daysLeft: (m['days_left'] as num?)?.toInt(),
   );
 
-  /// none · expired · expiring (≤60d) · active
-  String get state {
-    if (warrantyEnd == null) return 'none';
-    final d = daysLeft ?? warrantyEnd!.difference(DateTime.now()).inDays;
-    if (d < 0) return 'expired';
-    if (d <= 60) return 'expiring';
-    return 'active';
-  }
+  /// none · expired · expiring · active — see [warrantyStateFor].
+  String get state => warrantyStateFor(warrantyEnd, daysLeft: daysLeft);
 
   /// "2 yr left" · "45d left" · "Expired"
   String get label {
     if (warrantyEnd == null) return 'No warranty';
-    final d = daysLeft ?? warrantyEnd!.difference(DateTime.now()).inDays;
+    final d = daysLeft ?? daysUntil(warrantyEnd!);
     if (d < 0) return 'Expired';
     if (d >= 365) return '${(d / 365).floor()} yr left';
     if (d >= 60) return '${(d / 30).floor()} mo left';

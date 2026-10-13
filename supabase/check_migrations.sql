@@ -72,7 +72,11 @@ with checks(migration, applied) as (values
                and prosrc ilike '%target_delivery_date%')),
   ('0025_design_version_atomic',
      exists (select 1 from pg_proc where proname = 'fn_add_design_version')
-     and to_regclass('public.ux_design_versions_artifact_no') is not null)
+     and to_regclass('public.ux_design_versions_artifact_no') is not null),
+  ('0026_demo_hardening',
+     exists (select 1 from pg_proc where proname = 'fn_create_design')
+     and exists (select 1 from pg_proc where proname = 'fn_stage_rpc_begin')
+     and exists (select 1 from pg_proc where proname = 'my_role' and prosrc ilike '%disabled%'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

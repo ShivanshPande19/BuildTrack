@@ -1117,3 +1117,44 @@ class BackChip extends StatelessWidget {
         ),
       );
 }
+
+/// A boxed text field with its label inside the box — the form field this app
+/// uses everywhere. It was a private `_field` helper copied into each form
+/// screen; it lives here now so a new form inherits the same shape instead of
+/// re-deriving it (Company details and Account details share it).
+class LabelledField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final String? hint;
+  final int lines;
+  final TextInputType? keyboardType;
+  final bool enabled;
+  const LabelledField(this.label, {super.key, required this.controller, this.hint,
+    this.lines = 1, this.keyboardType, this.enabled = true});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    decoration: BoxDecoration(
+      color: enabled ? BT.card : BT.card2,
+      borderRadius: BorderRadius.circular(16),
+      border: Border.all(color: BT.line)),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(
+        fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 4),
+      TextField(
+        controller: controller,
+        maxLines: lines,
+        enabled: enabled,
+        keyboardType: keyboardType,
+        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
+          color: enabled ? BT.ink : BT.mut),
+        decoration: InputDecoration(
+          isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
+          hintText: hint,
+          hintStyle: const TextStyle(color: BT.mut2, fontWeight: FontWeight.w500)),
+      ),
+    ]),
+  );
+}

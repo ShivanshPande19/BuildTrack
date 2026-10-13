@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/theme.dart';
+import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
@@ -39,7 +40,7 @@ class TruckHistoryScreen extends ConsumerWidget {
               error: (e, _) => ErrorCard('Could not load this truck.\n${friendlyError(e)}', onRetry: () => ref.invalidate(truckHistoryProvider(projectId))),
               data: (h) {
                 final wEnd = h.earliestWarrantyEnd;
-                final wDays = wEnd?.difference(DateTime.now()).inDays;
+                final wDays = wEnd == null ? null : daysUntil(wEnd);
                 final open = h.tickets.where((t) => t.isOpen).length;
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text(h.project.name, style: display(27, w: FontWeight.w600)),

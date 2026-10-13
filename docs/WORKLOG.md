@@ -11,6 +11,87 @@ verified through CI, not locally).
 
 ---
 
+## 13 Oct 2026: Pre-demo audit + fix pass ✅ (migration `0026`)
+
+The ask: read the whole project as a senior developer, check it actually does what the docs say, then fix
+what it doesn't — the app was going out as a demo, photos were crashing it, Settings answered every tap with
+"coming soon", and Admin's home said *All caught up* while a build sat in `delayed`.
+
+**How the audit was run.** The claims in `README.md` / `PROJECT_LOG.md` were checked against the code, not
+taken on trust: every RPC the app calls was diffed against the latest SQL signature (all 30 matched), every
+table, view and column the app reads or writes was diffed against the schema (all present), and
+`full_setup.sql` was regenerated and confirmed byte-identical. `docs/PROJECT_LOG.md` §3 turned out to be
+accurate — nine of its items were spot-checked and all nine were exactly as described, which is rare.
+The defects below are the ones it did **not** know about.
+
+**Backend — migration `0026` (15 sections, idempotent).**
+- **Hero #1 went stale on a re-plan.** `procurement_requirements.needed_by_date` was written once, at
+  onboarding, and `order_by_date` is derived *from* it — so after "Log delay + push the delivery date",
+  every material still alerted against the old schedule and `fn_recompute_status` kept the build `at_risk`
+  off a dead date. A rebaseline now moves each still-pending requirement onto the new plan.
+  `fn_recompute_schedule` also refreshes the build's status, because a `planned_*` change does not fire
+  `t_stage_progress` (it is `after update of status`) and a build kept reading `delayed` after its date
+  was pushed out.
+- **`fn_resubmit_po` lost data.** Notes, ship-to and payment terms were wiped by a null argument, and a
+  vendor or delivery-date change was discarded entirely unless the lines were resent — the header UPDATE
+  sat inside `if p_lines is not null`.
+- **`fn_receive_po` had no row lock**, so two taps doubled the stock and wrote two GRNs.
+- **`fn_reopen_ticket` had no caller check at all** — any signed-in user could force any ticket to high
+  priority.
+- **`trg_guard_stages` did not guard `status` / `actual_*`**, so an assignee could approve themselves with
+  a direct UPDATE. The three sanctioned transitions mark the transaction (`fn_stage_rpc_begin`) and the
+  guard stands aside for them; everything else is refused.
+- **A disabled account could still read everything.** `my_role()` now returns NULL for one. `is_admin()`
+  was made strictly boolean in the same change — `if not public.is_admin()` is *false* when `is_admin()`
+  is NULL, so every RPC guard would have waved a disabled admin straight through.
+- **A PM hand-over stranded the work in flight**: pending approvals and unsigned POs now move with the build.
+- **A PO only closed the one requirement it was raised from**, so a PO from the blank FAB left its
+  materials alerting forever. It now closes every pending requirement its lines cover.
+- Plus: `fn_notify*` / `fn_audit` revoked from `authenticated`; Store can create a catalogue item; a member
+  owns their own name and phone (which is what makes Settings → Account details able to save); design
+  submission notifies the client; the FK sweep re-run for the seven FKs added after `0009`; essentials
+  bootstrapped on a fresh database.
+
+**App.**
+- **Photos.** `Image.memory` had no `errorBuilder` at either site and `image_picker` does not always
+  transcode a HEIC, so an undecodable frame took the screen down during layout. Picked bytes are decoded
+  once before any widget sees them, the content type is sniffed from the file's magic number rather than
+  its name (JPEG bytes were being stored as `image/heic`, which then rendered nowhere), a second tap while
+  the picker is open is ignored, and the three `FilePicker` call sites are wrapped.
+- **Settings is real.** Account details, Company details (moved out of the Team screen, read-only for
+  non-admins), Roles & permissions, Notifications. Three "coming soon" snackbars gone.
+- **Admin's "Needs attention"** reads builds, not just materials — delayed, no PM, at risk, then overdue
+  order-by, each row opening the build.
+- **Design and Service can work their own stages** (`shared/my_stages.dart` + a reusable
+  `TaskDetailScreen`). This is what kept a build's progress from ever reaching 100%.
+- **Notifications open what they are about**, resolved per role. The entity was always recorded; the feed
+  never selected it.
+- **Client and staff can open the documents** they are shown — PDF to the OS preview sheet, image to a
+  viewer. No new dependency.
+- **Every cached provider is auth-aware** via `currentUserIdProvider`, which emits only on a real user
+  change. The un-watched ones served the previous user's rows after switching accounts on one device —
+  the thing a multi-role demo on a single phone hits immediately.
+- Smaller: a non-standard GST rate is no longer silently rewritten to 18%; CGST + SGST add up to the tax
+  (and the document carries a rate-wise breakup and a per-line GST %); one warranty threshold instead of
+  two, with calendar arithmetic so "ends today" is not "expired"; an undated requirement no longer shouts
+  "Order today"; a serialized item with none on hand appears in Store → Stock; `findBySerial` escapes the
+  scan; intake *reserves* a part for a build instead of marking it installed by nobody; submitting a stage
+  with checks still open asks first; one `invalidateBuild()` so an action refreshes everything it touches.
+
+**Verified.** `flutter analyze` 0 errors / 0 warnings · `flutter test` **89/89** (up from 62) ·
+`flutter build ios --simulator` succeeds and the app boots on an iPhone 15 Pro simulator. Flutter 3.47.2.
+
+⚠️ **`supabase/tests/run.sh` was not run** — no Docker on this machine. `0026` and its 42 new assertions
+(`tests/80_hardening_tests.sql`) are unverified until CI or a machine with Docker runs them. **Do that
+before the demo.**
+
+**Also decided:** the iOS project's Swift Package Manager migration and its iOS 13 → 15 floor (both of
+which Flutter 3.47 applies automatically) are committed rather than reverted, and CI's Flutter pin moved
+3.44.8 → 3.47.2 to match. iOS 13 and 14 devices are no longer supported; `NATIVE_SETUP.md`, both READMEs
+and the steering docs say so now.
+
+---
+
 ## 7 Oct 2026: Premium motion + UI polish, with logic fixes ✅ (branch `feat/premium-motion-ui-polish`)
 
 The ask: make the app feel premium and fluid, not jerky. Fix visible glitches (Admin Team's *Add member* sat

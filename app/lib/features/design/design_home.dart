@@ -9,6 +9,7 @@ import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
 import 'new_design.dart';
 import 'design_detail.dart';
+import '../../shared/my_stages.dart';
 
 /// Designer shell — nav: Studio · Designs · Approvals · Profile.
 /// Designers create designs, upload 2D previews + .glb models, submit them for
@@ -122,6 +123,15 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
                 FadeSlideIn(delay: Motion.stagger(1), child: _assignedHeader(list)),
                 FadeSlideIn(delay: Motion.stagger(2), child: _assignedCarousel(list)),
               ],
+        ),
+        // Stages a PM assigned to me, with Start work / Submit for approval.
+        // Without this a design stage sat on 'todo' forever and the build's
+        // progress could never reach 100%.
+        const MyStagesSection(
+          label: 'My design stages',
+          tint: BT.pink,
+          emptySubtitle: 'When a project manager assigns you a design stage, you can '
+                         'start it and submit it for approval here.',
         ),
         // The single-build card used to sit flush against the stats grid.
         const SizedBox(height: 16),
