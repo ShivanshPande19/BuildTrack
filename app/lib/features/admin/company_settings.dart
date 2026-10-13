@@ -6,8 +6,14 @@ import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 
-/// Admin — the buyer identity printed at the top of every PO document.
-/// (Company name, address, GSTIN, state, phone, email.)
+/// The buyer identity printed at the top of every PO document — company name,
+/// address, GSTIN, state, phone, email.
+///
+/// Reached from Settings. An admin edits it; everyone else sees it read-only,
+/// because the PM signing a PO and the procurement member raising one both need
+/// to know what it says, and `company_settings` is readable by all staff. The
+/// write is admin-only in RLS either way, so a non-admin was previously offered
+/// a Save button that could only fail.
 class CompanySettingsScreen extends ConsumerStatefulWidget {
   const CompanySettingsScreen({super.key});
   @override
@@ -71,6 +77,7 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = ref.watch(companySettingsProvider);
+    final canEdit = ref.watch(myRoleProvider).valueOrNull == 'admin';
     // The header (back, title) stays put while the form loads, so the screen
     // can always be left. It used to be inside the loaded branch, which left a
     // bare spinner with no way back, and no way back on an error either.
@@ -82,8 +89,10 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
           const SizedBox(height: 14),
           Text('Company details', style: display(29, w: FontWeight.w500)),
           const SizedBox(height: 4),
-          const Text('This is the buyer block printed on every purchase order.',
-            style: TextStyle(color: BT.mut, fontSize: 12.5)),
+          Text(canEdit
+              ? 'This is the buyer block printed on every purchase order.'
+              : 'The buyer block printed on every purchase order. Only an admin can change it.',
+            style: const TextStyle(color: BT.mut, fontSize: 12.5)),
           const SizedBox(height: 20),
           ContentReveal(child: settings.when(
             loading: () => const SkeletonList(count: 5, leading: false, trailingPill: false),
@@ -92,25 +101,34 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
             data: (c) {
               _seed(c);
               return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              _field('COMPANY NAME', _name, hint: 'Azimuth Business on Wheels'),
+              LabelledField('COMPANY NAME', controller: _name,
+                hint: 'Azimuth Business on Wheels', enabled: canEdit),
               const SizedBox(height: 11),
-              _field('ADDRESS', _address, hint: 'Street, city, PIN', lines: 2),
+              LabelledField('ADDRESS', controller: _address,
+                hint: 'Street, city, PIN', lines: 2, enabled: canEdit),
               const SizedBox(height: 11),
-              _field('GSTIN', _gstin, hint: '27ABCDE1234F1Z5'),
+              LabelledField('GSTIN', controller: _gstin,
+                hint: '27ABCDE1234F1Z5', enabled: canEdit),
               const SizedBox(height: 11),
-              _field('STATE', _state, hint: 'Maharashtra'),
+              LabelledField('STATE', controller: _state,
+                hint: 'Maharashtra', enabled: canEdit),
               const SizedBox(height: 6),
               const Padding(padding: EdgeInsets.only(left: 4),
                 child: Text('Used to decide CGST + SGST (same state as the vendor) vs IGST on the PO.',
                   style: TextStyle(color: BT.mut2, fontSize: 11))),
               const SizedBox(height: 11),
-              _field('PHONE', _phone, hint: '+91 …'),
+              LabelledField('PHONE', controller: _phone,
+                hint: '+91 …', keyboardType: TextInputType.phone, enabled: canEdit),
               const SizedBox(height: 11),
-              _field('EMAIL', _email, hint: 'orders@company.com'),
+              LabelledField('EMAIL', controller: _email,
+                hint: 'orders@company.com', keyboardType: TextInputType.emailAddress,
+                enabled: canEdit),
               if (_error != null) Padding(padding: const EdgeInsets.only(top: 14),
                 child: Text(_error!, style: const TextStyle(color: BT.coral, fontSize: 12.5))),
-              const SizedBox(height: 22),
-              PrimaryButton('Save', icon: Icons.check, onTap: _save, busy: _saving),
+              if (canEdit) ...[
+                const SizedBox(height: 22),
+                PrimaryButton('Save', icon: Icons.check, onTap: _save, busy: _saving),
+              ],
               ]);
             },
           )),
@@ -118,19 +136,4 @@ class _CompanySettingsScreenState extends ConsumerState<CompanySettingsScreen> {
       )),
     );
   }
-
-  Widget _field(String label, TextEditingController c, {String? hint, int lines = 1}) => Container(
-    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontSize: 10.5, letterSpacing: .6, color: BT.mut, fontWeight: FontWeight.w600)),
-      const SizedBox(height: 4),
-      TextField(
-        controller: c, maxLines: lines,
-        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: BT.ink),
-        decoration: InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
-          hintText: hint, hintStyle: const TextStyle(color: BT.mut2, fontWeight: FontWeight.w500)),
-      ),
-    ]),
-  );
 }

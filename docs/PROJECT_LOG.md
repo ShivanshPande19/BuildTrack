@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **7 Oct 2026** (premium motion + UI polish pass on `feat/premium-motion-ui-polish`, after the full code audit.)
+Last updated: **13 Oct 2026** (pre-demo audit + fix pass: migration `0026`, photo-crash hardening, real Settings, and the order-by / PO / warranty defects found by reading the code against the docs.)
 
 ---
 
@@ -12,11 +12,11 @@ Last updated: **7 Oct 2026** (premium motion + UI polish pass on `feat/premium-m
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0025`: 33 tables, 5 views, 53 functions (about 30 called by the app), 2 Edge Functions |
-| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. PR #46 (Tier 1–3 hardening and one canonical build screen) merged **7 Oct 2026**. The latest work is an app-wide motion and UI polish pass with logic fixes (§6), with no schema change. The known gaps are real and listed in §3. The biggest ones: Design and Service can't submit their own stages, and several DB rules can be bypassed. |
-| **Verified** | 7 Oct 2026, on `main`: `supabase/tests/run.sh` gives **149/149** assertions on both the migration chain and `full_setup.sql`. CI is green (Flutter analyze + test, Android debug build, Postgres suite). The polish branch: `flutter analyze` 0 errors / 0 warnings, `flutter test` **62/62** (28 model + 34 widget), run locally on Flutter 3.44.8. |
-| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish (no migration). See §6 and `WORKLOG.md`. |
-| **Not started** | Offline support, push notifications, realtime, pagination, localization, dependency upgrades |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0026`: 33 tables, 5 views, 55 functions (about 31 called by the app), 2 Edge Functions |
+| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a pre-demo audit and fix pass (§6): migration `0026` closes 14 defects in the backend, and the app side fixes the photo crash, gives Settings real screens, makes notifications open what they are about, and lets Design and Service work their own stages — the gap that kept a build's progress from ever reaching 100%. The remaining gaps are in §3 and are smaller than they were. |
+| **Verified** | 13 Oct 2026, on `fix/pre-demo-audit-hardening` — CI green on all three jobs. **Backend: 191/191 assertions** in 8 suites on real Postgres 15, run twice (the migration chain and `full_setup.sql`), as real non-superuser users, plus "newest migration is idempotent". **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 89/89** (42 model + 34 widget + 13 PO-document). Android debug build passes. `flutter build ios --simulator` succeeds locally and the app boots, on Flutter 3.47.2. |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → **pre-demo audit + fix pass (`0026`)**. See §6 and `WORKLOG.md`. |
+| **Not started** | Offline support, push notifications, realtime, pagination, localization |
 | **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
@@ -61,15 +61,15 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 | Role | Tabs · FAB | What works | Known gap (see §3) |
 |---|---|---|---|
 | 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **Delivered** and **No PM** chips, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, **Add member** pill beside the title (admin sets the password), sub-teams, swipe to remove, **Workspace → Company details** (GST buyer block). **Insights:** on-track % of active builds, distribution. **Onboard:** create a client login inline, **create a template inline** (stages, days, BOM, checklist). | Templates can't be listed or edited. |
-| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. Home's at-risk and today rows open the build. | Approvals stranded on PM hand-over (§3 #5). |
+| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. Home's at-risk and today rows open the build. | ✅ A PM hand-over now carries its approvals and unsigned POs across. |
 | 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
-| 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | Inline "New item" is blocked by RLS for Store. No incoming-PO / GRN list. |
+| 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | ✅ Inline "New item" works now. Still open: no incoming-PO / GRN list. |
 | 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. |
-| 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats. **Designs:** library + filters. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | Can't start or submit its **stage**. Submitting a design doesn't notify the client. |
-| 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | Can't start or submit its **stage**. "Linked component" never shows (nothing sets it). |
-| 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | Document "download" only shows a snackbar. No priority picker on requests. |
+| 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats. **Designs:** library + filters. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | ✅ Fixed: **My design stages** on Studio (start / checklist / photos / submit), and submitting a design notifies the client. |
+| 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | ✅ Fixed: **My build stages** on the Trucks tab. Still open: "Linked component" never shows (nothing sets it). |
+| 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | ✅ Documents open now (PDF → OS preview, image → viewer). Still open: no priority picker on requests. |
 
-**Shared:** login · set-password (email-invite path) · notifications feed (Today / Yesterday / Earlier by local day, mark all read; every role's bell shows the unread count) · profile (Admin, PM, Procurement, Store, Workshop and Design use the shared `ProfileScreen`; Service and Client have their own Profile tab) · role-based routing.
+**Shared:** login (a disabled account is told why, not dropped into an empty app) · set-password (email-invite path) · notifications feed (Today / Yesterday / Earlier by local day, mark all read, **tap a row to open the build / stage / PO / ticket it is about**; every role's bell shows the unread count) · **Settings** — Notifications, Account details, Company details, Roles & permissions — reached from the avatar (Admin, PM, Procurement, Store, Workshop, Design) or the Profile tab (Service, Client).
 
 **The build screen** (`BuildScreen`): every entry point opens it, from Admin Projects, the Command Center, PM Projects and PM Schedule. Its tabs are **Overview · Pipeline · Materials · Record**. The Overview banner states the mode: *Oversight · read-only* for Admin, *You manage this build* for the PM.
 
@@ -82,90 +82,168 @@ This is one continuous numbered list. Items 1–11 hurt a real build, 12–21 ar
 bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the numbers other docs cite stay stable. The full write-up is in [`WORKFLOW_AUDIT.md`](WORKFLOW_AUDIT.md) §7.
 
 ### Workflow gaps
-1. ✔︎ **Design- and Service-discipline stages can't be started or submitted from the app.** Only Workshop has
-   a Task detail. A stage like *Design & Layout* or *Testing & Delivery* stays `todo`, progress never
-   reaches 100%, and delivery needs *Deliver anyway*. Workaround: the PM reassigns the stage to a
-   workshop member with an override.
-2. ✔︎ **Templates can only be created from Admin → Onboard project → Template "New".** There is no
+1. ✅ ~~**Design- and Service-discipline stages can't be started or submitted from the app.**~~ Fixed by
+   `0026`'s pass: `TaskDetailScreen` is no longer workshop-only (`showInstallPart: false` for the others)
+   and both Design's Studio and Service's Trucks tab carry a **My stages** section (`shared/my_stages.dart`).
+   A build's progress can reach 100% without *Deliver anyway*.
+2. **Templates can only be created from Admin → Onboard project → Template "New".** There is no
    template list, edit or delete, and no per-stage `discipline` picker (it's inferred from the stage name). RLS lets a PM
    write templates, but the PM has no UI for it.
-3. ✔︎ **Store's inline "New item"** (Stock → Request sheet, Log component) is refused by RLS:
-   `item_catalog` writes are `admin, procurement, pm` only.
-4. ✔︎ **Invited members stay `invited` forever.** Set-password's `profiles.update(status:'active')`
-   is silently blocked by RLS (only admin can update `profiles`).
-5. **A PM hand-over strands in-flight approvals.** `stage_approvals.approver_id` and
-   `purchase_orders.pm_id` are snapshots. The new PM can't see pending stage approvals, and PO signing
-   stays with the old PM until a resubmit.
-6. **Log component → "Assign to build"** marks a part `installed` with no stage, bypassing
-   `fn_install_component`. It shows under "Other / at intake" in the truck record.
-7. ✔︎ **Removing a member who raised or signed a PO, or requested stock, fails.** Seven FKs to `profiles`
-   have no `ON DELETE`: `purchase_orders.{pm_id, submitted_by, pm_signed_by, final_signed_by,
-   rejected_by}`, `po_approval_events.actor_id`, `stock_requests.requested_by`.
-8. **Submitting a design doesn't notify the client.** The "They've been notified" banner is untrue.
-9. **Client document download** only shows "Opening document…". It never opens `file_url`.
-10. **Notifications aren't tappable.** There's no deep link to the build, PO or ticket.
-11. **Only the To-Order *hero* item pre-fills a PO.** A PO raised from the blank FAB isn't linked to its
-    requirement, so the requirement stays `pending` and keeps alerting.
+3. ✅ ~~**Store's inline "New item"** is refused by RLS~~. Fixed: `item_catalog` writes now include `store`.
+4. ✅ ~~**Invited members stay `invited` forever.**~~ Fixed: a member may update their *own* row, with a
+   trigger holding role / email / team / status on the admin's side (`0026` §8). This is also what makes
+   Settings → Account details able to save anything.
+5. ✅ ~~**A PM hand-over strands in-flight approvals.**~~ Fixed: `fn_assign_pm` moves pending
+   `stage_approvals.approver_id` and unsigned `purchase_orders.pm_id` to the new PM, and tells them what
+   is waiting. Decided approvals and signed POs stay as they are — the trail has to keep saying who signed.
+6. ✅ ~~**Log component → "Assign to build"** marks a part `installed` with no stage~~. Fixed: at intake a
+   build is a **reservation**, not an installation. The part stays `in_stock` (it is on the shelf), carries
+   the build it is earmarked for, and Workshop's scan-to-install is still what records who fitted it and
+   where. The truck record shows these under *Reserved · not yet fitted*.
+7. ✅ ~~**Removing a member who raised or signed a PO, or requested stock, fails.**~~ Fixed: `0026` re-runs
+   0009's FK sweep, which now also covers the seven FKs added by `0017` and `0020`.
+8. ✅ ~~**Submitting a design doesn't notify the client.**~~ Fixed: `fn_create_design` (new) and
+   `fn_add_design_version` notify the client and the PM on submit. The "They've been notified" banner is true.
+9. ✅ ~~**Client document download** only shows "Opening document…"~~. Fixed: `shared/document_viewer.dart`
+   opens a PDF in the OS preview sheet (print / share / save) and an image in a full-screen viewer. Staff
+   can open the documents they upload, too — they could only ever list them before.
+10. ✅ ~~**Notifications aren't tappable.**~~ Fixed: every `fn_notify` already recorded an `entity_type` and
+    `entity_id`; the feed just never selected them. A row now opens the build, stage, PO or ticket it is
+    about, resolved per role (`features/common/notification_target.dart`), and marks itself read.
+11. ✅ ~~**Only the To-Order *hero* item pre-fills a PO.**~~ The pre-fill is still hero-only, but the
+    consequence is fixed where it mattered: `fn_create_po` now parks **every** pending requirement on the
+    build whose item is on the PO, so a PO raised from the blank FAB stops the order-by alert nagging for
+    something already on its way (and takes the build off `at_risk`).
 
 ### DB rules that can be bypassed (fix in Postgres, not the UI)
-12. ✔︎ **`fn_reopen_ticket` has no caller check.** Any signed-in user can reopen any ticket and force it to
-    high priority.
-13. **`SECURITY DEFINER` helpers are callable by anyone over RPC:** `fn_notify*` (spoofed notifications),
-    `fn_audit`, `fn_recompute_schedule` (including the rebaseline) and `fn_refresh_all_statuses`. There is no `REVOKE EXECUTE`.
-14. ✔︎ **`trg_guard_stages` doesn't guard `status` / `actual_*`.** An assignee can mark their own stage
-    `done` with a direct UPDATE, skipping submit and approve.
+12. ✅ ~~**`fn_reopen_ticket` has no caller check.**~~ Fixed: the client the ticket belongs to, service, or
+    an admin. Nobody else can force a ticket to high priority.
+13. ⚠️ **Partly fixed.** `fn_notify*` and `fn_audit` are revoked from `authenticated`, so notifications can
+    no longer be spoofed over RPC. `fn_recompute_schedule` and `fn_refresh_all_statuses` stay granted —
+    the app calls both directly — so a signed-in user can still re-run a build's schedule.
+14. ✅ ~~**`trg_guard_stages` doesn't guard `status` / `actual_*`.**~~ Fixed: a stage moves only through
+    `fn_start_stage` / `fn_submit_stage` / `fn_decide_stage`, which mark the transaction as sanctioned
+    (`fn_stage_rpc_begin`). A direct `update stages set status = 'done'` by the assignee is refused.
 15. **`trg_guard_projects` doesn't guard `actual_delivery_date`, `target_delivery_date` or `status`.** A PM can
-    "deliver" by direct UPDATE, skipping `fn_mark_delivered`.
+    "deliver" by direct UPDATE, skipping `fn_mark_delivered`. (The app's own delivery-date edit is a direct
+    write, so closing this needs an RPC for it first.)
 16. **`purchase_orders_update` lets Procurement set `approval_status = 'approved'` itself.** `po_lines` also stay
     editable after approval.
 17. **`p_tickets_client_new`:** any signed-in user can insert a ticket on any project and pre-set
     status, assignee or SLA.
 18. **`p_dappr_client`** allows ALL on `design_approvals` by `client_user_id`, with no project check.
-19. **Disabled accounts can still sign in** and use their role's screens. RLS and `is_staff()` ignore
-    `profiles.status`.
-20. ✔︎ **`fn_receive_po` reads the PO status without a row lock.** Two simultaneous receives double the
-    stock and write two GRNs. `stock_items` has no `unique(item_catalog_id)`.
+19. ✅ ~~**Disabled accounts can still sign in**~~. Fixed: `my_role()` returns NULL for a disabled account, so
+    every role test — and therefore every policy built on one — denies. `is_admin()` was made strictly
+    boolean in the same change, because `if not public.is_admin()` is *false* when `is_admin()` is NULL and
+    every RPC guard would have waved a disabled admin straight through. The login screen signs them out
+    with an explanation instead of dropping them into an empty app.
+20. ✅ ~~**`fn_receive_po` reads the PO status without a row lock.**~~ Fixed: `select … for update`, so a
+    second receive waits, sees `received`, and raises. `stock_items` still has no `unique(item_catalog_id)`.
 21. **Both buckets are public-read.** Contracts and invoices under `builds/docs/` are readable by anyone
-    with the URL.
+    with the URL. (The app now downloads documents through the Storage client rather than a bare URL, so
+    making the bucket private is a one-function change — `downloadFromUrl` — not a sweep of call sites.)
 
 ### Smaller
 22. Add member (Team) always sets a password. The email-invite path is only reachable from Onboard →
     New client with "Set a password now" unticked.
-23. Profile "My details", "Account details", "Company profile" and "Roles & permissions" are coming-soon.
-24. ✅ ~~Only Admin's bell shows an unread badge~~. Fixed by the polish pass: every role's bell (shared `RoleHeader`) shows the unread count, Procurement's included. `unreadCountProvider` is still unused (#31).
-25. ✅ Workshop Start / Submit now use `AsyncPrimaryButton` (no double submit). Still open: "Mark stage complete" submits with checks open.
+23. ✅ ~~Profile "My details", "Account details", "Company profile" and "Roles & permissions" are coming-soon~~.
+    Fixed: **Account details** (edit your own name and phone; role, team, email and status shown as the
+    admin's to set), **Company details** (the buyer block — editable for admin, read-only for everyone
+    else, and moved here from the bottom of the Team screen where nobody looked for it), **Roles &
+    permissions** (what each role can and cannot do, your own role first) and **Notifications**. Service's
+    and the client's own Profile tabs point at the same screens.
+24. ✅ ~~Only Admin's bell shows an unread badge~~. Every role's bell shows the count, and it now comes from
+    `unreadCountProvider` instead of each header recomputing it (so the provider is no longer dead — #31).
+25. ✅ Workshop Start / Submit use `AsyncPrimaryButton` (no double submit). Also fixed: submitting with
+    checks still open now says so and asks — it used to read "Mark stage complete" and submit regardless,
+    so the PM received a submission whose own checklist said it was not finished.
 26. ✅ ~~Admin Projects has no Delivered chip~~. Fixed: a Delivered chip (Admin and PM) and a mint *Delivered* pill.
-27. Log delay doesn't refresh the Pipeline delay ledger. Assign-PM, onboarding and approvals don't
-    refresh the Command Center (`opsBoardProvider`) or Schedule.
-28. Some providers aren't auth-aware: `purchaseOrders`, `vendors`, `items`, `essentialItems`,
-    `templates`, `clients`, `pms`, `allProjects` and every `.family`. After switching accounts **on one device**
-    they can show the previous user's data until refreshed.
-29. ✔︎ **Fresh / demo databases have no essentials.** `seed.sql` runs after `0019`'s backfill, so *Steel sheet* is
-    not `is_essential`, and Store's "Request from procurement" picker is empty.
-30. Test gaps. The backend has no tests for `fn_receive_po` / stock, `fn_request_stock`, the rebaseline flag,
-    `0012` checklist copying, `0014` or `0025`. App tests cover models plus the shared widgets / motion layer
-    (`test/widgets_test.dart`), but not `slaLabel`, warranty state or `rupeesInWords`.
-31. Dead code: the non-embedded navigation in `ProjectDetailScreen` / `ProjectDossierScreen`,
-    `poDocProvider`, `unreadCountProvider`, and `RoleHome._titles` / `_navs`.
+27. ✅ ~~Log delay doesn't refresh the Pipeline delay ledger. Assign-PM, onboarding and approvals don't
+    refresh the Command Center or Schedule.~~ Fixed: one `invalidateBuild(ref, projectId)` lists everything a
+    build-level change touches, and the approval and onboarding paths were widened to match.
+28. ✅ ~~Some providers aren't auth-aware.~~ Fixed: **every** cached query provider watches
+    `currentUserIdProvider`, which emits only when the signed-in user actually changes. Two bugs in one:
+    the un-watched providers served the previous user's rows after switching accounts on one device (the
+    thing a multi-role demo on a single phone runs into immediately), and the ones that watched
+    `authStateProvider` directly refetched on every token refresh.
+29. ✅ ~~Fresh / demo databases have no essentials.~~ Fixed in two places, because there are two cases.
+    A **fresh** database: `seed.sql` now sets `is_essential` on its own rows — `0019`'s backfill could never
+    have covered them, since the migration chain finishes before the seed runs, so it swept an empty table.
+    An **existing** database whose catalogue was filled in after `0019`: `0026` catches it up, and only when
+    nothing is essential yet, so it never clobbers a deliberate choice.
+30. ⚠️ **Partly fixed.** App tests are up from 62 to **89**: the needs-attention feed, order-by urgency,
+    warranty state, notification targets, and a new `test/po_document_test.dart` covering the GST
+    rate-wise split, the paise rounding and `rupeesInWords`. The backend gained
+    `tests/80_hardening_tests.sql` (41 assertions on everything `0026` changed) — **not yet run**, see §1.
+    Still uncovered: `fn_request_stock`, `0012` checklist copying, `0014`.
+31. ⚠️ **Partly fixed.** `unreadCountProvider` is used now (#24). Still dead: the non-embedded navigation in
+    `ProjectDetailScreen` / `ProjectDossierScreen`, `poDocProvider`, and `RoleHome._titles` / `_navs`.
 32. Client tickets aren't visible to Admin or PM anywhere.
 33. SLA thresholds (4h / 24h / 72h) are fixed in `fn_sla_hours`.
 34. Bay allocation is deliberately not built. `bays` / `stages.bay_id` stay in the schema, unused.
+
+### Found in the 13 Oct audit (new numbers)
+35. ✅ ~~**A delivery-date change left every material's order-by date on the old plan.**~~ The headline
+    feature quietly went stale the moment a PM pushed a date: `needed_by_date` was written once, at
+    onboarding, and `order_by_date` is derived *from* it. Fixed in `fn_recompute_schedule`, which also now
+    refreshes the build's status (a `planned_*` change does not fire `t_stage_progress`, so a build kept
+    reading `delayed` after its date was pushed out).
+36. ✅ ~~**Admin's "Needs attention" read the order-by feed alone**~~, so a build sitting in `delayed` with no
+    material alert showed *All caught up*. It now lists delayed builds, builds with no PM, at-risk builds
+    and overdue materials, worst first, each row opening the build.
+37. ✅ ~~**An undated requirement reported "Order today".**~~ `days_left` was defaulted from NULL to 0, so
+    anything the PM had not given a needed-by date shouted the loudest. Undated now reads *Needs a date*
+    and sorts last.
+38. ✅ ~~**`fn_resubmit_po` wiped a PO's notes, ship-to and payment terms**~~ when the caller did not resend
+    them, and **discarded a vendor or delivery-date change entirely** unless the lines were resent too
+    (the header UPDATE sat inside `if p_lines is not null`).
+39. ✅ ~~**Reopening a PO silently re-taxed it.**~~ Any GST rate outside {0, 5, 12, 18, 28} fell back to 18%
+    and the totals were recomputed from the guess. The rate is kept, and the picker offers it.
+40. ✅ ~~**The GST document's CGST/SGST did not add up.**~~ `taxTotal / 2` printed twice means an odd-paise
+    tax shows two halves summing to a paisa more than the tax, and than the grand total. Each figure is
+    now rounded to paise once, the odd paisa lands on SGST, and the document carries a **tax breakup by
+    rate** plus a per-line GST % column — a single tax total is unreadable once two lines are taxed
+    differently.
+41. ✅ ~~**Two different "warranty expiring" thresholds**~~ (30 days in the truck record, 60 in Service's
+    search), and the record compared a date-only value against `DateTime.now()` so a warranty ending
+    *today* read as expired. One `warrantyStateFor` helper, one threshold, calendar arithmetic.
+42. ✅ ~~**A serialized item with no units logged never appeared in Store → Stock.**~~ The list is built from
+    the catalogue now, so an item with none on hand shows as 0 — which is when you want to see it.
+43. ✅ ~~**`findBySerial` matched on a raw `ilike` pattern.**~~ A serial containing `_` or `%` matched a
+    different part. The scan is escaped.
+44. ✅ ~~**Photos could take the screen down.**~~ `Image.memory` had no `errorBuilder` at either site, and
+    `image_picker` does not always transcode a HEIC. Picked bytes are now decoded once before any widget
+    sees them, the content type is sniffed from the file's magic number rather than its name (JPEG bytes
+    were being stored as `image/heic`, which then rendered nowhere), a second tap while the picker is open
+    is ignored, and the three `FilePicker` call sites are wrapped — an unhandled throw in an async callback
+    was taking the screen with it.
 
 ---
 
 ## 4. Deploy / environment facts
 
-- **Supabase migrations:** `0001`–`0025` are in the repo. Applied as last recorded: `0001`–`0014`.
+- **Supabase migrations:** `0001`–`0026` are in the repo. Applied as last recorded: `0001`–`0014`.
   To find out what the live database has, run **`supabase/check_migrations.sql`** in the SQL editor.
-  It is read-only and prints `applied` / `RUN THIS` for `0004`–`0025`. Run the missing ones **in order**.
+  It is read-only and prints `applied` / `RUN THIS`. Run the missing ones **in order**.
   - `0025` adds a UNIQUE index on `design_versions(artifact_id, version_no)`, so first check this returns
     0 rows: `select artifact_id, version_no, count(*) from design_versions group by 1,2 having count(*) > 1;`
   - Don't re-run `0019` (it resets every bulk item to essential). Don't re-run `0020` after `0021`
     (it re-creates the old `v_po_pending_approvals` with no priority columns and no grant). Everything else is
-    safe to re-run.
+    safe to re-run — `0026` included; it is written to be.
   - From `0020` on, a PO must be raised through `fn_create_po`. From `0025` on, the app adds design
-    versions through `fn_add_design_version`, so **the DB must be at `0025` before running the
-    current app**.
+    versions through `fn_add_design_version`. From `0026` on, the app creates designs through
+    `fn_create_design` and reads `notifications.entity_type` / `entity_id`, so **the DB must be at `0026`
+    before running the current app** — without it, "New design" fails outright.
+  - `0026` changes behaviour people will notice, so say it out loud before deploying:
+    a **disabled account can no longer read anything** (`my_role()` returns NULL for one); a stage can
+    only move through Start / Submit / Approve, never a direct write; and a PO now closes **every**
+    matching pending requirement on its build, not just the one it was raised from.
+  - `0026` also makes `is_admin()` strictly boolean, which closes a hole worth naming: `if not
+    public.is_admin()` is *false* when `is_admin()` is NULL, so every admin-guarded RPC was skipping its
+    own guard for any caller without a profile — and those functions are `SECURITY DEFINER` and granted to
+    PUBLIC, so an anonymous call to `/rpc/fn_assign_pm` could reassign a build. The side effect: running
+    `fn_assign_pm`, `fn_onboard_project`, `fn_final_approve_po` or `fn_set_po_priority` **by hand in the
+    SQL editor now fails** with "Only an admin…". Do those from the app, as an admin.
 - **Storage:** buckets `designs` (`0008`) and `builds` (`0011`), both public read.
   - `designs/<uid>/…` holds `.glb` files and previews.
   - `builds/stages/<stageId>/` holds site photos.
@@ -179,7 +257,7 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
 - **Platform folders** (`android/`, `ios/`, `web/`) **are tracked** (since PR #5), with native config
   committed. CI fails if the manifest loses `CAMERA`, `INTERNET` or the `io.supabase.buildtrack` deep link.
   `flutter create .` overwrites them silently, so `git diff` after it. See [`NATIVE_SETUP.md`](NATIVE_SETUP.md).
-- **Native requirements:** Android `minSdk` 23 + `CAMERA` + `INTERNET`; iOS 13 + camera/photo usage
+- **Native requirements:** Android `minSdk` 23 + `CAMERA` + `INTERNET`; **iOS 15.0** + camera/photo usage
   strings. Camera on web needs HTTPS. The iOS Simulator has no camera: the scanner shows its
   manual-entry state, and gallery picking works.
 - **Adding members:** Team → Add member always sets a password, which needs no SMTP. The email-invite path
@@ -195,7 +273,7 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
 ```bash
 sh supabase/tests/run.sh        # backend, needs only Docker: 149 assertions in 7 suites, run twice
                                 #   (migration chain + full_setup.sql), as real non-superuser users
-cd app && flutter analyze && flutter test   # app: 0 errors (CI pins Flutter 3.44.8)
+cd app && flutter analyze && flutter test   # app: 0 errors (CI pins Flutter 3.47.2)
 ```
 
 `supabase/full_setup.sql` is **generated** — never hand-edit it:
@@ -240,6 +318,22 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 13 Oct 2026: Pre-demo audit + fix pass (migration `0026`)
+
+A line-by-line read of the project against its own documentation, then the fixes. The docs held up — nine
+§3 items were spot-checked and all nine were exactly as described — so most of what follows was **not**
+previously known. `0026` closes 14 backend defects (stale order-by dates after a re-plan, `fn_resubmit_po`
+losing fields, an unlocked `fn_receive_po`, an unguarded `fn_reopen_ticket`, a stage you could mark done by
+hand, a disabled account that could still read everything, a PM hand-over that stranded approvals, a PO that
+closed only one requirement) and the app side fixes the photo crash, gives Settings real screens, lets
+Design and Service work their own stages, makes notifications and documents open, and makes every cached
+provider auth-aware. Full detail: [`WORKLOG.md`](WORKLOG.md).
+
+**Verified by CI**, after two defects it caught that local work could not: `fn_reopen_ticket`'s new guard
+was three-valued and so never fired (`v_ca = my_client_account()` is NULL for any staff member, and
+`if not NULL` is *false*), and the essentials bootstrap swept an empty table because the migration chain
+finishes before `seed.sql` runs. Both fixed; 191/191 assertions pass.
 
 ### 7 Oct 2026: Premium motion + UI polish, with logic fixes (app only, no migration)
 
@@ -543,7 +637,7 @@ New deps: `image_picker`, `mobile_scanner`. Storage policy (`0011`) lets staff w
 
 **Watch out when deploying:** run `0011`, then apply the native permission edits in
 [`NATIVE_SETUP.md`](NATIVE_SETUP.md) — Android needs `CAMERA` (and `INTERNET` for release builds),
-iOS needs `NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription`, `minSdk` 23, iOS 13.
+iOS needs `NSCameraUsageDescription` + `NSPhotoLibraryUsageDescription`, `minSdk` 23, iOS 15.
 Without them the camera silently fails to open.
 
 ### 30 Jul 2026 — Service role built, after-sales loop closed (migration `0010`)

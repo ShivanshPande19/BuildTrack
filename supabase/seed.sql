@@ -23,11 +23,20 @@ insert into vendors (id, name, category, avg_lead_time_days, reliability_score) 
   ('22222222-0000-0000-0000-000000000004','Delhi Imports','Imported',45,64);
 
 -- ===== item catalog =====
-insert into item_catalog (id, name, model, category, default_vendor_id, lead_time_days, buffer_days, serialized) values
-  ('33333333-0000-0000-0000-000000000001','Samsung 42" TV','UA42-XYZ','Electronics','22222222-0000-0000-0000-000000000001',3,1,true),
-  ('33333333-0000-0000-0000-000000000002','Inverter 2kW',null,'Electricals','22222222-0000-0000-0000-000000000003',3,1,true),
-  ('33333333-0000-0000-0000-000000000003','Espresso machine (custom)',null,'Equipment','22222222-0000-0000-0000-000000000004',45,5,true),
-  ('33333333-0000-0000-0000-000000000004','Steel sheet 4x8',null,'Fabrication','22222222-0000-0000-0000-000000000002',6,2,false);
+--
+-- is_essential is set explicitly, not left to 0019's backfill. 0019 runs as part
+-- of the migration chain, which finishes BEFORE this file — so on a fresh
+-- database (and in full_setup.sql, which concatenates the two in that order) its
+-- `update … where serialized = false` sweeps an empty table, and every item
+-- seeded here lands with the column's `false` default. The visible symptom was
+-- Store's "Request from procurement" picker being empty on every demo database,
+-- because that picker only offers essentials.
+insert into item_catalog (id, name, model, category, default_vendor_id, lead_time_days, buffer_days, serialized, is_essential) values
+  ('33333333-0000-0000-0000-000000000001','Samsung 42" TV','UA42-XYZ','Electronics','22222222-0000-0000-0000-000000000001',3,1,true,false),
+  ('33333333-0000-0000-0000-000000000002','Inverter 2kW',null,'Electricals','22222222-0000-0000-0000-000000000003',3,1,true,false),
+  ('33333333-0000-0000-0000-000000000003','Espresso machine (custom)',null,'Equipment','22222222-0000-0000-0000-000000000004',45,5,true,false),
+  -- Bulk stock the Store reorders on its own, regardless of any one build.
+  ('33333333-0000-0000-0000-000000000004','Steel sheet 4x8',null,'Fabrication','22222222-0000-0000-0000-000000000002',6,2,false,true);
 
 insert into stock_items (item_catalog_id, quantity, unit) values
   ('33333333-0000-0000-0000-000000000004',42,'sheets');

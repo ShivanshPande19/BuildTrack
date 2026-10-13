@@ -32,3 +32,15 @@ Future<String?> fetchMyRole() async {
   final row = await sb.from('profiles').select('role').eq('id', uid).maybeSingle();
   return row?['role'] as String?;
 }
+
+/// The signed-in user's account status: `active` | `invited` | `disabled`.
+///
+/// Read at sign-in so a disabled account is told why it cannot get in. Their
+/// own row stays readable (`p_profiles_read_self` is `id = auth.uid()`), which
+/// is deliberate — it is the one query a disabled user still needs to answer.
+Future<String?> fetchMyStatus() async {
+  final uid = sb.auth.currentUser?.id;
+  if (uid == null) return null;
+  final row = await sb.from('profiles').select('status').eq('id', uid).maybeSingle();
+  return row?['status'] as String?;
+}

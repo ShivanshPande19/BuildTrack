@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
@@ -11,7 +10,6 @@ import '../../shared/role_header.dart';
 import 'onboard_project.dart';
 import 'add_member.dart';
 import 'build_screen.dart';
-import 'company_settings.dart';
 import 'ops_center.dart';
 import '../procurement/po_approvals.dart';
 
@@ -65,7 +63,6 @@ class _AdminDashboardState extends ConsumerState<AdminDashboard> {
 // ─────────────────────────────────────────────────────────── shared helpers
 
 const _pad = EdgeInsets.fromLTRB(20, 8, 20, 110); // bottom clears the floating nav (extendBody)
-final _dayFmt = DateFormat('d MMM');
 
 ({String label, Color color}) _statusPill(String status) => switch (status) {
   'on_track'  => (label: 'On-track', color: BT.lime),
@@ -263,33 +260,54 @@ class _HomeTab extends ConsumerWidget {
           ])));
       }),
       const SectionLabel('Needs attention'),
-      if (f.urgent.isEmpty)
+      // Every build that has slipped, every build with no PM, every build at
+      // risk, and every material past its order-by — not just the materials.
+      // This card used to read the order-by feed alone, so a delayed build with
+      // no material alert still showed "All caught up".
+      if (f.attention.isEmpty)
         const EmptyState(
           icon: Icons.check_circle_outline_rounded, tint: BT.lime,
           title: 'All caught up',
-          subtitle: 'Every order-by date is on track — nothing needs attention.')
+          subtitle: 'Every build is on track and every order-by date is clear.')
       else
-        ...f.urgent.map((d) => Padding(
+        ...f.attention.map((a) => Padding(
           padding: const EdgeInsets.only(bottom: 11),
-          child: AppCard(
-            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 15),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(child: Text('${d.projectCode} · ${d.itemName}',
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
-                const SizedBox(width: 8),
-                StatusPill(
-                  d.daysLeft <= 0 ? 'Order today' : '${d.daysLeft}d left',
-                  color: d.daysLeft <= 0 ? BT.coral : BT.amber),
-              ]),
-              const SizedBox(height: 4),
-              Text('Order by ${d.orderByDate == null ? '—' : _dayFmt.format(d.orderByDate!)} · qty ${d.qty}',
-                style: const TextStyle(color: BT.mut, fontSize: 12.5)),
-            ]),
-          ),
+          child: _attentionCard(context, a),
         )),
     ], stepMs: 55),
   );
+
+  /// One "needs attention" row. Tapping it opens the build it is about, so the
+  /// owner can act on it instead of having to hunt for it in Projects.
+  Widget _attentionCard(BuildContext context, AttentionItem a) {
+    final tone = switch (a.kind) {
+      AttentionKind.delayed => (color: BT.coral, label: 'Delayed', icon: Icons.error_outline_rounded),
+      AttentionKind.noPm    => (color: BT.lav,   label: 'No PM',   icon: Icons.person_off_outlined),
+      AttentionKind.atRisk  => (color: BT.amber, label: 'At risk', icon: Icons.warning_amber_rounded),
+      AttentionKind.orderBy => (color: BT.sky,   label: 'Order',   icon: Icons.local_shipping_outlined),
+    };
+    return AppCard(
+      onTap: a.projectId == null ? null : () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => BuildScreen(projectId: a.projectId!))),
+      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 15),
+      child: Row(children: [
+        Container(width: 38, height: 38, alignment: Alignment.center,
+          decoration: BoxDecoration(color: tone.color, borderRadius: BorderRadius.circular(12)),
+          child: Icon(tone.icon, size: 19, color: BT.ink)),
+        const SizedBox(width: 13),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(child: Text(a.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+            const SizedBox(width: 8),
+            StatusPill(tone.label, color: tone.color),
+          ]),
+          const SizedBox(height: 4),
+          Text(a.detail, style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+        ])),
+      ]),
+    );
+  }
 
   /// A candy status track: full-width textured bar + a floating % pill.
   Widget _statusTrack(String label, int count, int total, Color pill, _Tex tex) {
@@ -640,9 +658,6 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
             children: staggered(rows, stepMs: 30, maxMs: 300)),
         ),
       ],
-      // ── Workspace settings live in their own section, away from people.
-      const SectionLabel('Workspace'),
-      FadeSlideIn(delay: Motion.stagger(3), child: _companyCard(context)),
     ];
   }
 
@@ -664,25 +679,6 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
           onTap: () => setState(() => _dept = r)),
     ]);
   }
-
-  // One-time company identity (buyer block + GST state on every PO).
-  Widget _companyCard(BuildContext context) => AppCard(
-    onTap: () => Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CompanySettingsScreen())),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    child: Row(children: [
-      Container(width: 40, height: 40, alignment: Alignment.center,
-        decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-        child: const Icon(Icons.business_rounded, size: 20, color: BT.ink)),
-      const SizedBox(width: 12),
-      const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Company details', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-        SizedBox(height: 2),
-        Text('Buyer name, GSTIN and state on every purchase order', style: TextStyle(color: BT.mut, fontSize: 12)),
-      ])),
-      const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
-    ]),
-  );
 
   // Section header for a department: coloured icon + name + member count.
   Widget _deptHeader(String role, int count) {

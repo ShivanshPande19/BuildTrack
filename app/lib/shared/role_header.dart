@@ -48,8 +48,10 @@ class RoleHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final unread = badge ??
-        (ref.watch(notificationsProvider).valueOrNull?.where((n) => !n.read).length ?? 0);
+    // unreadCountProvider derives this from the same (auth-aware) notifications
+    // query, so every bell in the app counts identically — and it stops being
+    // the dead provider it was while this recomputed the same thing inline.
+    final int unread = badge ?? ref.watch(unreadCountProvider);
     return Row(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
       Expanded(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

@@ -9,6 +9,7 @@ import '../../shared/widgets.dart';
 import 'raise_request.dart';
 import 'approve_design.dart';
 import 'client_stage.dart';
+import '../../shared/document_viewer.dart';
 
 /// Client — one truck: progress + current stage + build journey (tap a stage for
 /// its photos) + documents. Everything about the truck in one clean screen.
@@ -129,7 +130,8 @@ class ClientTruckDetail extends ConsumerWidget {
                 Expanded(child: Text(_docLabel[doc.type] ?? doc.type, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
                 doc.available
                   ? GestureDetector(behavior: HitTestBehavior.opaque,
-                      onTap: () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Opening document…'))),
+                      onTap: () => openDocument(context,
+                        fileUrl: doc.fileUrl, title: _docLabel[doc.type] ?? doc.type),
                       child: const Icon(Icons.download_rounded, size: 22, color: BT.mut))
                   : const StatusPill('Soon', color: BT.amber),
               ]))),

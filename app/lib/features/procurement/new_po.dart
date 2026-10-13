@@ -68,6 +68,17 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
   String? _error;
 
   static const _gstRates = <double>[0, 5, 12, 18, 28];
+
+  /// The rates to offer for a line: the standard slabs, plus whatever rate this
+  /// line already carries if it isn't one of them (so an existing PO's rate can
+  /// be seen and kept, not silently rounded to a slab).
+  List<double> _ratesFor(_Line l) =>
+      _gstRates.contains(l.taxRate) ? _gstRates : ([..._gstRates, l.taxRate]..sort());
+
+  /// "18%" for a whole slab, "7.5%" for anything that isn't one — `toInt()`
+  /// alone turned a 7.5% rate into the label "7%".
+  static String _rateLabel(double r) =>
+      r == r.roundToDouble() ? '${r.toInt()}%' : '${r.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')}%';
   static final _fmt = DateFormat('d MMM');
   static final _money = NumberFormat.currency(locale: 'en_IN', symbol: '₹', decimalDigits: 0);
 
@@ -86,7 +97,12 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
         final line = _Line()
           ..itemId = it.itemCatalogId
           ..qty = it.qty < 1 ? 1 : it.qty
-          ..taxRate = _gstRates.contains(it.taxRate) ? it.taxRate : 18;
+          // Keep whatever rate the PO was raised with. This used to fall back
+          // to 18% for any rate outside the preset list, so reopening a PO cut
+          // at a non-standard rate silently re-taxed it — and the totals were
+          // then recomputed from the guess. The picker below offers the extra
+          // rate as its own option instead.
+          ..taxRate = it.taxRate;
         if (it.unitPrice > 0) {
           line.price.text = it.unitPrice % 1 == 0
               ? it.unitPrice.toInt().toString()
@@ -447,7 +463,7 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
             // GST %
             SizedBox(width: 96, child: AppSelectField<double>(
               value: l.taxRate, hint: 'GST', dense: true, title: 'GST rate',
-              options: [for (final r in _gstRates) SelectOption(r, '${r.toInt()}%')],
+              options: [for (final r in _ratesFor(l)) SelectOption(r, _rateLabel(r))],
               onChanged: (v) => setState(() => l.taxRate = v),
             )),
           ]),

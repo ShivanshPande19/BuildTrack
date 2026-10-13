@@ -37,6 +37,7 @@ ScheduleEntry entry({int? dayOffset, String? assigneeId, bool dueIsPlanned = fal
 }
 
 void main() {
+  mainExtra();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -263,6 +264,146 @@ void main() {
       final f = FleetData([p('delivered')], []);
       expect(f.active, 0);
       expect(f.onTrack, 0);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Added with migration 0026 / the pre-demo fix pass. Each group names the bug
+// it pins down, so a regression says what broke rather than just where.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// A [Project] with just the fields the attention feed reads.
+Project proj(String code, String status, {String? pmId = 'pm1', int pct = 40}) =>
+    Project(id: 'id-$code', code: code, name: '$code Truck', status: status,
+            progressPct: pct, pmId: pmId);
+
+/// An [OrderDue] whose order-by date is [daysLeft] days away, or undated.
+OrderDue due({int? daysLeft, String code = 'AZ-101'}) {
+  final now = DateTime.now();
+  return OrderDue(
+    id: 'r-$code-$daysLeft', itemName: 'Inverter 2kW', projectCode: code,
+    projectId: 'p-$code', itemCatalogId: 'i1', qty: 2,
+    orderByDate: daysLeft == null ? null : DateTime(now.year, now.month, now.day + daysLeft),
+    daysLeft: daysLeft,
+  );
+}
+
+void mainExtra() {
+  group("Admin's needs-attention feed", () {
+    test('a delayed build is listed even when no material is due', () {
+      final f = FleetData([proj('AZ-1', 'delayed')], []);
+      expect(f.attention, isNotEmpty,
+          reason: 'this read "All caught up" while a build sat in delayed');
+      expect(f.attention.first.kind, AttentionKind.delayed);
+      expect(f.attention.first.projectId, 'id-AZ-1');
+    });
+
+    test('a build with no project manager is listed — nobody can work on it', () {
+      final f = FleetData([proj('AZ-2', 'on_track', pmId: null)], []);
+      expect(f.attention.single.kind, AttentionKind.noPm);
+    });
+
+    test('a delivered build with no PM is not a problem any more', () {
+      final f = FleetData([proj('AZ-3', 'delivered', pmId: null)], []);
+      expect(f.attention, isEmpty);
+    });
+
+    test('worst first: delayed, then no PM, then at risk, then materials', () {
+      final f = FleetData([
+        proj('AZ-R', 'at_risk'),
+        proj('AZ-N', 'on_track', pmId: null),
+        proj('AZ-D', 'delayed'),
+        proj('AZ-OK', 'on_track'),
+      ], [due(daysLeft: 1)]);
+      expect(f.attention.map((a) => a.kind).toList(), [
+        AttentionKind.delayed,
+        AttentionKind.noPm,
+        AttentionKind.atRisk,
+        AttentionKind.orderBy,
+      ]);
+    });
+
+    test('everything healthy really is "all caught up"', () {
+      final f = FleetData([proj('AZ-4', 'on_track')], [due(daysLeft: 30)]);
+      expect(f.attention, isEmpty);
+    });
+
+    test('only on-track/at-risk/delayed count towards the active shares', () {
+      final f = FleetData([
+        proj('AZ-5', 'on_track'), proj('AZ-6', 'delayed'), proj('AZ-7', 'delivered'),
+      ], []);
+      expect(f.active, 2);
+      expect(f.delivered, 1);
+      expect(f.onTrack + f.atRisk + f.delayed, f.active);
+    });
+  });
+
+  group('order-by urgency', () {
+    test('an undated requirement is not urgent (it used to shout "Order today")', () {
+      final f = FleetData([], [due(daysLeft: null)]);
+      expect(f.urgent, isEmpty);
+      expect(f.attention, isEmpty);
+    });
+
+    test('undated sorts last, so it can never take the hero slot', () {
+      final rows = [due(daysLeft: null), due(daysLeft: 5), due(daysLeft: -2)]
+        ..sort((a, b) => a.sortKey.compareTo(b.sortKey));
+      expect(rows.map((r) => r.daysLeft).toList(), [-2, 5, null]);
+    });
+
+    test('labels read the way a buyer thinks about them', () {
+      expect(due(daysLeft: null).urgencyLabel, 'Needs a date');
+      expect(due(daysLeft: -3).urgencyLabel, '3d overdue');
+      expect(due(daysLeft: 0).urgencyLabel, 'Order today');
+      expect(due(daysLeft: 4).urgencyLabel, '4d left');
+    });
+  });
+
+  group('warranty state', () {
+    DateTime inDays(int n) {
+      final t = DateTime.now();
+      return DateTime(t.year, t.month, t.day + n);
+    }
+
+    test('a warranty that ends today is expiring, not expired', () {
+      // The truck record compared a date-only value against DateTime.now(), so
+      // midnight-this-morning read as "already expired".
+      expect(warrantyStateFor(inDays(0)), 'expiring');
+      expect(daysUntil(inDays(0)), 0);
+    });
+
+    test('one threshold everywhere: the record and the search now agree', () {
+      final end = inDays(45);
+      final fromDate = warrantyStateFor(end);
+      final fromServerDays = warrantyStateFor(end, daysLeft: 45);
+      expect(fromDate, 'expiring');
+      expect(fromServerDays, fromDate,
+          reason: 'the truck record used 30 days while warranty search used 60');
+    });
+
+    test('the states cover the whole line', () {
+      expect(warrantyStateFor(null), 'none');
+      expect(warrantyStateFor(inDays(-1)), 'expired');
+      expect(warrantyStateFor(inDays(warrantyExpiringDays)), 'expiring');
+      expect(warrantyStateFor(inDays(warrantyExpiringDays + 1)), 'active');
+    });
+  });
+
+  group('notification targets', () {
+    AppNotification n(String? type, String? id) => AppNotification(
+      id: 'n1', title: 't', entityType: type, entityId: id);
+
+    test('a build, stage, PO or ticket notification is openable', () {
+      for (final t in ['project', 'stage', 'purchase_order', 'ticket']) {
+        expect(n(t, 'e1').isOpenable, isTrue, reason: t);
+      }
+    });
+
+    test('no entity means nothing to open — no dead-end tap', () {
+      expect(n('project', null).isOpenable, isFalse);
+      expect(n(null, 'e1').isOpenable, isFalse);
+      expect(n('design', 'e1').isOpenable, isFalse);
     });
   });
 }

@@ -5,6 +5,7 @@ import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
+import 'notification_target.dart';
 
 /// Notifications feed: grouped Today / Yesterday / Earlier (local days), with
 /// "Mark all read".
@@ -18,6 +19,9 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   // Set while "Mark all read" runs: unread dots fade out immediately instead of
   // waiting for the round-trip, and a double tap can't fire it twice.
   bool _markingAll = false;
+  // Guards against a second tap while the target screen is being resolved (the
+  // role and, for a stage, the build it belongs to are both round-trips).
+  bool _opening = false;
 
   /// One style per type the backend actually sends (see fn_notify calls in the
   /// migrations). The old map only knew demo types (`order_due`, `po`, …) that
@@ -155,10 +159,40 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
     ], stepMs: 30));
   }
 
+  /// Open what a notification is about, and mark that one read on the way.
+  ///
+  /// A feed you cannot act from is a list of things to go and find by hand, so
+  /// every row that has an entity behind it is now a link. Marking the row read
+  /// is part of the same gesture — you have clearly seen it.
+  Future<void> _open(AppNotification n) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    try {
+      if (!n.read) {
+        await ref.read(notificationsRepoProvider).markRead(n.id);
+        ref.invalidate(notificationsProvider);
+      }
+      if (!mounted) return;
+      final went = await openNotificationTarget(context, ref, n);
+      if (!went && mounted) sayNoTarget(context);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
   Widget _row(AppNotification n) {
     final s = _style(n.type);
     final unread = !n.read && !_markingAll;
-    return Container(
+    return PressableScale(
+      pressedScale: n.isOpenable ? 0.985 : 1,
+      haptic: n.isOpenable,
+      onTap: n.isOpenable ? () => _open(n) : null,
+      child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -189,7 +223,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           child: Container(width: 8, height: 8, margin: const EdgeInsets.only(top: 6, left: 6),
             decoration: const BoxDecoration(color: BT.lime, shape: BoxShape.circle)),
         ),
+        if (n.isOpenable)
+          const Padding(padding: EdgeInsets.only(top: 10, left: 2),
+            child: Icon(Icons.chevron_right_rounded, size: 18, color: BT.mut2)),
       ]),
-    );
+    ));
   }
 }

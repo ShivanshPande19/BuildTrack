@@ -5,7 +5,7 @@
 >
 > | Planned | Built |
 > |---|---|
-> | Flutter + Riverpod + Dio | Flutter 3.44.8 + Riverpod 2 + go_router 14. Supabase is accessed through `supabase_flutter` (no Dio). |
+> | Flutter + Riverpod + Dio | Flutter 3.47.2 + Riverpod 2 + go_router 14. Supabase is accessed through `supabase_flutter` (no Dio). |
 > | Supabase tables + RLS | 25 migrations: 33 tables, 5 views, RLS + guard triggers + ~40 `SECURITY DEFINER` RPCs ([`API.md`](API.md)) |
 > | Edge Function + `pg_cron` daily order-by job | Order-by is recomputed in SQL on every schedule change. Statuses refresh when the dashboards load. A daily `fn_refresh_all_statuses()` cron is recommended but not set up. Edge Functions are used only for member create/delete. |
 > | Realtime dashboards, FCM push | **Not built yet.** Pull to refresh; in-app notifications only. |

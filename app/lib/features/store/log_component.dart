@@ -140,8 +140,11 @@ class _LogComponentState extends ConsumerState<LogComponent> {
 
           Row(children: [
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _label('ASSIGN TO BUILD (optional)'),
-              AppSelectField<String>(value: _projectId, hint: 'In store', title: 'Assign to build',
+              // "Reserve", not "assign": the part has arrived, not been fitted.
+              // Workshop's scan-to-install is what records who fitted it and
+              // into which stage.
+              _label('RESERVE FOR A BUILD (optional)'),
+              AppSelectField<String>(value: _projectId, hint: 'Not reserved', title: 'Reserve for a build',
                 options: [for (final p in projects) SelectOption(p.id, p.code)],
                 onChanged: (v) => setState(() => _projectId = v)),
             ])),

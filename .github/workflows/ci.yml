@@ -38,11 +38,15 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          # Pinned to the version the dev machine and the first CI run resolved,
-          # so a build breaks because this repo changed, not because Flutter
-          # moved. Bump it deliberately, in its own commit, and regenerate
-          # pubspec.lock in the same change.
-          flutter-version: 3.44.8
+          # Pinned to the version the dev machine runs, so a build breaks because
+          # this repo changed, not because Flutter moved. Bump it deliberately
+          # and regenerate pubspec.lock in the same change.
+          #
+          # 3.47.2 (from 3.44.8): 3.47 migrates the iOS project to Swift Package
+          # Manager and raises the iOS deployment target to 15.0. Those are
+          # committed, so CI has to be on the same Flutter or `pod install` and
+          # the lock check disagree with every developer machine.
+          flutter-version: 3.47.2
           channel: stable
           cache: true
 
@@ -111,7 +115,7 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: 3.44.8
+          flutter-version: 3.47.2
           channel: stable
           cache: true
 

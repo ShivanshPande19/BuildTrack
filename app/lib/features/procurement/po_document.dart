@@ -60,11 +60,16 @@ Future<Uint8List> _build(PoDocData d, PdfPageFormat format) async {
         children: [
           pw.Expanded(child: _leftNotes(po)),
           pw.SizedBox(width: 18),
-          _totals(po, intra: intra, inter: inter),
+          _totals(items, po, intra: intra, inter: inter),
         ],
       ),
+      pw.SizedBox(height: 10),
+      _rateWise(items, intra: intra),
       pw.SizedBox(height: 8),
-      _amountWords(po.amount),
+      // The words have to match the figure, so they are spelled from the same
+      // line-derived total the Grand Total row prints, not the stored header
+      // amount (which can differ by a paisa after its own rounding).
+      _amountWords(poGrandTotal(items, po)),
       pw.SizedBox(height: 26),
       _signatories(d.detail.events, company),
       pw.SizedBox(height: 18),
@@ -142,8 +147,12 @@ pw.Widget _metaCell(String label, String value) => pw.Column(
   ],
 );
 
+/// The line-item table. Carries a **GST %** column: the rate is per line in the
+/// data, and a GST document that shows only one tax total is unreadable the
+/// moment two lines are taxed differently — you cannot tell which line
+/// contributed what, and the rate-wise summary below has nothing to tie back to.
 pw.Widget _itemsTable(List<PoLineItem> items) => pw.TableHelper.fromTextArray(
-  headers: ['#', 'Description', 'HSN/SAC', 'Qty', 'Rate', 'Amount'],
+  headers: ['#', 'Description', 'HSN/SAC', 'Qty', 'Rate', 'GST %', 'Amount'],
   data: [
     for (int i = 0; i < items.length; i++)
       [
@@ -152,6 +161,7 @@ pw.Widget _itemsTable(List<PoLineItem> items) => pw.TableHelper.fromTextArray(
         (items[i].hsnCode ?? '').isEmpty ? '—' : items[i].hsnCode!,
         '${items[i].qty}',
         _money.format(items[i].unitPrice),
+        poPct(items[i].taxRate),
         _money.format(items[i].lineTotal),
       ],
   ],
@@ -167,17 +177,61 @@ pw.Widget _itemsTable(List<PoLineItem> items) => pw.TableHelper.fromTextArray(
     2: pw.Alignment.center,
     3: pw.Alignment.center,
     4: pw.Alignment.centerRight,
-    5: pw.Alignment.centerRight,
+    5: pw.Alignment.center,
+    6: pw.Alignment.centerRight,
   },
   columnWidths: {
-    0: const pw.FixedColumnWidth(24),
-    1: const pw.FlexColumnWidth(4),
-    2: const pw.FlexColumnWidth(1.6),
-    3: const pw.FixedColumnWidth(40),
-    4: const pw.FlexColumnWidth(1.6),
-    5: const pw.FlexColumnWidth(1.8),
+    0: const pw.FixedColumnWidth(22),
+    1: const pw.FlexColumnWidth(3.6),
+    2: const pw.FlexColumnWidth(1.5),
+    3: const pw.FixedColumnWidth(34),
+    4: const pw.FlexColumnWidth(1.5),
+    5: const pw.FixedColumnWidth(42),
+    6: const pw.FlexColumnWidth(1.7),
   },
 );
+
+/// "18%" / "7.5%" — a whole slab loses its decimals, anything else keeps them.
+String poPct(double r) => r == r.roundToDouble()
+    ? '${r.toInt()}%'
+    : '${r.toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')}%';
+
+/// Taxable value and tax, grouped by GST rate.
+///
+/// Public because the money on a GST document is worth asserting on: see
+/// `test/po_document_test.dart`, which pins the rate-wise split, the paise
+/// rounding and the amount in words.
+///
+/// Taxable value and tax, grouped by GST rate — the rate-wise breakup a GST
+/// purchase order is expected to carry. Rounded to paise per group, and the
+/// groups are what the CGST/SGST or IGST rows are summed from, so the figures
+/// on the document always add up to the grand total.
+List<({double rate, double taxable, double tax})> poTaxBreakup(List<PoLineItem> items) {
+  final taxable = <double, double>{};
+  for (final i in items) {
+    taxable[i.taxRate] = (taxable[i.taxRate] ?? 0) + i.lineTotal;
+  }
+  final out = taxable.entries
+      .map((e) => (rate: e.key, taxable: toPaise(e.value), tax: toPaise(e.value * e.key / 100.0)))
+      .toList()
+    ..sort((a, b) => a.rate.compareTo(b.rate));
+  return out;
+}
+
+/// Round to whole paise. Money on this document is printed to two decimals, so
+/// every figure it adds up has to be a two-decimal figure first — otherwise the
+/// printed rows disagree with the printed total by a paisa or two.
+double toPaise(double v) => (v * 100).round() / 100;
+
+/// The grand total as the document prints it: derived from the lines, so the
+/// figure, the words and the breakup are one number.
+double poGrandTotal(List<PoLineItem> items, PurchaseOrder po) {
+  final groups = poTaxBreakup(items);
+  if (groups.isEmpty) return toPaise(po.amount);
+  final subtotal = toPaise(groups.fold<double>(0, (s, g) => s + g.taxable));
+  final tax = toPaise(groups.fold<double>(0, (s, g) => s + g.tax));
+  return toPaise(subtotal + tax);
+}
 
 pw.Widget _leftNotes(PurchaseOrder po) => pw.Column(
   crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -190,22 +244,82 @@ pw.Widget _leftNotes(PurchaseOrder po) => pw.Column(
   ],
 );
 
-pw.Widget _totals(PurchaseOrder po, {required bool intra, required bool inter}) {
-  final rows = <pw.Widget>[_totalRow('Subtotal', _money.format(po.subtotal))];
+/// The totals block, with the tax split the way the two parties' states require.
+///
+/// CGST and SGST are each **half the tax, rounded to paise independently and
+/// then summed** — printing `taxTotal / 2` twice meant an odd-paise tax total
+/// showed two halves that added up to a paisa more (or less) than the tax, and
+/// than the grand total. On a GST document figures that don't add up is a real
+/// defect, not a rounding nicety. For the same reason the grand total shown is
+/// subtotal + the tax actually printed.
+pw.Widget _totals(List<PoLineItem> items, PurchaseOrder po,
+    {required bool intra, required bool inter}) {
+  final groups = poTaxBreakup(items);
+  // Prefer the figures computed from the lines; fall back to the stored header
+  // totals for a PO that has no lines (nothing to group).
+  final subtotal = groups.isEmpty
+      ? toPaise(po.subtotal)
+      : toPaise(groups.fold<double>(0, (s, g) => s + g.taxable));
+  final tax = groups.isEmpty
+      ? toPaise(po.taxTotal)
+      : toPaise(groups.fold<double>(0, (s, g) => s + g.tax));
+
+  final rows = <pw.Widget>[_totalRow('Subtotal', _money.format(subtotal))];
+
   if (intra) {
-    rows.add(_totalRow('CGST', _money.format(po.taxTotal / 2)));
-    rows.add(_totalRow('SGST', _money.format(po.taxTotal / 2)));
+    final half = toPaise(tax / 2);
+    rows.add(_totalRow('CGST', _money.format(half)));
+    // The other half carries the odd paisa, so CGST + SGST == tax exactly.
+    rows.add(_totalRow('SGST', _money.format(toPaise(tax - half))));
   } else if (inter) {
-    rows.add(_totalRow('IGST', _money.format(po.taxTotal)));
+    rows.add(_totalRow('IGST', _money.format(tax)));
   } else {
-    rows.add(_totalRow('GST', _money.format(po.taxTotal)));
+    rows.add(_totalRow('GST', _money.format(tax)));
   }
+
   rows.add(pw.Divider(color: _line, height: 12));
-  rows.add(_totalRow('Grand Total', _money.format(po.amount), bold: true));
+  rows.add(_totalRow('Grand Total', _money.format(toPaise(subtotal + tax)), bold: true));
   return pw.Container(
     width: 220,
     child: pw.Column(children: rows),
   );
+}
+
+/// Taxable value and tax per GST rate. Shown whenever the PO has lines, so the
+/// single CGST/SGST (or IGST) figure above can be traced back to the rates it
+/// came from — and required once more than one rate is involved.
+pw.Widget _rateWise(List<PoLineItem> items, {required bool intra}) {
+  final groups = poTaxBreakup(items);
+  if (groups.isEmpty) return pw.SizedBox();
+  return pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
+    pw.Text('TAX BREAKUP BY RATE', style: pw.TextStyle(
+      fontSize: 8, color: _mut, fontWeight: pw.FontWeight.bold, letterSpacing: 0.5)),
+    pw.SizedBox(height: 5),
+    pw.TableHelper.fromTextArray(
+      headers: intra
+        ? ['GST rate', 'Taxable value', 'CGST', 'SGST', 'Total tax']
+        : ['GST rate', 'Taxable value', 'Tax'],
+      data: [
+        for (final g in groups)
+          if (intra) [
+            poPct(g.rate), _money.format(g.taxable),
+            _money.format(toPaise(g.tax / 2)),
+            _money.format(toPaise(g.tax - toPaise(g.tax / 2))),
+            _money.format(g.tax),
+          ] else [
+            poPct(g.rate), _money.format(g.taxable), _money.format(g.tax),
+          ],
+      ],
+      border: pw.TableBorder.all(color: _line, width: 0.5),
+      headerStyle: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold, color: _ink),
+      headerDecoration: const pw.BoxDecoration(color: _band),
+      headerHeight: 19,
+      cellStyle: const pw.TextStyle(fontSize: 8.5, color: _ink),
+      cellHeight: 17,
+      cellAlignment: pw.Alignment.centerRight,
+      cellAlignments: {0: pw.Alignment.centerLeft},
+    ),
+  ]);
 }
 
 pw.Widget _totalRow(String label, String value, {bool bold = false}) => pw.Padding(

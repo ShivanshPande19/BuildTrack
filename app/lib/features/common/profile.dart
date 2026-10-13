@@ -5,8 +5,18 @@ import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import '../admin/company_settings.dart';
+import 'account_details.dart';
+import 'notifications.dart';
+import 'roles_reference.dart';
 
 /// Profile / Settings (a9): identity card, settings rows and log out.
+///
+/// Every row here goes somewhere. They used to be three labels that answered a
+/// tap with a "coming soon" snackbar, which is worse than not listing them:
+/// Company details, the one setting that genuinely existed, was buried at the
+/// bottom of the Team screen under "Workspace" — a people list — where nobody
+/// looked for it. It belongs in Settings, so that is where it is now.
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -62,9 +72,26 @@ class ProfileScreen extends ConsumerWidget {
           ),
 
           const SectionLabel('Settings'),
-          _setRow(context, Icons.person_outline_rounded, 'Account details'),
-          _setRow(context, Icons.home_work_outlined, 'Company profile'),
-          _setRow(context, Icons.shield_outlined, 'Roles & permissions'),
+          _setRow(context, Icons.notifications_none_rounded, 'Notifications',
+            subtitle: 'Everything the app has told you',
+            open: () => const NotificationsScreen()),
+          _setRow(context, Icons.person_outline_rounded, 'Account details',
+            subtitle: 'Your name, number and what your admin set',
+            open: () => const AccountDetailsScreen()),
+          // Admin edits the buyer block; everyone else can see what is printed
+          // on the purchase orders they handle, read-only.
+          roleAsync.when(
+            data: (r) => _setRow(context, Icons.home_work_outlined, 'Company details',
+              subtitle: r == 'admin'
+                ? 'Buyer name, GSTIN and state on every purchase order'
+                : 'What is printed on every purchase order',
+              open: () => const CompanySettingsScreen()),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+          _setRow(context, Icons.shield_outlined, 'Roles & permissions',
+            subtitle: 'What each role can and cannot do',
+            open: () => const RolesReferenceScreen()),
 
           const SizedBox(height: 24),
           _logoutRow(context),
@@ -73,10 +100,10 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
-  Widget _setRow(BuildContext context, IconData icon, String label) => GestureDetector(
+  Widget _setRow(BuildContext context, IconData icon, String label,
+      {required Widget Function() open, String? subtitle}) => GestureDetector(
     behavior: HitTestBehavior.opaque,
-    onTap: () => ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(backgroundColor: BT.ink, content: Text('$label — coming soon'))),
+    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => open())),
     child: Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: BT.line))),
@@ -85,7 +112,14 @@ class ProfileScreen extends ConsumerWidget {
           decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
           child: Icon(icon, size: 19, color: BT.ink)),
         const SizedBox(width: 15),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600))),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600)),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(subtitle, style: const TextStyle(fontSize: 11.5, color: BT.mut)),
+          ],
+        ])),
+        const SizedBox(width: 8),
         const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
       ]),
     ),

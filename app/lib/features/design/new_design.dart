@@ -53,7 +53,15 @@ class _NewDesignState extends ConsumerState<NewDesign> {
 
   // ── file pick + upload ────────────────────────────────────
   Future<void> _pickModel() async {
-    final res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+    // pickFiles throws on a denied storage permission or a cancelled platform
+    // sheet; an unhandled throw inside an async callback takes the screen down.
+    final FilePickerResult? res;
+    try {
+      res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not open the file picker. ${friendlyError(e)}');
+      return;
+    }
     if (res == null || res.files.isEmpty) return;
     final f = res.files.first;
     final name = f.name;
@@ -79,7 +87,13 @@ class _NewDesignState extends ConsumerState<NewDesign> {
   }
 
   Future<void> _pickImage() async {
-    final res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+    final FilePickerResult? res;
+    try {
+      res = await FilePicker.platform.pickFiles(type: FileType.any, withData: true);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not open the file picker. ${friendlyError(e)}');
+      return;
+    }
     if (res == null || res.files.isEmpty) return;
     final f = res.files.first;
     final name = f.name.toLowerCase();
@@ -87,6 +101,12 @@ class _NewDesignState extends ConsumerState<NewDesign> {
     if (!ok) { setState(() => _error = 'Please pick an image (png / jpg / webp).'); return; }
     final bytes = f.bytes;
     if (bytes == null) { setState(() => _error = 'Could not read the image.'); return; }
+    // withData loads the whole file into memory, and this preview is shown at
+    // ~150px — a phone-camera PNG straight off a DSLR is pure cost.
+    if (bytes.length > 10 * 1024 * 1024) {
+      setState(() => _error = 'That image is over 10 MB — export a smaller preview (under 2 MB is plenty).');
+      return;
+    }
     final ct = name.endsWith('.png') ? 'image/png' : name.endsWith('.webp') ? 'image/webp' : 'image/jpeg';
     setState(() { _uploadingImage = true; _error = null; });
     try {

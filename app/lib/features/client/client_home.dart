@@ -12,6 +12,8 @@ import '../common/notifications.dart';
 import 'raise_request.dart';
 import 'truck_3d.dart';
 import 'truck_detail.dart';
+import '../common/roles_reference.dart';
+import '../common/account_details.dart';
 
 /// Client shell — global navbar: My Trucks · Support · Profile.
 /// Everything about a truck (progress, stage, photos, docs) lives inside its detail.
@@ -295,7 +297,12 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
       ])),
       const SectionLabel('Account'),
       _setRow(Icons.notifications_none_rounded, 'Notifications', () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NotificationsScreen()))),
-      _setRow(Icons.person_outline_rounded, 'My details', () => ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.ink, content: Text('Account details — coming soon')))),
+      _setRow(Icons.person_outline_rounded, 'My details',
+        () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AccountDetailsScreen()))),
+      // A client's "what can I do here" is a short list, but it is the one that
+      // answers "why can't I see X" — so they get the same reference screen.
+      _setRow(Icons.shield_outlined, 'What I can do here',
+        () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RolesReferenceScreen()))),
       const SizedBox(height: 20),
       PressableScale(pressedScale: 0.98, haptic: true, onTap: () => sb.auth.signOut().then((_) { if (mounted) context.go('/login'); }),
         child: Row(children: [

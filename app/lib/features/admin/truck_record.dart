@@ -78,9 +78,17 @@ class TruckRecordScreen extends ConsumerWidget {
     final expiring = list.where((c) => c.warrantyState == 'expiring').length;
     final expired = list.where((c) => c.warrantyState == 'expired').length;
 
-    // group by the stage the part went into (fall back to a bucket)
+    // Group by the stage the part went into. A part with no stage is one Store
+    // reserved for this build but Workshop hasn't fitted yet — a real and
+    // different state, so it gets its own heading rather than being lumped in
+    // with installed parts under a vague "Other".
     final groups = <String, List<TruckComponent>>{};
-    for (final c in list) { (groups[c.stageName ?? 'Other / at intake'] ??= []).add(c); }
+    for (final c in list) {
+      final key = c.stageName ?? (c.status == 'in_stock'
+          ? 'Reserved · not yet fitted'
+          : 'No stage recorded');
+      (groups[key] ??= []).add(c);
+    }
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _summary(list.length, active, expiring, expired),

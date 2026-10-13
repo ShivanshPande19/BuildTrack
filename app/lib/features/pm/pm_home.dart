@@ -203,7 +203,8 @@ class _HomeTab extends ConsumerWidget {
               }),
               if (needsYou.isEmpty)
                 const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
-                  title: 'All clear', subtitle: 'No at-risk or delayed builds right now.')
+                  title: 'All clear',
+                  subtitle: 'None of your builds are at risk or delayed right now.')
               else
                 // These rows promised "tag reason & reschedule" but did nothing on
                 // tap. They now open the build, where Log a delay and the delivery

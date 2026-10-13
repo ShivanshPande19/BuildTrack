@@ -30,8 +30,17 @@ Two things stay out of the repo on purpose (see `.gitignore`):
 - **Generated output** — `app/ios/Pods/`, `Flutter/Generated.xcconfig`, `.gradle/`,
   `local.properties`, etc. `flutter pub get` and `pod install` recreate them.
 
-`pubspec.lock` and `ios/Podfile.lock` **are** committed, so every machine and CI resolve the same
-dependency versions.
+`pubspec.lock`, `ios/Podfile.lock` and the two `xcshareddata/swiftpm/Package.resolved` files **are**
+committed, so every machine and CI resolve the same dependency versions.
+
+**Since Flutter 3.47 the iOS plugins come through Swift Package Manager, not CocoaPods.** `flutter run`
+migrated the Xcode project automatically: every plugin except `printing` moved to a generated Swift
+package, `Podfile.lock` shrank to `Flutter` + `printing`, and the deployment target went to **iOS 15.0**
+(SwiftPM's floor) — which is why iOS 13 and 14 devices are no longer supported. `Package.resolved` is the
+SwiftPM lockfile and plays the part `Podfile.lock` used to; commit it for the same reason.
+
+CocoaPods has not gone away — `printing` still uses it — so `pod install` is still worth running after a
+dependency change.
 
 `ios/Podfile.lock` had gone stale in the same way: it listed `app_links`, `file_picker`,
 `shared_preferences_foundation`, `url_launcher_ios` and `webview_flutter_wkwebview` but **neither
@@ -87,7 +96,9 @@ again, the line got lost.
 | Workshop site photos · client ticket photos | `image_picker` | camera + photo library access |
 | Scan a part's QR/barcode to install it | `mobile_scanner` | camera access |
 
-Minimums the packages themselves require: **Android `minSdk` 23**, **iOS 13** (`image_picker_ios`
+Minimums: **Android `minSdk` 23**, **iOS 15.0** — Flutter 3.47 raised the iOS floor when it moved
+plugins to Swift Package Manager, so iOS 13 and 14 devices are no longer supported.
+(`image_picker_ios`
 needs 13.0; `mobile_scanner` itself allows 12.0, so 13 covers both).
 
 ---
