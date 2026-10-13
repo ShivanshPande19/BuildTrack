@@ -317,11 +317,17 @@ begin
   if v_num is null then raise exception 'Ticket not found.'; end if;
 
   -- The client whose truck it is (or who raised it), service, or an admin.
-  if not (
+  --
+  -- coalesce, and not for tidiness: `v_ca = public.my_client_account()` is NULL
+  -- for any staff member (they have no client account), so the whole OR came out
+  -- NULL rather than false — and `if not NULL then` is *false*, so the guard did
+  -- not fire and an unrelated welder could reopen anyone's ticket. Exactly the
+  -- same trap as `is_admin()` in §14, which is why both are spelled out.
+  if not coalesce(
        public.has_role(array['admin','service'])
     or v_raised = auth.uid()
     or (v_ca is not null and v_ca = public.my_client_account())
-  ) then
+  , false) then
     raise exception 'Only the client this request belongs to, or the service team, can reopen it.'
       using errcode = '42501';
   end if;
@@ -820,13 +826,17 @@ end $$;
 
 
 -- ════════════════════════════════════════════════════════════════════════════
--- 11. A fresh database has essentials
+-- 11. An existing database has essentials
 --
--- 0019 marks every bulk (non-serialized) item as a general essential, but
--- seed.sql runs after it in full_setup.sql, so a database built from that file
--- has no essential item at all and Store's "request from procurement" picker is
--- empty. Bootstrap it only when NOTHING is essential yet, so this never
--- clobbers a deliberate choice on a live database.
+-- 0019 marks every bulk (non-serialized) item as a general essential, but it
+-- only sweeps the rows that exist when it runs — so a database whose catalogue
+-- was filled in afterwards has none, and Store's "request from procurement"
+-- picker (which only offers essentials) is empty. This catches that up, and
+-- only when NOTHING is essential yet, so it never clobbers a deliberate choice.
+--
+-- It cannot fix a *fresh* database: the migration chain finishes before seed.sql
+-- runs, so this sweeps an empty table. The seed sets `is_essential` on its own
+-- rows instead — see the comment there.
 -- ════════════════════════════════════════════════════════════════════════════
 
 do $$

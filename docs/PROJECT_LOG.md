@@ -166,8 +166,11 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     the un-watched providers served the previous user's rows after switching accounts on one device (the
     thing a multi-role demo on a single phone runs into immediately), and the ones that watched
     `authStateProvider` directly refetched on every token refresh.
-29. ✅ ~~Fresh / demo databases have no essentials.~~ Fixed: `0026` marks bulk items essential, but only when
-    nothing is essential yet, so it can never clobber a deliberate choice on a live database.
+29. ✅ ~~Fresh / demo databases have no essentials.~~ Fixed in two places, because there are two cases.
+    A **fresh** database: `seed.sql` now sets `is_essential` on its own rows — `0019`'s backfill could never
+    have covered them, since the migration chain finishes before the seed runs, so it swept an empty table.
+    An **existing** database whose catalogue was filled in after `0019`: `0026` catches it up, and only when
+    nothing is essential yet, so it never clobbers a deliberate choice.
 30. ⚠️ **Partly fixed.** App tests are up from 62 to **89**: the needs-attention feed, order-by urgency,
     warranty state, notification targets, and a new `test/po_document_test.dart` covering the GST
     rate-wise split, the paise rounding and `rupeesInWords`. The backend gained
