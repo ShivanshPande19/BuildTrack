@@ -132,6 +132,22 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     super.dispose();
   }
 
+  /// True when the chosen build has nobody to sign the PM step.
+  bool _pmLessSelected(List<Project> projects) =>
+      _projectId != null &&
+      projects.any((p) => p.id == _projectId && !p.hasPm);
+
+  /// The line under the picker: who signs this PO, or why it cannot be raised.
+  String _projectNote(List<Project> projects) {
+    if (_pmLessSelected(projects)) {
+      return 'This build has no project manager, so nobody can sign the first '
+             'step. Ask an admin to assign one.';
+    }
+    return _projectId == null
+        ? 'A general PO skips the PM and goes straight to final approval.'
+        : 'A project PO is signed by the build\'s PM first, then the owner.';
+  }
+
   double _priceOf(_Line l) => double.tryParse(l.price.text.trim()) ?? 0;
   double get _subtotal => _lines.fold(0, (s, l) => s + l.qty * _priceOf(l));
   double get _tax => _lines.fold(0, (s, l) => s + l.qty * _priceOf(l) * l.taxRate / 100.0);
@@ -141,6 +157,14 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
     final valid = _lines.where((l) => l.itemId != null).toList();
     if (!_isEdit && _vendorId == null) {
       setState(() => _error = 'Pick a vendor.');
+      return;
+    }
+    // The database refuses this (0027). Catching it here means the message
+    // arrives before the work of filling the lines in, not after.
+    final projects = ref.read(allProjectsProvider).valueOrNull ?? const <Project>[];
+    if (_pmLessSelected(projects)) {
+      setState(() => _error = 'That build has no project manager yet — ask an '
+                              'admin to assign one before raising a PO against it.');
       return;
     }
     if (valid.isEmpty) {
@@ -302,17 +326,22 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
               value: projValue, hint: 'General (no project)', title: 'Project',
               options: [
                 const SelectOption<String?>(null, 'General (no project)'),
+                // A build with no PM cannot take a PO — there is nobody to sign
+                // the first step — so 0027 refuses it. Say so in the picker
+                // rather than letting the form be filled in and rejected at the
+                // last tap; the label also tells the admin what to fix.
                 for (final p in projects)
-                  SelectOption<String?>(p.id, '${p.code} · ${p.name}'),
+                  SelectOption<String?>(p.id,
+                    p.hasPm ? '${p.code} · ${p.name}' : '${p.code} · ${p.name}  (no PM)'),
               ],
               onChanged: (v) => setState(() => _projectId = v),
             ),
           if (!_isEdit) ...[
             const SizedBox(height: 6),
-            Text(_projectId == null
-              ? 'A general PO skips the PM and goes straight to final approval.'
-              : 'A project PO is signed by the build\'s PM first.',
-              style: const TextStyle(color: BT.mut2, fontSize: 11.5)),
+            Text(_projectNote(projects),
+              style: TextStyle(fontSize: 11.5,
+                color: _pmLessSelected(projects) ? BT.coral : BT.mut2,
+                fontWeight: _pmLessSelected(projects) ? FontWeight.w600 : FontWeight.w500)),
           ],
 
           const SizedBox(height: 12),

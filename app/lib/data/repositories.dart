@@ -483,8 +483,15 @@ class ProjectsRepo {
     final uid = sb.auth.currentUser?.id;
     if (uid == null) return [];
     final d = await sb.from('stage_approvals')
+        // `projects!stages_project_id_fkey`: stages ↔ projects has TWO foreign
+        // keys — stages.project_id → projects.id, and projects.current_stage_id
+        // → stages.id (fk_current_stage, from 0001). Without the hint PostgREST
+        // refuses the whole query with PGRST201 "more than one relationship was
+        // found", so this screen could not load at all. The other three queries
+        // that cross the same pair already name the FK; this one was missed.
         .select('id,stage_id,status,created_at,approver_id,'
-                'profiles:submitted_by(full_name),stages!inner(name,projects!inner(code))')
+                'profiles:submitted_by(full_name),'
+                'stages!inner(name,projects!stages_project_id_fkey!inner(code))')
         .eq('status', 'pending')
         .eq('approver_id', uid)
         .order('created_at', ascending: true);
@@ -942,7 +949,7 @@ class StoreRepo {
     // absent from Store → Stock entirely — which is exactly the state in which
     // you need to see it ("we have none of these") rather than nothing at all.
     final catalog = await sb.from('item_catalog')
-        .select('id,name,category,low_stock_threshold,serialized,unit');
+        .select('id,name,category,low_stock_threshold,serialized,unit,is_essential');
     final si = await sb.from('stock_items').select('quantity,unit,item_catalog_id');
     final comps = await sb.from('component_instances').select('status,item_catalog_id');
 
@@ -981,6 +988,7 @@ class StoreRepo {
         unit: (serialized ? null : bulkUnit[id]) ?? ic['unit'] as String? ?? 'pcs',
         quantity: qty,
         threshold: (ic['low_stock_threshold'] as num?)?.toInt() ?? 0,
+        isEssential: (ic['is_essential'] as bool?) ?? false,
       ));
     }
 
@@ -1637,6 +1645,86 @@ class PmRepo {
   ///
   /// `assigned_due` (what the PM committed to) wins over `planned_end` (what
   /// backward scheduling worked out), and the caller is told which one it got.
+  /// The PM's builds, each with its whole pipeline and what is blocking it.
+  ///
+  /// Three things the flat schedule query could not provide:
+  ///   * **finished stages** — the strip shows the shape of the build, and a
+  ///     build four stages in looks nothing like one that has not started;
+  ///   * **the delivery date** — `myProjects` does not select it, and "late"
+  ///     means nothing without it;
+  ///   * **pending approvals** — a stage sitting with the PM is the one kind of
+  ///     blockage the PM is causing themselves, and it looked like any other row.
+  Future<List<BuildSchedule>> buildSchedules() async {
+    final uid = _uid;
+    if (uid == null) return [];
+
+    final pr = await sb.from('projects')
+        .select('id,code,name,status,progress_pct,pm_id,target_delivery_date')
+        .eq('pm_id', uid).order('code', ascending: true);
+    final projects = (pr as List).cast<Map<String, dynamic>>();
+    if (projects.isEmpty) return [];
+
+    final ids = [for (final p in projects) p['id'] as String];
+
+    final st = await sb.from('stages')
+        .select('id,name,status,ord,project_id,assignee_id,discipline,assigned_due,planned_end')
+        .inFilter('project_id', ids).order('ord', ascending: true);
+    final rows = (st as List).cast<Map<String, dynamic>>();
+
+    // Assignee names in one round-trip rather than one per stage.
+    final assigneeIds = <String>{
+      for (final r in rows) if (r['assignee_id'] != null) r['assignee_id'] as String,
+    };
+    final names = <String, String>{};
+    if (assigneeIds.isNotEmpty) {
+      final ps = await sb.from('profiles')
+          .select('id,full_name').inFilter('id', assigneeIds.toList());
+      for (final p in (ps as List)) {
+        names[p['id'] as String] = (p['full_name'] ?? '') as String;
+      }
+    }
+
+    // Which stages are sitting with this PM. Filtered on stage_id rather than
+    // approver_id so a build handed over mid-flight still reports correctly.
+    final pending = <String>{};
+    if (rows.isNotEmpty) {
+      final ap = await sb.from('stage_approvals')
+          .select('stage_id')
+          .eq('status', 'pending')
+          .inFilter('stage_id', [for (final r in rows) r['id'] as String]);
+      for (final a in (ap as List)) {
+        pending.add(a['stage_id'] as String);
+      }
+    }
+
+    final byProject = <String, List<StageTick>>{};
+    for (final r in rows) {
+      final aid = r['assignee_id'] as String?;
+      final nm = aid == null ? null : names[aid];
+      (byProject[r['project_id'] as String] ??= []).add(StageTick(
+        id: r['id'] as String,
+        name: r['name'] as String? ?? '',
+        status: r['status'] as String? ?? 'todo',
+        ord: (r['ord'] as num?)?.toInt() ?? 0,
+        assigneeName: (nm == null || nm.isEmpty) ? null : nm,
+        discipline: r['discipline'] as String?,
+        // The PM's own commitment if there is one, else the backward-scheduled plan.
+        due: parseDate(r['assigned_due']) ?? parseDate(r['planned_end']),
+        awaitingApproval: pending.contains(r['id'] as String),
+      ));
+    }
+
+    final out = [
+      for (final p in projects)
+        BuildSchedule(
+          project: Project.fromMap(p),
+          targetDelivery: parseDate(p['target_delivery_date']),
+          stages: byProject[p['id'] as String] ?? const [],
+        ),
+    ]..sort(BuildSchedule.compare);
+    return out;
+  }
+
   Future<List<ScheduleEntry>> schedule(List<Project> projects) async {
     if (projects.isEmpty) return [];
     final byId = {for (final p in projects) p.id: p};
@@ -1733,6 +1821,12 @@ final pmDashboardProvider = FutureProvider<({List<Project> projects, List<Active
   return (projects: projects, stages: stages);
 });
 /// The signed-in PM's schedule — open stages across their builds, soonest first.
+/// The PM's schedule, build by build — the default lens on the Schedule tab.
+final pmBuildScheduleProvider = FutureProvider<List<BuildSchedule>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(pmRepoProvider).buildSchedules();
+});
+
 final pmScheduleProvider = FutureProvider<List<ScheduleEntry>>((ref) async {
   ref.watch(currentUserIdProvider);
   final projects = await ref.read(pmRepoProvider).myProjects();

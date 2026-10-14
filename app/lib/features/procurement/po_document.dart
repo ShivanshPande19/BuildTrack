@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import '../../data/models.dart';
 
 /// Builds a proper, office-level Purchase Order document from a [PoDocData]
@@ -25,9 +24,13 @@ const _mut = PdfColor.fromInt(0xFF6B6B60);
 const _line = PdfColor.fromInt(0xFFD9D6CC);
 const _band = PdfColor.fromInt(0xFFF2EFE7);
 
-/// Open the OS print / share preview for this PO.
-Future<void> printPoDocument(PoDocData d) =>
-    Printing.layoutPdf(onLayout: (format) => _build(d, format), name: '${d.detail.po.poNumber}.pdf');
+/// Render the PO to PDF bytes.
+///
+/// The only entry point. `PoPreviewScreen` shows these bytes and hands the same
+/// builder to its print and share actions, so what you read on screen is
+/// byte-for-byte what comes out of the printer.
+Future<Uint8List> buildPoDocument(PoDocData d, [PdfPageFormat format = PdfPageFormat.a4]) =>
+    _build(d, format);
 
 Future<Uint8List> _build(PoDocData d, PdfPageFormat format) async {
   final po = d.detail.po;

@@ -10,6 +10,7 @@ import 'package:buildtrack/core/theme.dart';
 import 'package:buildtrack/data/models.dart';
 import 'package:buildtrack/data/repositories.dart';
 import 'package:buildtrack/features/common/notifications.dart';
+import 'package:buildtrack/features/pm/pm_home.dart';
 import 'package:buildtrack/shared/animations.dart';
 import 'package:buildtrack/shared/widgets.dart';
 import 'package:flutter/material.dart';
@@ -34,8 +35,193 @@ void _phone(WidgetTester t, Size size) {
   addTearDown(t.view.reset);
 }
 
+
+/// Builds a [PipelineStrip] from a plain spec, so the test does not have to
+/// construct StageTicks inline five times.
+class _PipelineStripProbe extends StatelessWidget {
+  final List<Map<String, Object?>> spec;
+  const _PipelineStripProbe({required this.spec});
+  @override
+  Widget build(BuildContext context) => PipelineStrip(stages: [
+        for (var i = 0; i < spec.length; i++)
+          StageTick(
+            id: 's$i',
+            name: spec[i]['name'] as String,
+            status: spec[i]['status'] as String,
+            ord: i + 1,
+            assigneeName: 'Vikas',
+          ),
+      ]);
+}
+
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
+
+  group('Pipeline strip', () {
+    // The PM Schedule renders one of these per build. It is the only new widget
+    // on that screen that draws per-stage, so if the semantics tree is going to
+    // complain about anything there, it is this.
+    Widget strip(List<Map<String, Object?>> spec) => _PipelineStripProbe(spec: spec);
+
+    testWidgets('lays out with the semantics tree switched on', (t) async {
+      final handle = t.ensureSemantics();
+      _phone(t, const Size(390, 844));
+      await t.pumpWidget(_host(Padding(
+        padding: const EdgeInsets.all(16),
+        child: strip([
+          {'name': 'Design', 'status': 'done'},
+          {'name': 'Fabrication', 'status': 'in_progress'},
+          {'name': 'Paint', 'status': 'todo'},
+        ]),
+      )));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+      handle.dispose();
+    });
+
+    testWidgets('reads as one summary, not one node per segment', (t) async {
+      final handle = t.ensureSemantics();
+      _phone(t, const Size(390, 844));
+      await t.pumpWidget(_host(Padding(
+        padding: const EdgeInsets.all(16),
+        child: strip([
+          {'name': 'Design', 'status': 'done'},
+          {'name': 'Fabrication', 'status': 'in_progress'},
+          {'name': 'Paint', 'status': 'todo'},
+        ]),
+      )));
+      await t.pumpAndSettle();
+      expect(find.bySemanticsLabel('1 of 3 stages done, now on Fabrication'), findsOneWidget);
+      // The individual segments say nothing: seven of them would be noise.
+      expect(find.bySemanticsLabel('Design'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('a twelve-stage build still fits a narrow phone', (t) async {
+      _phone(t, const Size(360, 844));
+      await t.pumpWidget(_host(Padding(
+        padding: const EdgeInsets.all(16),
+        child: strip([
+          for (var i = 0; i < 12; i++) {'name': 'Stage $i', 'status': 'todo'},
+        ]),
+      ), size: const Size(360, 844)));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+    });
+
+    testWidgets('a build with no stages does not throw', (t) async {
+      _phone(t, const Size(390, 844));
+      await t.pumpWidget(_host(Padding(
+        padding: const EdgeInsets.all(16), child: strip(const []))));
+      await t.pumpAndSettle();
+      expect(t.takeException(), isNull);
+    });
+  });
+
+  group('CappedSection', () {
+    List<Widget> rows(int n) =>
+        [for (var i = 0; i < n; i++) SizedBox(height: 40, child: Text('row $i'))];
+
+    testWidgets('shows everything when the list is short', (t) async {
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', max: 5, items: rows(3)),
+      ])));
+      await t.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        expect(find.text('row $i'), findsOneWidget);
+      }
+      expect(find.textContaining('See all'), findsNothing);
+    });
+
+    testWidgets('does not hide a single row behind "See all"', (t) async {
+      // max + 1: capping here would trade one visible row for a tap, which is
+      // a worse deal than just showing it.
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', max: 5, items: rows(6)),
+      ])));
+      await t.pumpAndSettle();
+      expect(find.text('row 5'), findsOneWidget);
+      expect(find.textContaining('See all'), findsNothing);
+    });
+
+    testWidgets('caps at max + 2 and states the real total', (t) async {
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', max: 5, items: rows(12)),
+      ])));
+      await t.pumpAndSettle();
+      expect(find.text('row 4'), findsOneWidget);   // last shown
+      expect(find.text('row 5'), findsNothing);     // first hidden
+      // The number you are NOT seeing is never understated.
+      expect(find.text('See all 12'), findsOneWidget);
+      expect(find.text('7 more'), findsOneWidget);
+    });
+
+    testWidgets('"See all" opens every row in a sheet', (t) async {
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', max: 5, items: rows(12)),
+      ])));
+      await t.pumpAndSettle();
+      await t.tap(find.text('See all 12'));
+      await t.pumpAndSettle();
+      // The sheet scrolls, so the far end is reachable rather than clipped.
+      expect(find.text('row 0'), findsWidgets);
+      await t.drag(find.text('row 0').last, const Offset(0, -600));
+      await t.pumpAndSettle();
+      expect(find.text('row 11'), findsOneWidget);
+    });
+
+    testWidgets('the "N more" button opens the same sheet', (t) async {
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', max: 5, items: rows(12)),
+      ])));
+      await t.pumpAndSettle();
+      await t.tap(find.text('7 more'));
+      await t.pumpAndSettle();
+      expect(find.byType(BottomSheet), findsOneWidget);
+    });
+
+    testWidgets('an empty section with no empty state renders nothing at all', (t) async {
+      // A bare heading over empty space reads as a failed load. Used by the
+      // Schedule's date groups, which only exist when they have something in
+      // them.
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: const [
+        CappedSection(label: 'Next 7 days', items: []),
+      ])));
+      await t.pumpAndSettle();
+      expect(find.text('NEXT 7 DAYS'), findsNothing);
+    });
+
+    testWidgets('an empty list shows its empty state and no header action', (t) async {
+      _phone(t, const Size(390, 1600));
+      await t.pumpWidget(_host(ListView(children: [
+        CappedSection(label: 'Needs attention', items: const [],
+          empty: const EmptyState(icon: Icons.check, tint: BT.lime, title: 'All caught up')),
+      ])));
+      await t.pumpAndSettle();
+      expect(find.text('All caught up'), findsOneWidget);
+      expect(find.textContaining('See all'), findsNothing);
+    });
+
+    for (final scale in [1.0, 1.6, 2.0]) {
+      testWidgets('header does not overflow at 360dp, ${scale}x text', (t) async {
+        // The heading carries a label AND "See all N" on one line, on the
+        // narrowest phone this app targets. That is exactly the shape that
+        // overflowed the Command Center's department strip.
+        _phone(t, const Size(360, 1600));
+        await t.pumpWidget(_host(ListView(children: [
+          CappedSection(label: 'At risk or delayed right now', max: 2, items: rows(9)),
+        ]), size: const Size(360, 1600), textScale: scale));
+        await t.pumpAndSettle();
+        expect(t.takeException(), isNull);
+      });
+    }
+  });
 
   group('PillNav', () {
     const icons = [Icons.home_rounded, Icons.grid_view_rounded, Icons.people_rounded, Icons.bar_chart_rounded];

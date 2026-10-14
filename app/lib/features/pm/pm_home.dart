@@ -201,50 +201,65 @@ class _HomeTab extends ConsumerWidget {
                     c.invalidate(poApprovalsProvider);
                   });
               }),
-              if (needsYou.isEmpty)
-                const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
+              // The three shortcuts above are actions; these are problems. They
+              // used to run on under the same heading with nothing separating
+              // them, so the list changed meaning halfway with no warning. Its
+              // own heading says what it is — and carries the count, capped,
+              // because a PM holding a dozen slipping builds needs the worst
+              // few on the home screen, not all twelve.
+              CappedSection(
+                label: 'At risk or delayed',
+                sheetTitle: 'At risk or delayed',
+                max: 4,
+                items: [
+                  // These rows promised "tag reason & reschedule" but did nothing
+                  // on tap. They now open the build, where Log a delay and the
+                  // delivery date live.
+                  for (final p in needsYou)
+                    Padding(padding: const EdgeInsets.only(bottom: 11),
+                      child: AppCard(
+                        onTap: () => _openBuild(context, ref, projectId: p.id, initial: p),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        child: Row(children: [
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${p.code} · ${p.name}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
+                            const SizedBox(height: 2),
+                            Text('${p.progressPct}% · tap to log the delay or reschedule',
+                              style: const TextStyle(color: BT.mut, fontSize: 12)),
+                          ])),
+                          StatusPill(_statusPill(p.status).label, color: _statusPill(p.status).color),
+                          const SizedBox(width: 4),
+                          const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+                        ]))),
+                ],
+                empty: const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
                   title: 'All clear',
-                  subtitle: 'None of your builds are at risk or delayed right now.')
-              else
-                // These rows promised "tag reason & reschedule" but did nothing on
-                // tap. They now open the build, where Log a delay and the delivery
-                // date live.
-                ...needsYou.map((p) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                  child: AppCard(
-                    onTap: () => _openBuild(context, ref, projectId: p.id, initial: p),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                    child: Row(children: [
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('${p.code} · ${p.name}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
-                        const SizedBox(height: 2),
-                        Text('${p.progressPct}% · tap to log the delay or reschedule',
-                          style: const TextStyle(color: BT.mut, fontSize: 12)),
-                      ])),
-                      StatusPill(_statusPill(p.status).label, color: _statusPill(p.status).color),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
-                    ]))),
-                ),
-              const SectionLabel("Today's stages"),
-              if (d.stages.isEmpty)
-                const EmptyState(icon: Icons.timelapse_rounded, tint: BT.sky,
-                  title: 'Nothing in progress', subtitle: 'Stages being worked on will show here.')
-              else
-                ...d.stages.map((s) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                  child: AppCard(
-                    onTap: s.projectId.isEmpty ? null
-                      : () => _openBuild(context, ref, projectId: s.projectId, initial: byId[s.projectId]),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-                    child: Row(children: [
-                      Container(width: 40, height: 40, alignment: Alignment.center,
-                        decoration: BoxDecoration(color: BT.amber, borderRadius: BorderRadius.circular(12)),
-                        child: const Icon(Icons.handyman_rounded, size: 19, color: Color(0xFF4A3410))),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text('${s.projectCode} · ${s.name}',
-                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
-                      const StatusPill('In progress', color: BT.sky),
-                    ]))),
-                ),
+                  subtitle: 'None of your builds are at risk or delayed right now.'),
+              ),
+              CappedSection(
+                label: "Today's stages",
+                sheetTitle: 'In progress today',
+                max: 5,
+                items: [
+                  for (final s in d.stages)
+                    Padding(padding: const EdgeInsets.only(bottom: 11),
+                      child: AppCard(
+                        onTap: s.projectId.isEmpty ? null
+                          : () => _openBuild(context, ref, projectId: s.projectId, initial: byId[s.projectId]),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                        child: Row(children: [
+                          Container(width: 40, height: 40, alignment: Alignment.center,
+                            decoration: BoxDecoration(color: BT.amber, borderRadius: BorderRadius.circular(12)),
+                            child: const Icon(Icons.handyman_rounded, size: 19, color: Color(0xFF4A3410))),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text('${s.projectCode} · ${s.name}',
+                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+                          const StatusPill('In progress', color: BT.sky),
+                        ]))),
+                ],
+                empty: const EmptyState(icon: Icons.timelapse_rounded, tint: BT.sky,
+                  title: 'Nothing in progress', subtitle: 'Stages being worked on will show here.'),
+              ),
             ], stepMs: 45));
           },
         ),
@@ -347,22 +362,188 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
 /// wrote to it, so it could only show "No bays set up". Bays are gone; the tab
 /// now answers the question a PM actually opens it for, off the stage dates that
 /// assignment and backward scheduling already produce.
-class _ScheduleTab extends ConsumerWidget {
+/// The PM's Schedule, in two lenses.
+///
+/// **Builds** (the default) keeps each build whole: one card per build, worst
+/// first, carrying its whole pipeline as a strip and a line saying what is
+/// holding it up. **Dates** is the old view — a flat list of open stages
+/// grouped by when they are due — which is still the right answer to "what is
+/// due this week", and the wrong one to "which truck is in trouble".
+///
+/// The flat view was the only one, and it does not survive scale: ten builds of
+/// seven stages interleave into seventy rows and the build, which is the thing
+/// a PM manages, stops being visible at all.
+class _ScheduleTab extends ConsumerStatefulWidget {
   const _ScheduleTab();
+  @override
+  ConsumerState<_ScheduleTab> createState() => _ScheduleTabState();
+}
+
+class _ScheduleTabState extends ConsumerState<_ScheduleTab> {
+  int _lens = 0;            // 0 = by build, 1 = by date
+  String _cut = 'all';      // builds lens filter
 
   static final _fmt = DateFormat('d MMM');
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final schedule = ref.watch(pmScheduleProvider);
+  Widget build(BuildContext context) {
     return RefreshIndicator(
-      onRefresh: () async => ref.refresh(pmScheduleProvider.future),
+      onRefresh: () async {
+        ref.invalidate(pmBuildScheduleProvider);
+        return ref.refresh(pmScheduleProvider.future);
+      },
       child: ListView(padding: _pad, children: [
         _pmHeader(context, 'Schedule'),
         const SizedBox(height: 4),
-        const FadeSlideIn(child: Text('Open stages across your builds', style: TextStyle(color: BT.mut, fontSize: 12.5))),
+        FadeSlideIn(child: Text(
+          _lens == 0 ? 'Every build you own, worst first' : 'Open stages across your builds',
+          style: const TextStyle(color: BT.mut, fontSize: 12.5))),
+        const SizedBox(height: 14),
+        FadeSlideIn(delay: Motion.stagger(1), child: SegmentTabs(
+          labels: const ['Builds', 'Dates'],
+          index: _lens,
+          onChanged: (i) => setState(() => _lens = i),
+          padding: EdgeInsets.zero,
+        )),
         const SizedBox(height: 16),
-        schedule.when(
+        if (_lens == 0) _byBuild(context) else _byDate(context),
+      ]),
+    );
+  }
+
+  // ── lens 1: build by build ───────────────────────────────────────────────
+  Widget _byBuild(BuildContext context) {
+    final builds = ref.watch(pmBuildScheduleProvider);
+    return builds.when(
+      skipLoadingOnRefresh: true,
+      loading: () => const SkeletonList(count: 4),
+      error: (e, _) => ErrorCard('Could not load your builds.\n${friendlyError(e)}',
+        onRetry: () => ref.invalidate(pmBuildScheduleProvider)),
+      data: (list) {
+        final live = list.where((b) => !b.isDelivered).toList();
+        if (live.isEmpty) {
+          return const EmptyState(icon: Icons.calendar_today_rounded, tint: BT.sky,
+            title: 'Nothing scheduled',
+            subtitle: 'Builds you manage show up here with their whole pipeline.');
+        }
+        final onYou = live.where((b) => b.awaitingCount > 0).toList();
+        final action = live.where((b) => !b.isClear).toList();
+        final clear = live.where((b) => b.isClear).toList();
+
+        // A PM holding thirty builds needs to narrow, not scroll. Capping is
+        // the wrong tool on a dedicated screen — you came here to see them —
+        // so this filters, the way PM Projects and the Command Center do.
+        // A cut whose builds have all cleared quietly falls back to All, so
+        // you are never left staring at an empty list you cannot explain.
+        final cuts = {'all': live, 'on_you': onYou, 'action': action, 'clear': clear};
+        if ((cuts[_cut] ?? const <BuildSchedule>[]).isEmpty) _cut = 'all';
+        final shown = cuts[_cut]!;
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: staggered([
+          _lensSummary(live, action.length),
+          const SizedBox(height: 16),
+          ChipBar(chips: [
+            AppChip('All', selected: _cut == 'all', count: live.length,
+              icon: Icons.grid_view_rounded, onTap: () => setState(() => _cut = 'all')),
+            if (onYou.isNotEmpty)
+              AppChip('Waiting on you', selected: _cut == 'on_you', count: onYou.length,
+                icon: Icons.hourglass_top_rounded, selectedColor: BT.amber,
+                onTap: () => setState(() => _cut = 'on_you')),
+            if (action.isNotEmpty)
+              AppChip('Need action', selected: _cut == 'action', count: action.length,
+                icon: Icons.priority_high_rounded, selectedColor: BT.coral,
+                onTap: () => setState(() => _cut = 'action')),
+            if (clear.isNotEmpty)
+              AppChip('On track', selected: _cut == 'clear', count: clear.length,
+                icon: Icons.check_circle_outline_rounded, selectedColor: BT.lime,
+                onTap: () => setState(() => _cut = 'clear')),
+          ]),
+          const SizedBox(height: 16),
+          // Keyed on the cut so the list cross-fades rather than snapping.
+          AnimatedSwitcher(
+            duration: Motion.base,
+            switchInCurve: Motion.curve,
+            switchOutCurve: Motion.exit,
+            transitionBuilder: (c, a) => FadeTransition(opacity: a, child: c),
+            layoutBuilder: (cur, prev) =>
+              Stack(alignment: Alignment.topCenter, children: [...prev, if (cur != null) cur]),
+            child: Column(key: ValueKey(_cut), crossAxisAlignment: CrossAxisAlignment.start,
+              children: [for (final b in shown) _buildCard(context, b)]),
+          ),
+        ], stepMs: 40));
+      },
+    );
+  }
+
+  /// Three numbers about the *fleet* the PM holds, not about stages.
+  Widget _lensSummary(List<BuildSchedule> live, int needsYou) => AppCard(
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 16),
+    child: Row(children: [
+      Expanded(child: _stat('${live.length}', 'Builds', BT.ink)),
+      Container(width: 1, height: 34, color: BT.line),
+      Expanded(child: _stat('${live.where((b) => b.awaitingCount > 0).length}',
+        'Waiting on you', live.any((b) => b.awaitingCount > 0) ? BT.amber : BT.mut2)),
+      Container(width: 1, height: 34, color: BT.line),
+      Expanded(child: _stat('$needsYou', 'Need action', needsYou > 0 ? BT.coral : BT.mut2)),
+    ]),
+  );
+
+  Widget _buildCard(BuildContext context, BuildSchedule b) {
+    final sp = _statusPill(b.project.status);
+    final d = b.daysToDelivery;
+    final deliveryLate = d != null && d < 0;
+    return Padding(padding: const EdgeInsets.only(bottom: 12), child: AppCard(
+      onTap: () => _openBuild(context, ref, projectId: b.project.id, initial: b.project),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 15),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text('${b.project.code} · ${b.project.name}',
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+          const SizedBox(width: 8),
+          StatusPill(sp.label, color: sp.color),
+        ]),
+        const SizedBox(height: 12),
+        PipelineStrip(stages: b.stages),
+        const SizedBox(height: 11),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(b.current == null
+                ? 'No stages yet'
+                : 'Stage ${b.currentIndex} of ${b.total} · ${b.current!.name}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 3),
+            Text(
+              [
+                b.blockedLabel,
+                if (b.current?.assigneeName != null) b.current!.assigneeName!,
+              ].join(' · '),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12,
+                color: b.isClear ? BT.mut : BT.coral,
+                fontWeight: b.isClear ? FontWeight.w500 : FontWeight.w600)),
+          ])),
+          const SizedBox(width: 10),
+          if (b.targetDelivery != null)
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(_fmt.format(b.targetDelivery!),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+              const SizedBox(height: 2),
+              Text(
+                deliveryLate ? '${-d}d late' : (d == 0 ? 'today' : 'in ${d}d'),
+                style: TextStyle(fontSize: 11,
+                  color: deliveryLate ? BT.coral : BT.mut, fontWeight: FontWeight.w600)),
+            ]),
+        ]),
+      ]),
+    ));
+  }
+
+  // ── lens 2: the old flat list, grouped by due date ───────────────────────
+  Widget _byDate(BuildContext context) {
+    final schedule = ref.watch(pmScheduleProvider);
+    return schedule.when(
           skipLoadingOnRefresh: true,
           loading: () => const SkeletonList(count: 6),
           error: (e, _) => ErrorCard('Could not load your schedule.\n${friendlyError(e)}',
@@ -386,33 +567,33 @@ class _ScheduleTab extends ConsumerWidget {
             }).toList();
             final undated  = all.where((e) => e.hasNoDate).toList();
 
+            // Overdue and Due today are shown whole: they are the ones a PM
+            // has to act on, and hiding any of them behind a tap would be the
+            // screen failing at its one job. The further out a group is, the
+            // longer and the less urgent it gets — across ten builds "Later"
+            // alone can run to forty rows — so those cap.
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: staggered([
               _summary(overdue.length, today.length + soon.length, undated.length),
               if (overdue.isNotEmpty) ...[
                 const SectionLabel('Overdue'),
-                ...overdue.map((e) => _row(context, ref, e)),
+                ...overdue.map((e) => _row(context, e)),
               ],
               if (today.isNotEmpty) ...[
                 const SectionLabel('Due today'),
-                ...today.map((e) => _row(context, ref, e)),
+                ...today.map((e) => _row(context, e)),
               ],
-              if (soon.isNotEmpty) ...[
-                const SectionLabel('Next 7 days'),
-                ...soon.map((e) => _row(context, ref, e)),
-              ],
-              if (later.isNotEmpty) ...[
-                const SectionLabel('Later'),
-                ...later.map((e) => _row(context, ref, e)),
-              ],
-              if (undated.isNotEmpty) ...[
-                const SectionLabel('No date yet'),
-                ...undated.map((e) => _row(context, ref, e)),
-              ],
+              CappedSection(
+                label: 'Next 7 days', sheetTitle: 'Due in the next 7 days', max: 6,
+                items: [for (final e in soon) _row(context, e)]),
+              CappedSection(
+                label: 'Later', sheetTitle: 'Due later', max: 4,
+                items: [for (final e in later) _row(context, e)]),
+              CappedSection(
+                label: 'No date yet', sheetTitle: 'Stages with no date', max: 4,
+                items: [for (final e in undated) _row(context, e)]),
             ], stepMs: 35));
           },
-        ),
-      ]),
-    );
+        );
   }
 
   /// Three numbers a PM can act on, rather than a decorative header.
@@ -433,7 +614,7 @@ class _ScheduleTab extends ConsumerWidget {
     Text(label, style: const TextStyle(color: BT.mut, fontSize: 11.5, fontWeight: FontWeight.w600)),
   ]);
 
-  Widget _row(BuildContext context, WidgetRef ref, ScheduleEntry e) {
+  Widget _row(BuildContext context, ScheduleEntry e) {
     final tint = e.isOverdue ? BT.coral : (e.isDueToday ? BT.amber : (e.hasNoDate ? BT.card2 : BT.sky));
     return Padding(padding: const EdgeInsets.only(bottom: 11), child: AppCard(
       // Straight into the build so the PM can reassign or move the date. Pass
@@ -494,8 +675,21 @@ class _TeamTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final members = ref.watch(membersProvider);
     final workload = ref.watch(workloadProvider).valueOrNull ?? {};
+    // The PM's own stages, so tapping a member can show *which* work they hold.
+    // Already loaded for the Schedule tab, so this costs nothing extra.
+    //
+    // `hasValue` matters: landing on Team first leaves this still in flight,
+    // and an empty list would make the sheet announce "busy elsewhere" about
+    // someone whose stages simply had not arrived yet.
+    final scheduleAsync = ref.watch(pmScheduleProvider);
+    final mine = scheduleAsync.valueOrNull ?? const <ScheduleEntry>[];
+    final scheduleReady = scheduleAsync.hasValue;
     return RefreshIndicator(
-      onRefresh: () async { ref.invalidate(workloadProvider); return ref.refresh(membersProvider.future); },
+      onRefresh: () async {
+        ref.invalidate(workloadProvider);
+        ref.invalidate(pmScheduleProvider);
+        return ref.refresh(membersProvider.future);
+      },
       child: ListView(padding: _pad, children: [
         _pmHeader(context, 'Team'),
         const SizedBox(height: 4),
@@ -519,7 +713,12 @@ class _TeamTab extends ConsumerWidget {
             return Column(children: staggered(team.map((m) {
               final count = workload[m.id] ?? 0;
               final overloaded = count >= 3;
+              final theirs = mine.where((e) => e.assigneeId == m.id).toList();
+              final late = theirs.where((e) => e.isOverdue).length;
               return Padding(padding: const EdgeInsets.only(bottom: 11), child: AppCard(
+                // "2 open" was a number you could not act on. Tapping now shows
+                // which stages they are, on which builds, due when.
+                onTap: () => _showMemberWork(context, ref, m, theirs, count, ready: scheduleReady),
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
                 child: Row(children: [
                   Container(width: 44, height: 44, alignment: Alignment.center,
@@ -530,11 +729,18 @@ class _TeamTab extends ConsumerWidget {
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(m.name.isEmpty ? '(no name)' : m.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5)),
                     const SizedBox(height: 2),
-                    Text(m.subTeamName == null ? _roleName(m.role) : '${_roleName(m.role)} · ${m.subTeamName}',
-                      style: const TextStyle(color: BT.mut, fontSize: 12)),
+                    Text([
+                        m.subTeamName == null ? _roleName(m.role) : '${_roleName(m.role)} · ${m.subTeamName}',
+                        if (late > 0) '$late overdue',
+                      ].join(' · '),
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12, color: late > 0 ? BT.coral : BT.mut,
+                        fontWeight: late > 0 ? FontWeight.w600 : FontWeight.w500)),
                   ])),
                   StatusPill(count == 0 ? 'Free' : '$count open',
                     color: overloaded ? BT.coral : (count == 0 ? BT.sky : BT.lime)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
                 ]),
               ));
             }).toList(), stepMs: 30));
@@ -545,6 +751,216 @@ class _TeamTab extends ConsumerWidget {
   }
 }
 
+/// What one team member is actually holding, opened from the Team tab.
+///
+/// "2 open" was a number with nothing behind it. A PM looking at it wants the
+/// next question answered — *which* two, on which builds, due when — and then
+/// wants to act on one. Every row opens its build.
+///
+/// [total] comes from the fleet-wide workload count and [theirs] from this PM's
+/// own builds, so the two can legitimately differ: a fitter can be busy on a
+/// build this PM does not manage. That gap is stated rather than hidden,
+/// because "free" when someone is booked solid elsewhere is the one wrong
+/// answer this screen could give.
+void _showMemberWork(BuildContext context, WidgetRef ref, Member m,
+    List<ScheduleEntry> theirs, int total, {required bool ready}) {
+  final fmt = DateFormat('d MMM');
+  final elsewhere = total - theirs.length;
+
+  showAppSheet<void>(
+    context: context,
+    builder: (sheetCtx) => Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
+          child: Row(children: [
+            Container(width: 46, height: 46, alignment: Alignment.center,
+              decoration: BoxDecoration(color: roleColor(m.role), shape: BoxShape.circle),
+              child: Text(m.name.isNotEmpty ? m.name[0].toUpperCase() : '?',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17, color: BT.ink))),
+            const SizedBox(width: 13),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m.name.isEmpty ? '(no name)' : m.name,
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: display(19, w: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(m.subTeamName == null ? _roleName(m.role) : '${_roleName(m.role)} · ${m.subTeamName}',
+                style: const TextStyle(color: BT.mut, fontSize: 12.5)),
+            ])),
+            StatusPill(total == 0 ? 'Free' : '$total open',
+              color: total >= 3 ? BT.coral : (total == 0 ? BT.sky : BT.lime)),
+          ]),
+        ),
+
+        if (!ready)
+          // Still loading. Saying nothing is better than saying the wrong thing.
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: SkeletonList(count: 2, leading: true, trailingPill: true))
+        else if (theirs.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: EmptyState(
+              icon: elsewhere > 0 ? Icons.work_history_outlined : Icons.beach_access_outlined,
+              tint: elsewhere > 0 ? BT.amber : BT.sky,
+              title: elsewhere > 0 ? 'Busy elsewhere' : 'Nothing assigned',
+              subtitle: elsewhere > 0
+                ? 'They hold $elsewhere open ${elsewhere == 1 ? 'stage' : 'stages'} on builds you do not manage.'
+                : 'They have no open stages on any build. A good moment to hand them something.'),
+          )
+        else
+          Flexible(child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 4),
+            children: [
+              for (final e in theirs) _memberStageRow(sheetCtx, ref, e, fmt),
+              if (elsewhere > 0)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(4, 6, 4, 2),
+                  child: Text(
+                    'Also $elsewhere open ${elsewhere == 1 ? 'stage' : 'stages'} on builds you do not manage.',
+                    style: const TextStyle(color: BT.mut2, fontSize: 11.5)),
+                ),
+            ],
+          )),
+
+        const SizedBox(height: 14),
+        PrimaryButton(ready && theirs.isEmpty ? 'Assign work' : 'Assign more work',
+          icon: Icons.person_add_alt_1_rounded,
+          onTap: () async {
+            Navigator.pop(sheetCtx);
+            final c = ProviderScope.containerOf(context, listen: false);
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AssignWorkScreen()));
+            c.invalidate(workloadProvider);
+            c.invalidate(pmScheduleProvider);
+            c.invalidate(pmBuildScheduleProvider);
+            c.invalidate(stagesToAssignProvider);
+          }),
+      ],
+    ),
+  );
+}
+
+/// One stage in the member sheet. The person is already known from the header,
+/// so the row leads with the build and the stage and spends its space on the
+/// date instead of repeating the name.
+Widget _memberStageRow(BuildContext sheetCtx, WidgetRef ref, ScheduleEntry e, DateFormat fmt) {
+  final d = e.daysLeft;
+  final tint = e.isOverdue ? BT.coral : (e.isDueToday ? BT.amber : (e.hasNoDate ? BT.card2 : BT.sky));
+  final label = d == null
+      ? 'No date'
+      : (d < 0 ? '${-d}d late' : (d == 0 ? 'Today' : (d == 1 ? 'Tomorrow' : 'in ${d}d')));
+
+  return Padding(padding: const EdgeInsets.only(bottom: 10), child: AppCard(
+    onTap: () {
+      // Close the sheet first: coming back from the build to a stale sheet
+      // listing work that may no longer be theirs is worse than no sheet.
+      Navigator.pop(sheetCtx);
+      _openBuild(sheetCtx, ref, projectId: e.projectId,
+        initial: Project(id: e.projectId, code: e.projectCode, name: e.projectName,
+          status: 'on_track', progressPct: 0));
+    },
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    child: Row(children: [
+      Container(width: 8, height: 36,
+        decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(4))),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${e.projectCode} · ${e.stageName}',
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        const SizedBox(height: 3),
+        Text(e.due == null
+            ? 'No due date set'
+            : '${e.dueIsPlanned ? 'Planned' : 'Due'} ${fmt.format(e.due!)}',
+          maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(color: BT.mut, fontSize: 12)),
+      ])),
+      const SizedBox(width: 8),
+      StatusPill(label, color: tint == BT.card2 ? BT.mut2 : tint),
+    ]),
+  ));
+}
+
 String _roleName(String r) => switch (r) {
   'workshop' => 'Workshop', 'design' => 'Design', 'store' => 'Store', 'service' => 'Service', _ => r,
 };
+
+/// A build's whole pipeline as one strip: a segment per stage, in order.
+///
+/// Public so `test/widgets_test.dart` can pump it directly: it is the only
+/// per-stage drawing on the Schedule, so it is where a semantics or layout
+/// complaint on that screen would come from.
+///
+/// This is the part of the Schedule that scales. A PM with ten builds scans ten
+/// strips and sees instantly which ones are red and how far along each is —
+/// something a flat list of seventy stage rows cannot show at any length.
+///
+/// The segments are flex-sized rather than fixed, so a three-stage template and
+/// a twelve-stage one both fill the card edge to edge and stay comparable.
+class PipelineStrip extends StatelessWidget {
+  final List<StageTick> stages;
+  const PipelineStrip({super.key, required this.stages});
+
+  /// Colour by what the PM has to do about it, not by raw status: a stage
+  /// waiting on the PM reads differently from one simply in progress.
+  Color _tint(StageTick s) {
+    if (s.awaitingApproval) return BT.amber;
+    if (s.isDone) return BT.lime;
+    if (s.isOverdue) return BT.coral;
+    if (s.isRework) return BT.coral;
+    if (s.isActive) return BT.sky;
+    if (s.isUnassigned) return BT.card2;
+    return BT.line;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (stages.isEmpty) {
+      return Container(height: 10,
+        decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(5)));
+    }
+    final current = () {
+      for (final s in stages) { if (s.isActive) return s; }
+      for (final s in stages) { if (!s.isDone) return s; }
+      return null;
+    }();
+
+    // One label for the whole strip, and the segments themselves excluded.
+    //
+    // A Semantics node per segment made a screen reader read seven of them —
+    // "Design: done, Fabrication: in_progress, Paint: todo…" — which is noise,
+    // not information. The summary is what a sighted user takes from the strip
+    // in one glance, so it is what the strip should say.
+    final done = stages.where((s) => s.isDone).length;
+    return Semantics(
+      label: current == null
+          ? '$done of ${stages.length} stages done'
+          : '$done of ${stages.length} stages done, now on ${current.name}',
+      child: ExcludeSemantics(
+        child: SizedBox(
+          height: 14,
+          child: Row(children: [
+            for (var i = 0; i < stages.length; i++) ...[
+              if (i > 0) const SizedBox(width: 3),
+              Expanded(child: Container(
+                // The stage being worked sits taller, so "where is this build"
+                // is readable without counting segments.
+                height: identical(stages[i], current) ? 14 : 9,
+                decoration: BoxDecoration(
+                  color: _tint(stages[i]),
+                  borderRadius: BorderRadius.circular(5),
+                  border: stages[i].isUnassigned && !stages[i].isDone
+                    ? Border.all(color: BT.line) : null,
+                ),
+              )),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}

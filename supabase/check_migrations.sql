@@ -76,7 +76,10 @@ with checks(migration, applied) as (values
   ('0026_demo_hardening',
      exists (select 1 from pg_proc where proname = 'fn_create_design')
      and exists (select 1 from pg_proc where proname = 'fn_stage_rpc_begin')
-     and exists (select 1 from pg_proc where proname = 'my_role' and prosrc ilike '%disabled%'))
+     and exists (select 1 from pg_proc where proname = 'my_role' and prosrc ilike '%disabled%')),
+  ('0027_po_needs_a_pm',
+     exists (select 1 from pg_proc where proname = 'fn_create_po'
+               and prosrc ilike '%has no project manager yet%'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

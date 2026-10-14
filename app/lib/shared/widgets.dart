@@ -1158,3 +1158,128 @@ class LabelledField extends StatelessWidget {
     ]),
   );
 }
+
+/// A section that shows only its most important few, and hands you the rest.
+///
+/// A home screen is a summary: "needs attention" that lists thirty things is a
+/// second inbox, not a summary, and the one row that actually matters is lost
+/// in it. So the section shows the top [max] and offers **See all N** beside
+/// its heading, which opens the whole list in a sheet.
+///
+/// Two details that matter more than they look:
+///
+///  * The header always carries the **total**, so the number you are not seeing
+///    is never hidden from you — the point is to shorten the list, not to
+///    understate the problem.
+///  * It only caps when there is something worth capping. Hiding a single row
+///    behind "See all 6" is worse than showing six, so the cap engages at
+///    `max + 2`; at `max + 1` the last row just shows.
+///
+/// This is the app's existing idiom — Design's "Assigned to me" carousel has
+/// carried a "See all N" since it was written — lifted into one place so every
+/// summary behaves the same.
+class CappedSection extends StatelessWidget {
+  /// Section heading, e.g. "Needs attention".
+  final String label;
+  /// Every item, most important first. Only the first few are shown inline.
+  final List<Widget> items;
+  /// How many to show inline before the rest move behind "See all".
+  final int max;
+  /// Shown in place of the list when [items] is empty.
+  final Widget? empty;
+  /// Heading inside the sheet; defaults to [label].
+  final String? sheetTitle;
+
+  const CappedSection({
+    super.key,
+    required this.label,
+    required this.items,
+    this.max = 5,
+    this.empty,
+    this.sheetTitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Nothing to show and nothing to say about it: the section does not
+    // announce itself. A bare heading over empty space reads as a screen that
+    // failed to load, which is the opposite of what an empty section means.
+    if (items.isEmpty) {
+      if (empty == null) return const SizedBox.shrink();
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SectionLabel(label),
+        empty!,
+      ]);
+    }
+
+    // Capping to hide one row is not worth a tap.
+    final capped = items.length > max + 1;
+    final shown = capped ? items.take(max).toList() : items;
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 20, 4, 12),
+        child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Flexible(child: Text(label.toUpperCase(),
+            maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, letterSpacing: 1.6,
+              fontWeight: FontWeight.w600, color: BT.mut))),
+          if (capped) ...[
+            const SizedBox(width: 10),
+            PressableScale(
+              pressedScale: 0.97,
+              haptic: true,
+              onTap: () => _showAll(context),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('See all ${items.length}',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: BT.ink)),
+                const Icon(Icons.chevron_right_rounded, size: 16, color: BT.ink),
+              ]),
+            ),
+          ],
+        ]),
+      ),
+      ...shown,
+      if (capped)
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: PressableScale(
+            pressedScale: 0.99,
+            haptic: true,
+            onTap: () => _showAll(context),
+            child: Container(
+              height: 44,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: BT.card2,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text('${items.length - shown.length} more',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: BT.mut)),
+            ),
+          ),
+        ),
+    ]);
+  }
+
+  void _showAll(BuildContext context) => showAppSheet<void>(
+    context: context,
+    builder: (_) => Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(4, 0, 4, 14),
+        child: Row(children: [
+          Expanded(child: Text(sheetTitle ?? label,
+            style: display(20, w: FontWeight.w600))),
+          StatusPill('${items.length}', color: BT.card2),
+        ]),
+      ),
+      // Scrollable: this is the "everything" view, so it has to survive a
+      // build with thirty rows on a small phone.
+      Flexible(child: ListView(
+        shrinkWrap: true,
+        padding: const EdgeInsets.only(bottom: 4),
+        children: items,
+      )),
+    ]),
+  );
+}
