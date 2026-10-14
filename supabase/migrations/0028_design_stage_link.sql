@@ -268,8 +268,12 @@ begin
        and s.status <> 'done'
        and (s.id = v_stage or (v_stage is null and s.discipline = 'design'))
   loop
+    -- Its own type, not 'approved'/'revision': this notification is about the
+    -- *stage*, and the designer already has one about the design. Two rows
+    -- saying "approved" would read as the app repeating itself, and they lead
+    -- to different places — one opens the design, this one opens the stage.
     perform public.fn_notify(r.assignee_id,
-      case when p_approve then 'approved' else 'revision' end,
+      case when p_approve then 'stage_ready' else 'stage_waiting' end,
       v_code || ' · ' || r.name ||
         case when p_approve then ' can be submitted' else ' is still waiting' end,
       case when p_approve

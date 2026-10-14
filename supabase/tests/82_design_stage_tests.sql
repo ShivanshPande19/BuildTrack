@@ -63,8 +63,17 @@ select t_assert((select count(*) from notifications
                   where user_id = 'c0000000-0000-0000-0000-000000000001'
                     and entity_type = 'stage'
                     and entity_id = '7e000000-0000-0000-0000-0000000000b1'
+                    and type = 'stage_ready'
                     and title ilike '%can be submitted%') >= 1,
                 'D2 the designer is told their stage can move, not just that the design was approved');
+
+-- …and that is a *different* notification from the one about the design, so
+-- the feed does not repeat itself and each opens the right thing.
+select t_assert((select count(*) from notifications
+                  where user_id = 'c0000000-0000-0000-0000-000000000001'
+                    and type = 'approved'
+                    and entity_type = 'design') >= 1,
+                'D2 the design-approved notification is still its own row');
 
 set role authenticated;
 set test.uid = 'c0000000-0000-0000-0000-000000000001';
