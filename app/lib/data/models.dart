@@ -835,10 +835,33 @@ class StockRow {
   final String? itemCatalogId, category;
   final num quantity;
   final int threshold;
-  StockRow({required this.name, required this.unit, this.itemCatalogId, this.category, required this.quantity, required this.threshold});
+
+  /// Whether the **Store** reorders this item, or a build's PM does.
+  ///
+  /// `0019` draws the line: essentials (sheet, wheels, wire) are general stock
+  /// the Store keeps regardless of any one build, and the Store reorders them.
+  /// A project part — an LED panel, a truck's BOM items — is ordered by
+  /// procurement against that build's requirement. The Store never reorders it.
+  final bool isEssential;
+
+  StockRow({required this.name, required this.unit, this.itemCatalogId, this.category,
+    required this.quantity, required this.threshold, this.isEssential = false});
+
   /// Composed in [StoreRepo.stock] rather than mapped from one row: on-hand for
   /// a serialized item is a count over the component ledger, not a column.
-  bool get low => quantity <= threshold;
+  ///
+  /// **Essentials only**, and that is the whole point. `low_stock_threshold`
+  /// defaults to 0, so `quantity <= threshold` is true for every project part
+  /// with nothing on the shelf — which is its *normal* state: you order what a
+  /// build needs, log it, fit it, and keep no spares. Reading that as "low"
+  /// put a permanent red flag on items the Store cannot reorder anyway, and
+  /// buried the sheet and wire that genuinely had run out.
+  bool get low => isEssential && quantity <= threshold;
+
+  /// True when this line is nobody's restocking job — a project part. The
+  /// quantity still matters (it is what Workshop can install today), it just
+  /// is not a reorder signal.
+  bool get isProjectPart => !isEssential;
 }
 
 /// A Store → Procurement reorder request for a general essential (not tied to a
@@ -916,6 +939,110 @@ class WorkshopTask {
       assignedDue != null && status != 'done' && assignedDue!.isBefore(DateTime.now());
 }
 
+
+/// One segment of a build's pipeline, for the PM's schedule strip.
+///
+/// Unlike [ScheduleEntry] this includes **finished** stages: the point of the
+/// strip is the shape of the whole build, and a build that is four stages in
+/// looks nothing like one that has not started.
+class StageTick {
+  final String id, name, status;   // todo | in_progress | done | rework
+  final int ord;
+  final String? assigneeName, discipline;
+  final DateTime? due;
+  /// A submission of this stage is sitting with the PM. Worth its own flag:
+  /// it is the one kind of blockage the PM is causing themselves.
+  final bool awaitingApproval;
+
+  StageTick({required this.id, required this.name, required this.status, required this.ord,
+    this.assigneeName, this.discipline, this.due, this.awaitingApproval = false});
+
+  bool get isDone => status == 'done';
+  bool get isActive => status == 'in_progress' || status == 'rework';
+  bool get isRework => status == 'rework';
+  bool get isUnassigned => !isDone && assigneeName == null;
+  bool get isOverdue => !isDone && due != null && daysUntil(due!) < 0;
+  int? get daysLeft => due == null ? null : daysUntil(due!);
+}
+
+/// A build as the PM's schedule sees it: the whole pipeline, and what is
+/// actually holding it up.
+///
+/// The schedule used to be a flat list of open stages sorted by date. Across a
+/// handful of builds that reads fine; across ten it interleaves — `AZ-101
+/// Fabrication`, `AZ-107 Design`, `AZ-103 Paint` — and the build, which is the
+/// thing a PM actually manages, disappears. This keeps the build whole.
+class BuildSchedule {
+  final Project project;
+  final DateTime? targetDelivery;
+  /// Every stage, in `ord` order, finished ones included.
+  final List<StageTick> stages;
+
+  BuildSchedule({required this.project, required this.stages, this.targetDelivery});
+
+  int get total => stages.length;
+  int get doneCount => stages.where((s) => s.isDone).length;
+  int get overdueCount => stages.where((s) => s.isOverdue).length;
+  int get unassignedCount => stages.where((s) => s.isUnassigned).length;
+  int get awaitingCount => stages.where((s) => s.awaitingApproval).length;
+  int get reworkCount => stages.where((s) => s.isRework).length;
+
+  /// Where the build is now: what is being worked, else the next thing up.
+  StageTick? get current {
+    for (final s in stages) { if (s.isActive) return s; }
+    for (final s in stages) { if (!s.isDone) return s; }
+    return stages.isEmpty ? null : stages.last;
+  }
+
+  /// 1-based position of [current] in the pipeline, for "Stage 4 of 7".
+  int get currentIndex {
+    final c = current;
+    if (c == null) return 0;
+    return stages.indexOf(c) + 1;
+  }
+
+  int? get daysToDelivery => targetDelivery == null ? null : daysUntil(targetDelivery!);
+  bool get isDelivered => project.status == 'delivered';
+
+  /// The one line that says what to do about this build. Ordered by who is
+  /// holding it up: the PM first, because that is the one they can clear
+  /// without asking anyone.
+  String get blockedLabel {
+    if (isDelivered) return 'Delivered';
+    final bits = <String>[];
+    if (awaitingCount > 0) bits.add('$awaitingCount waiting on you');
+    if (overdueCount > 0) bits.add('$overdueCount overdue');
+    if (reworkCount > 0) bits.add('$reworkCount in rework');
+    if (unassignedCount > 0) bits.add('$unassignedCount unassigned');
+    if (bits.isEmpty) return doneCount == total ? 'All stages done' : 'On track';
+    return bits.join(' · ');
+  }
+
+  /// True when nothing needs the PM and nothing has slipped.
+  bool get isClear =>
+      awaitingCount == 0 && overdueCount == 0 && reworkCount == 0 && unassignedCount == 0;
+
+  /// Worst first. A build waiting on the PM outranks one that is merely late,
+  /// because it is the one the PM can unblock right now; after that it is how
+  /// late it is, then how close delivery is.
+  List<int> get severity => [
+        isDelivered ? 1 : 0,
+        awaitingCount > 0 ? 0 : 1,
+        -overdueCount,
+        -reworkCount,
+        -unassignedCount,
+        daysToDelivery ?? 1 << 20,
+      ];
+
+  static int compare(BuildSchedule a, BuildSchedule b) {
+    final x = a.severity, y = b.severity;
+    for (var i = 0; i < x.length; i++) {
+      final c = x[i].compareTo(y[i]);
+      if (c != 0) return c;
+    }
+    return a.project.code.compareTo(b.project.code);
+  }
+}
 
 /// A client-visible document (contract/invoice/warranty/handover).
 class ClientDoc {

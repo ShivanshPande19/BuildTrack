@@ -259,21 +259,27 @@ class _HomeTab extends ConsumerWidget {
             const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
           ])));
       }),
-      const SectionLabel('Needs attention'),
       // Every build that has slipped, every build with no PM, every build at
       // risk, and every material past its order-by — not just the materials.
       // This card used to read the order-by feed alone, so a delayed build with
       // no material alert still showed "All caught up".
-      if (f.attention.isEmpty)
-        const EmptyState(
+      //
+      // Capped, because across a floor of thirty-odd builds the honest list is
+      // long enough to stop being a summary. The worst five are here, sorted
+      // worst-first, and the heading carries the real total.
+      CappedSection(
+        label: 'Needs attention',
+        sheetTitle: 'Needs attention',
+        items: [
+          for (final a in f.attention)
+            Padding(padding: const EdgeInsets.only(bottom: 11),
+              child: _attentionCard(context, a)),
+        ],
+        empty: const EmptyState(
           icon: Icons.check_circle_outline_rounded, tint: BT.lime,
           title: 'All caught up',
-          subtitle: 'Every build is on track and every order-by date is clear.')
-      else
-        ...f.attention.map((a) => Padding(
-          padding: const EdgeInsets.only(bottom: 11),
-          child: _attentionCard(context, a),
-        )),
+          subtitle: 'Every build is on track and every order-by date is clear.'),
+      ),
     ], stepMs: 55),
   );
 

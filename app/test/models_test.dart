@@ -38,6 +38,8 @@ ScheduleEntry entry({int? dayOffset, String? assigneeId, bool dueIsPlanned = fal
 
 void main() {
   mainExtra();
+  scheduleTests();
+  stockTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -404,6 +406,206 @@ void mainExtra() {
       expect(n('project', null).isOpenable, isFalse);
       expect(n(null, 'e1').isOpenable, isFalse);
       expect(n('design', 'e1').isOpenable, isFalse);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// The PM Schedule, build by build. The flat date-sorted list it replaced could
+// not answer "which truck is in trouble" — across ten builds it interleaved
+// seventy stage rows and the build stopped being visible. These pin down the
+// ordering and the one-line verdict that make the new lens worth having.
+// ───────────────────────────────────────────────────────────────────────────
+
+StageTick tick(String name, {
+  int ord = 1,
+  String status = 'todo',
+  String? who = 'Vikas',
+  int? dueInDays,
+  bool awaiting = false,
+}) {
+  final t = DateTime.now();
+  return StageTick(
+    id: 'st-$name-$ord', name: name, status: status, ord: ord,
+    assigneeName: who,
+    due: dueInDays == null ? null : DateTime(t.year, t.month, t.day + dueInDays),
+    awaitingApproval: awaiting,
+  );
+}
+
+BuildSchedule build(String code, List<StageTick> stages, {int? deliveryInDays, String status = 'on_track'}) {
+  final t = DateTime.now();
+  return BuildSchedule(
+    project: Project(id: 'p-$code', code: code, name: '$code Truck',
+        status: status, progressPct: 0, pmId: 'pm1'),
+    targetDelivery: deliveryInDays == null
+        ? null : DateTime(t.year, t.month, t.day + deliveryInDays),
+    stages: stages,
+  );
+}
+
+void scheduleTests() {
+  group('BuildSchedule · what is blocking it', () {
+    test('a stage sitting with the PM is named first — it is theirs to clear', () {
+      final b = build('AZ-1', [
+        tick('Design', ord: 1, status: 'done'),
+        tick('Fabrication', ord: 2, status: 'in_progress', awaiting: true, dueInDays: -3),
+      ]);
+      expect(b.awaitingCount, 1);
+      // Overdue too, but the PM's own queue leads.
+      expect(b.blockedLabel, startsWith('1 waiting on you'));
+      expect(b.blockedLabel, contains('1 overdue'));
+    });
+
+    test('an unassigned stage is the PM\'s problem and says so', () {
+      final b = build('AZ-2', [tick('Paint', who: null)]);
+      expect(b.unassignedCount, 1);
+      expect(b.blockedLabel, '1 unassigned');
+    });
+
+    test('a finished stage is never overdue or unassigned', () {
+      final b = build('AZ-3', [tick('Design', status: 'done', who: null, dueInDays: -40)]);
+      expect(b.overdueCount, 0);
+      expect(b.unassignedCount, 0);
+      expect(b.blockedLabel, 'All stages done');
+    });
+
+    test('nothing wrong reads as on track, not as an empty problem list', () {
+      final b = build('AZ-4', [
+        tick('Design', status: 'done'),
+        tick('Fabrication', status: 'in_progress', dueInDays: 5),
+      ]);
+      expect(b.isClear, isTrue);
+      expect(b.blockedLabel, 'On track');
+    });
+
+    test('rework counts as a blockage of its own', () {
+      final b = build('AZ-5', [tick('Paint', status: 'rework', dueInDays: 2)]);
+      expect(b.blockedLabel, '1 in rework');
+    });
+  });
+
+  group('BuildSchedule · where the build is', () {
+    test('current is what is being worked', () {
+      final b = build('AZ-6', [
+        tick('Design', ord: 1, status: 'done'),
+        tick('Fabrication', ord: 2, status: 'in_progress'),
+        tick('Paint', ord: 3),
+      ]);
+      expect(b.current!.name, 'Fabrication');
+      expect(b.currentIndex, 2);
+      expect(b.total, 3);
+      expect(b.doneCount, 1);
+    });
+
+    test('with nothing started, current is the next thing up', () {
+      final b = build('AZ-7', [tick('Design', ord: 1), tick('Fabrication', ord: 2)]);
+      expect(b.current!.name, 'Design');
+      expect(b.currentIndex, 1);
+    });
+
+    test('a build with no stages does not crash the strip', () {
+      final b = build('AZ-8', const []);
+      expect(b.current, isNull);
+      expect(b.currentIndex, 0);
+      expect(b.total, 0);
+    });
+  });
+
+  group('BuildSchedule · worst first', () {
+    test('waiting on the PM outranks merely being late', () {
+      // The one the PM can unblock right now comes first.
+      final waiting = build('AZ-W', [tick('A', status: 'in_progress', awaiting: true)], deliveryInDays: 60);
+      final late = build('AZ-L', [tick('A', status: 'in_progress', dueInDays: -20)], deliveryInDays: 60);
+      final sorted = [late, waiting]..sort(BuildSchedule.compare);
+      expect(sorted.first.project.code, 'AZ-W');
+    });
+
+    test('more overdue stages outrank fewer', () {
+      final two = build('AZ-2X', [
+        tick('A', ord: 1, status: 'in_progress', dueInDays: -5),
+        tick('B', ord: 2, dueInDays: -2),
+      ]);
+      final one = build('AZ-1X', [tick('A', status: 'in_progress', dueInDays: -5)]);
+      final sorted = [one, two]..sort(BuildSchedule.compare);
+      expect(sorted.first.project.code, 'AZ-2X');
+    });
+
+    test('all else equal, the nearest delivery comes first', () {
+      final soon = build('AZ-SOON', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 7);
+      final far = build('AZ-FAR', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 90);
+      final sorted = [far, soon]..sort(BuildSchedule.compare);
+      expect(sorted.first.project.code, 'AZ-SOON');
+    });
+
+    test('a delivered build sinks below every live one', () {
+      final done = build('AZ-DONE', [tick('A', status: 'done')],
+          deliveryInDays: -2, status: 'delivered');
+      final healthy = build('AZ-OK', [tick('A', status: 'in_progress', dueInDays: 30)],
+          deliveryInDays: 60);
+      final sorted = [done, healthy]..sort(BuildSchedule.compare);
+      expect(sorted.first.project.code, 'AZ-OK');
+      expect(done.blockedLabel, 'Delivered');
+    });
+
+    test('a build with no delivery date does not jump the queue', () {
+      final undated = build('AZ-NODATE', [tick('A', status: 'in_progress', dueInDays: 5)]);
+      final dated = build('AZ-DATED', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 30);
+      final sorted = [undated, dated]..sort(BuildSchedule.compare);
+      expect(sorted.first.project.code, 'AZ-DATED');
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Who restocks what. `0019` separates *how* an item is tracked (serialized)
+// from *who orders it* (is_essential), and the Store screens were ignoring the
+// second half.
+// ───────────────────────────────────────────────────────────────────────────
+
+StockRow stock(String name, {
+  required num qty,
+  int threshold = 0,
+  bool essential = false,
+}) => StockRow(name: name, unit: 'pcs', itemCatalogId: 'i-$name',
+      quantity: qty, threshold: threshold, isEssential: essential);
+
+void stockTests() {
+  group('StockRow · low stock is the Store\'s job only', () {
+    test('a project part sitting at zero is not "low" — that is its normal state', () {
+      // An LED panel is ordered against one build's requirement, fitted, and
+      // not kept in spares. low_stock_threshold defaults to 0, so the old
+      // `quantity <= threshold` flagged every one of them, permanently.
+      final led = stock('LED Panel', qty: 0);
+      expect(led.isProjectPart, isTrue);
+      expect(led.low, isFalse);
+    });
+
+    test('an essential at or below its threshold is low', () {
+      expect(stock('Steel sheet', qty: 2, threshold: 5, essential: true).low, isTrue);
+      expect(stock('Steel sheet', qty: 5, threshold: 5, essential: true).low, isTrue);
+      expect(stock('Steel sheet', qty: 6, threshold: 5, essential: true).low, isFalse);
+    });
+
+    test('an essential at zero with no threshold set still reads low', () {
+      // Nothing on the shelf of something the Store restocks is the one case
+      // the flag exists for.
+      expect(stock('Wire', qty: 0, essential: true).low, isTrue);
+    });
+
+    test('a project part is never low however the numbers fall', () {
+      expect(stock('Inverter', qty: 0, threshold: 10).low, isFalse);
+      expect(stock('Inverter', qty: 50, threshold: 10).low, isFalse);
+    });
+
+    test('only essentials count towards a low-stock badge', () {
+      final rows = [
+        stock('LED Panel', qty: 0),                           // project part
+        stock('Inverter', qty: 0),                            // project part
+        stock('Steel sheet', qty: 1, threshold: 5, essential: true),
+        stock('Wire', qty: 80, threshold: 20, essential: true),
+      ];
+      expect(rows.where((r) => r.low).map((r) => r.name).toList(), ['Steel sheet']);
     });
   });
 }

@@ -8,7 +8,7 @@ import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import 'new_po.dart';
-import 'po_document.dart';
+import 'po_preview.dart';
 
 /// Procurement / PM / Admin — PO detail (pr3).
 ///
@@ -169,24 +169,26 @@ class PoDetailScreen extends ConsumerWidget {
     ]);
   }
 
-  Widget _docButton(BuildContext context, WidgetRef ref) => GestureDetector(
-    behavior: HitTestBehavior.opaque,
-    onTap: () async {
-      try {
-        final data = await ref.read(procurementRepoProvider).poDocData(poId);
-        await printPoDocument(data);
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: BT.coral, content: Text(friendlyError(e))));
-        }
-      }
-    },
+  /// Opens the document to *read* it. Printing lives inside that screen.
+  ///
+  /// This used to go straight to the OS print sheet, which answers "print it"
+  /// and refuses "let me look at it" — and looking at it is what the button is
+  /// pressed for most of the time: checking a rate before signing, or reading
+  /// it back to a vendor. The preview also loads the data on its own screen,
+  /// so a slow fetch no longer leaves this button dead under your finger with
+  /// nothing happening.
+  Widget _docButton(BuildContext context, WidgetRef ref) => PressableScale(
+    pressedScale: 0.99,
+    haptic: true,
+    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => PoPreviewScreen(poId: poId, poNumber: poNumber))),
     child: Container(height: 50, alignment: Alignment.center,
       decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
       child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(Icons.picture_as_pdf_rounded, size: 18, color: BT.ink), SizedBox(width: 8),
-        Text('View / print PO document', style: TextStyle(fontWeight: FontWeight.w600)),
+        Text('View PO document', style: TextStyle(fontWeight: FontWeight.w600)),
+        SizedBox(width: 6),
+        Icon(Icons.chevron_right_rounded, size: 18, color: BT.mut2),
       ])),
   );
 

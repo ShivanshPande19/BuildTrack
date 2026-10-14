@@ -173,7 +173,10 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
     int countFor(String d) => rows.where((r) => r.currentDiscipline == d).length;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SectionLabel('By department · right now'),
-      SizedBox(height: 96, child: ListView(
+      // Height and tile width both follow the text scale. A fixed 96 / 118 fits
+      // only at 1.0x, and the row is the first thing on the owner's Command
+      // Center — a debug overflow stripe across it is not a thing to ship.
+      SizedBox(height: 96 * _scale(context), child: ListView(
         scrollDirection: Axis.horizontal,
         children: [
           for (final d in _depts) _deptTile(d, countFor(d)),
@@ -181,6 +184,11 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
       )),
     ]);
   }
+
+  /// How much the user's text-size setting enlarges this strip, capped so a
+  /// very large setting doesn't turn five tiles into a scroll marathon.
+  static double _scale(BuildContext context) =>
+      (MediaQuery.textScalerOf(context).scale(11) / 11).clamp(1.0, 1.6);
 
   Widget _deptTile(String d, int count) {
     final info = _dept_(d);
@@ -190,7 +198,10 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _dept = on ? null : d),
       child: Container(
-        width: 118,
+        // 132, not 118: "Procurement" is the longest label and at 118 the count
+        // + gap + label came to ~2px more than the 90px of content the padding
+        // left, so the row painted the yellow-and-black overflow stripes.
+        width: 132 * _scale(context),
         margin: const EdgeInsets.only(right: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
@@ -205,9 +216,12 @@ class _OpsCenterScreenState extends ConsumerState<OpsCenterScreen> {
           Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text('$count', style: display(22, w: FontWeight.w700, c: on ? Colors.white : BT.ink)),
             const SizedBox(width: 5),
-            Padding(padding: const EdgeInsets.only(bottom: 4),
-              child: Text(info.label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
-                color: on ? const Color(0xFFB4AE9E) : BT.mut))),
+            // Flexible + ellipsis is the backstop: whatever the count digits
+            // or the text scale do, the label gives way instead of overflowing.
+            Flexible(child: Padding(padding: const EdgeInsets.only(bottom: 4),
+              child: Text(info.label, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                  color: on ? const Color(0xFFB4AE9E) : BT.mut)))),
           ]),
         ]),
       ),

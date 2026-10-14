@@ -42,9 +42,9 @@ BuildTrack/
 │   ├── analysis_options.yaml     # lint + strict-cast rules CI enforces
 │   └── pubspec.lock              # committed: every machine resolves the same versions
 ├── supabase/                 # backend
-│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0026 pre-demo hardening
+│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0027 PO routing
 │   ├── functions/                # Edge Functions (admin create/delete member)
-│   ├── tests/                    # run.sh: 191 assertions on real Postgres, as real users
+│   ├── tests/                    # run.sh: 202 assertions on real Postgres, as real users
 │   ├── check_migrations.sql      # read-only: which migrations a database has
 │   ├── full_setup.sql            # GENERATED one-shot setup (build_full_setup.sh)
 │   └── seed.sql                  # demo data (+ seed_*_demo.sql extras)
@@ -114,7 +114,7 @@ delayed statuses roll forward with the calendar.
 **Verify the backend.** This needs only Docker. It:
 - spins up a throwaway Postgres 15 and applies the migration chain;
 - proves the newest migration is idempotent;
-- runs **191 assertions** in 8 suites as real non-superuser users, so RLS and the guard triggers actually apply;
+- runs **202 assertions** in 9 suites as real non-superuser users, so RLS and the guard triggers actually apply;
 - checks that `full_setup.sql` alone produces the same database.
 
 ```bash
