@@ -40,6 +40,7 @@ void main() {
   mainExtra();
   scheduleTests();
   stockTests();
+  designTodoTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -606,6 +607,184 @@ void stockTests() {
         stock('Wire', qty: 80, threshold: 20, essential: true),
       ];
       expect(rows.where((r) => r.low).map((r) => r.name).toList(), ['Steel sheet']);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// The designer's "what needs you". The section it replaced read
+// design_artifacts alone, so a designer with an overdue stage and no designs
+// was told "All caught up" — on the same screen that showed the stage as
+// overdue. These pin down that it reads the stage and its designs together.
+// ───────────────────────────────────────────────────────────────────────────
+
+WorkshopTask dtask(String code, {
+  String stageId = 'st1',
+  String status = 'in_progress',
+  int? dueInDays,
+  bool awaiting = false,
+  String? reworkNote,
+}) {
+  final t = DateTime.now();
+  return WorkshopTask(
+    stageId: stageId, stageName: 'Design & Layout', status: status,
+    projectId: 'p-$code', projectCode: code, projectName: '$code Truck',
+    assignedDue: dueInDays == null ? null : DateTime(t.year, t.month, t.day + dueInDays),
+    awaitingApproval: awaiting, reworkNote: reworkNote,
+  );
+}
+
+DesignItem ditem(String code, String status, {String id = 'd1', String? stageId, String? feedback}) =>
+    DesignItem(id: id, type: 'layout', status: status, projectId: 'p-$code',
+      projectCode: code, projectName: '$code Truck', stageId: stageId, clientFeedback: feedback);
+
+void designTodoTests() {
+  group('designTodos · the bug it was built for', () {
+    test('an overdue stage with no designs is NOT "all caught up"', () {
+      final r = designTodos(tasks: [dtask('AZ-101', dueInDays: -60)], designs: const []);
+      expect(r.todos, isNotEmpty, reason: 'this read as "all caught up" before');
+      expect(r.todos.single.kind, DesignTodoKind.overdueNoDesign);
+      expect(r.todos.single.action, 'Start a design');
+    });
+
+    test('a stage that is not late still appears, just lower', () {
+      final r = designTodos(tasks: [dtask('AZ-101', dueInDays: 10)], designs: const []);
+      expect(r.todos.single.kind, DesignTodoKind.notStarted);
+    });
+  });
+
+  group('designTodos · what the designer can actually act on', () {
+    test('a design with the client is not a to-do — it is counted', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101', dueInDays: -5)],
+        designs: [ditem('AZ-101', 'pending_approval', stageId: 'st1')]);
+      expect(r.todos, isEmpty, reason: 'the designer cannot move this');
+      expect(r.designsWithClient, 1);
+    });
+
+    test('a stage sitting with the PM is not a to-do either', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101', awaiting: true, dueInDays: -5)], designs: const []);
+      expect(r.todos, isEmpty);
+    });
+
+    test('an approved design turns the stage into a one-tap submit', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101')],
+        designs: [ditem('AZ-101', 'approved', stageId: 'st1')]);
+      expect(r.todos.single.kind, DesignTodoKind.readyToSubmit);
+      expect(r.todos.single.action, 'Submit stage');
+      expect(r.todos.single.task, isNotNull);
+    });
+
+    test('a change request carries the client\'s own words', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101')],
+        designs: [ditem('AZ-101', 'revision', stageId: 'st1', feedback: 'Make the counter lower')]);
+      expect(r.todos.single.kind, DesignTodoKind.changesRequested);
+      expect(r.todos.single.detail, 'Make the counter lower');
+    });
+
+    test('a draft is called out as doing nothing', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101')],
+        designs: [ditem('AZ-101', 'draft', stageId: 'st1')]);
+      expect(r.todos.single.kind, DesignTodoKind.unsentDraft);
+      expect(r.todos.single.action, 'Send for approval');
+    });
+
+    test('a rework note from the PM leads the card', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101', status: 'rework', reworkNote: 'Wrong truck dimensions')],
+        designs: const []);
+      expect(r.todos.single.kind, DesignTodoKind.rework);
+      expect(r.todos.single.detail, 'Wrong truck dimensions');
+    });
+
+    test('a finished stage is not work', () {
+      final r = designTodos(tasks: [dtask('AZ-101', status: 'done')], designs: const []);
+      expect(r.todos, isEmpty);
+    });
+  });
+
+  group('designTodos · ordering', () {
+    test('rework first, then the one-tap submit, then the client\'s changes', () {
+      final r = designTodos(tasks: [
+        dtask('AZ-A', stageId: 'sA', dueInDays: -90),                       // overdue, nothing
+        dtask('AZ-B', stageId: 'sB'),                                       // approved
+        dtask('AZ-C', stageId: 'sC', status: 'rework'),                     // rework
+        dtask('AZ-D', stageId: 'sD'),                                       // revision
+      ], designs: [
+        ditem('AZ-B', 'approved', id: 'dB', stageId: 'sB'),
+        ditem('AZ-D', 'revision', id: 'dD', stageId: 'sD'),
+      ]);
+      expect(r.todos.map((t) => t.kind).toList(), [
+        DesignTodoKind.rework,
+        DesignTodoKind.readyToSubmit,
+        DesignTodoKind.changesRequested,
+        DesignTodoKind.overdueNoDesign,
+      ]);
+    });
+  });
+
+  group('designTodos · designs with no stage of their own', () {
+    test('a design on a build the designer holds no stage on is still theirs', () {
+      // Made ahead of the assignment, or left behind when a stage moved.
+      final r = designTodos(tasks: const [], designs: [ditem('AZ-X', 'revision')]);
+      expect(r.todos.single.kind, DesignTodoKind.changesRequested);
+    });
+
+    test('a design linked to a stage is not counted twice', () {
+      final r = designTodos(
+        tasks: [dtask('AZ-101', stageId: 'st1')],
+        designs: [ditem('AZ-101', 'draft', stageId: 'st1')]);
+      expect(r.todos.length, 1);
+    });
+
+    test('a linked design wins over an unlinked one on the same build', () {
+      // The stage's own design decides the stage, even if an older unlinked
+      // design on the same build says something else — and the loose one does
+      // not then come back as a second card for the same build.
+      final r = designTodos(
+        tasks: [dtask('AZ-101', stageId: 'st1')],
+        designs: [
+          ditem('AZ-101', 'approved', id: 'linked', stageId: 'st1'),
+          ditem('AZ-101', 'draft', id: 'loose'),
+        ]);
+      expect(r.todos.single.kind, DesignTodoKind.readyToSubmit);
+    });
+
+    test('a loose design on a build the designer already holds a stage on '
+         'does not raise its own card', () {
+      // Two cards saying "AZ-101" with different next steps is the same
+      // double-answer this list was built to end.
+      final r = designTodos(
+        tasks: [dtask('AZ-101', stageId: 'st1', dueInDays: 5)],
+        designs: [ditem('AZ-101', 'draft', id: 'loose')]);   // no stage_id
+      expect(r.todos.length, 1);
+      expect(r.todos.single.kind, DesignTodoKind.unsentDraft,
+        reason: 'the stage reads the build\'s designs when none is linked');
+    });
+  });
+
+  group('designTodos · designs with the client', () {
+    test('a design with the client is counted once, not once per stage', () {
+      // Two of the designer's stages on one build both read the same design.
+      final r = designTodos(
+        tasks: [
+          dtask('AZ-101', stageId: 'st1'),
+          dtask('AZ-101', stageId: 'st2'),
+        ],
+        designs: [ditem('AZ-101', 'pending_approval', id: 'dP')]);
+      expect(r.designsWithClient, 1);
+      expect(r.todos, isEmpty);
+    });
+
+    test('a design with the client on a build with no stage is still counted', () {
+      final r = designTodos(
+        tasks: const [], designs: [ditem('AZ-X', 'pending_approval')]);
+      expect(r.designsWithClient, 1);
+      expect(r.todos, isEmpty);
     });
   });
 }

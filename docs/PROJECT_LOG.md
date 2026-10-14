@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **13 Oct 2026** (pre-demo audit + fix pass: migration `0026`, photo-crash hardening, real Settings, and the order-by / PO / warranty defects found by reading the code against the docs.)
+Last updated: **14 Oct 2026** (demo walk + the Design role aligned: migrations `0027`–`0028`, PO routing on a PM-less build, Store's inventory truth, an editable checklist, and the multi-project pass over every role's home.)
 
 ---
 
@@ -12,12 +12,12 @@ Last updated: **13 Oct 2026** (pre-demo audit + fix pass: migration `0026`, phot
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0026`: 33 tables, 5 views, 55 functions (about 31 called by the app), 2 Edge Functions |
-| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a pre-demo audit and fix pass (§6): migration `0026` closes 14 defects in the backend, and the app side fixes the photo crash, gives Settings real screens, makes notifications open what they are about, and lets Design and Service work their own stages — the gap that kept a build's progress from ever reaching 100%. The remaining gaps are in §3 and are smaller than they were. |
-| **Verified** | 13 Oct 2026, on `fix/pre-demo-audit-hardening` — CI green on all three jobs. **Backend: 191/191 assertions** in 8 suites on real Postgres 15, run twice (the migration chain and `full_setup.sql`), as real non-superuser users, plus "newest migration is idempotent". **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 89/89** (42 model + 34 widget + 13 PO-document). Android debug build passes. `flutter build ios --simulator` succeeds locally and the app boots, on Flutter 3.47.2. |
-| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → **pre-demo audit + fix pass (`0026`)**. See §6 and `WORKLOG.md`. |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0028`: 33 tables, 5 views, 57 functions (about 33 called by the app), 2 Edge Functions |
+| **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a live demo walk plus a study of the Design role (§6): `0027` stops a purchase order losing the PM's signature on a PM-less build, `0028` makes a design stage and its designs one piece of work — a design-discipline stage cannot be submitted until the client has approved a design — and lets the PM correct a checklist. On the app side Store stopped calling every project part "running low", and every role's home was re-read for the person carrying **many** builds at once rather than one. The remaining gaps are in §3 and are smaller than they were. |
+| **Verified** | 14 Oct 2026, on `feat/design-stage-alignment` — CI green on all three jobs. **Backend: 223/223 assertions** in 10 suites on real Postgres 15, run twice (the migration chain and `full_setup.sql`), as real non-superuser users, plus "newest migration is idempotent". **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 137/137** (76 model + 48 widget + 13 PO-document). Android debug build passes. `flutter build ios --simulator` succeeds locally and the app boots, on Flutter 3.47.2. |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → **demo walk + the Design role aligned (`0027`–`0028`)**. See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization |
-| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0025` were applied, so check with `supabase/check_migrations.sql` (§4). Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
+| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0028` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028`** — it reads `design_artifacts.stage_id` and calls `fn_create_design(p_stage => …)`. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
 
@@ -65,7 +65,7 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 | 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
 | 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | ✅ Inline "New item" works now. Still open: no incoming-PO / GRN list. |
 | 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. |
-| 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats. **Designs:** library + filters. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | ✅ Fixed: **My design stages** on Studio (start / checklist / photos / submit), and submitting a design notifies the client. |
+| 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats, and **What needs you** — one ranked list over stages *and* designs, each row naming its next action (Submit stage / Upload revision / Send for approval / Start a design) and opening the screen that does it; designs sitting with the client are counted beside the list, not in it. **Designs:** searchable library, counted filter chips, lazy list. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, **attach it to the design stage it belongs to**, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | ✅ Fixed: a design stage now **cannot** be submitted until the client has approved a design on that build (`0028`), and Studio no longer says *All caught up* over an overdue stage. |
 | 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | ✅ Fixed: **My build stages** on the Trucks tab. Still open: "Linked component" never shows (nothing sets it). |
 | 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | ✅ Documents open now (PDF → OS preview, image → viewer). Still open: no priority picker on requests. |
 
@@ -171,11 +171,12 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     have covered them, since the migration chain finishes before the seed runs, so it swept an empty table.
     An **existing** database whose catalogue was filled in after `0019`: `0026` catches it up, and only when
     nothing is essential yet, so it never clobbers a deliberate choice.
-30. ⚠️ **Partly fixed.** App tests are up from 62 to **89**: the needs-attention feed, order-by urgency,
-    warranty state, notification targets, and a new `test/po_document_test.dart` covering the GST
-    rate-wise split, the paise rounding and `rupeesInWords`. The backend gained
-    `tests/80_hardening_tests.sql` (41 assertions on everything `0026` changed) — **not yet run**, see §1.
-    Still uncovered: `fn_request_stock`, `0012` checklist copying, `0014`.
+30. ⚠️ **Partly fixed.** App tests are up from 62 to **137**: the needs-attention feed, order-by urgency,
+    warranty state, notification targets, the build schedule, essentials-only low stock, the designer's
+    to-do ranking, and `test/po_document_test.dart` covering the GST rate-wise split, the paise rounding
+    and `rupeesInWords`. The backend gained three suites — `80_hardening_tests.sql` (42),
+    `81_po_routing_tests.sql` (11) and `82_design_stage_tests.sql` (24) — all green in CI, 223/223 across
+    10 suites. Still uncovered: `fn_request_stock`, `0012` checklist copying, `0014`.
 31. ⚠️ **Partly fixed.** `unreadCountProvider` is used now (#24). Still dead: the non-embedded navigation in
     `ProjectDetailScreen` / `ProjectDossierScreen`, `poDocProvider`, and `RoleHome._titles` / `_navs`.
 32. Client tickets aren't visible to Admin or PM anywhere.
@@ -217,6 +218,40 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     were being stored as `image/heic`, which then rendered nowhere), a second tap while the picker is open
     is ignored, and the three `FilePicker` call sites are wrapped — an unhandled throw in an async callback
     was taking the screen with it.
+
+### Found in the 14 Oct demo walk and the Design-role study (new numbers)
+45. ✅ ~~**A purchase order on a build with no project manager skipped the PM's signature.**~~ The routing
+    rule read `case when pm_id is not null then 'pending_pm' else 'pending_final' end` — correct for a
+    general stock PO, which has no build and no PM by design, but it treated *a project PO whose build has
+    no PM* the same way. Offboarding a PM is the real path into that state (`projects.pm_id` is
+    `ON DELETE SET NULL` since 0009), so from then on every PO against their builds lost a signature and
+    nothing said so. `0027`: both `fn_create_po` and `fn_resubmit_po` refuse instead, naming the fix —
+    the same stance `fn_submit_stage` has taken on PM-less builds since 0009.
+46. ✅ ~~**Store flagged every project part as "running low", permanently.**~~ `low_stock_threshold`
+    defaults to 0 and a per-build part is *supposed* to sit at zero on the shelf between builds, so the
+    badge fired on things nobody should reorder (an LED panel bought for one truck) and buried the ones
+    that matter. `item_catalog.is_essential` now separates consumables from build parts, and only
+    essentials can be low (`StockRow.low`) or requested from procurement.
+47. ✅ ~~**The Design role ran as two disconnected systems.**~~ `design_artifacts` had no `stage_id`: a
+    *Design & Layout* stage and the designs for that build were unrelated rows, so a stage whose checklist
+    said *"Layout approved by client"* could be ticked and submitted with no design uploaded at all — and
+    a build could reach 100% and be delivered with nothing the client had approved. `0028` links a design
+    to its stage, and `fn_submit_stage` refuses a design-discipline stage until an approved design exists
+    on that build. The client's decision now also notifies whoever holds the stage, with its own
+    notification type (`stage_ready` / `stage_waiting`) so the feed does not repeat itself.
+48. ✅ ~~**A checklist could not be corrected.**~~ The items came from the project template and were
+    thereafter immutable — a typo, or a check that no longer applied, stayed on every build using that
+    template. The assignee still cannot rewrite their own checks (that would make them worthless as
+    evidence), but the PM and an admin can now rename, add and remove items from the stage screen
+    (`trg_guard_checklist`).
+49. ✅ ~~**Design's Studio answered "what needs you" twice, and disagreed with itself.**~~ *My design
+    stages* showed an overdue stage while *Needs your attention*, two sections below it, showed a green
+    **All caught up** — because that panel read `design_artifacts` alone, and a designer with no designs
+    had, by that reading, nothing to attend to. The most blocking fact on their plate was the one thing
+    the screen could not see. Both are now one ranked list (`designTodos` in `models.dart`) that reads the
+    stage *and* its designs — which is the only honest reading now that #47 makes them one piece of work —
+    and names the next action on every row. Designs sitting with the client are counted beside the list,
+    not in it: a to-do list you cannot act on stops being a to-do list.
 
 ---
 
@@ -318,6 +353,43 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 14 Oct 2026: Demo walk + the Design role aligned (migrations `0027`–`0028`)
+
+Two passes, one branch. The first was a **live walk through the running app** against the real Supabase
+project, screen by screen, with the owner driving — which is how #45 and #46 were found, neither of which a
+code read had surfaced. The second was a **study of the Design role**, prompted by one question about a
+checklist: *"one check says 'Layout approved by client' — but what if I tick it and the client never
+approved?"* The honest answer was that nothing stopped you, and that was the smaller half of the problem.
+
+**`0027` — a purchase order needs the build to have a PM.** The routing rule treated a project PO on a
+PM-less build as a general stock order and sent it straight to the owner, dropping a signature without
+saying so. Offboarding a PM is the real path in. Both `fn_create_po` and `fn_resubmit_po` now refuse, naming
+the fix. §3 #45.
+
+**`0028` — a design stage and its designs are the same piece of work.** `design_artifacts` gained
+`stage_id`; `fn_create_design` takes `p_stage` (and refuses a stage on another build); `fn_submit_stage`
+refuses a design-discipline stage with no approved design on that build; the client's decision notifies
+whoever holds the stage, under its own types `stage_ready` / `stage_waiting` so the feed does not say the
+same thing twice; `fn_infer_discipline` recognises *mockup*, *concept*, *client sign-off* and the rest as
+design work without swallowing a bare *Final approval*; and `trg_guard_checklist` hands the checklist to
+the PM and the admin to **rename, add and remove**, while leaving the ticking with the assignee. §3 #47–48.
+
+**The app, per role.** Design's Studio stopped asking "what needs you" twice and disagreeing with itself —
+one ranked list over stages *and* designs, every row naming its next action (§3 #49). Store stopped calling
+every project part "running low" (§3 #46) and its Stock tab got search and a lazy list. Procurement's PO
+document is now **viewed before printing**, with the print command raised from the preview. The PM's
+Schedule became two lenses (by date / by build) over the same stages, with a pipeline strip and a member
+sheet that shows what a person actually holds open. And every role's home was re-read for a person carrying
+**many** builds rather than one: the summary sections are capped at the worst four with a *See all N* sheet
+behind them, sorted so the cap keeps the right ones.
+
+**Verified by CI**, after two defects it caught. The new stage notification first reused `type = 'approved'`,
+which gave the designer two rows where `10_workflow_tests.sql` asserts exactly one — the test was right and
+kept; the notification got its own type. And `create or replace function fn_create_design` with an added
+parameter creates an **overload**, not a replacement, so every call became ambiguous; the old signature is
+dropped first now (the same precaution `0015` takes for `fn_recompute_schedule`), and every migration was
+swept for the pattern. 223/223 backend assertions, 137/137 app tests.
 
 ### 13 Oct 2026: Pre-demo audit + fix pass (migration `0026`)
 

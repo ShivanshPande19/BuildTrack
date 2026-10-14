@@ -11,6 +11,82 @@ verified through CI, not locally).
 
 ---
 
+## 14 Oct 2026: Demo walk + the Design role aligned ✅ (migrations `0027`–`0028`)
+
+Branch `feat/design-stage-alignment`. Two passes on one branch.
+
+**Pass 1 — the live walk.** The owner drove the running app against the real Supabase project and reported
+what looked wrong, screen by screen. That found two things a code read had not:
+
+- A **purchase order on a build whose PM had been offboarded** skipped the PM's signature and landed in the
+  owner's queue looking like a stock order. The rule `pm_id is not null ? pending_pm : pending_final` is
+  right for a general PO and wrong for a project PO; nothing distinguished them. `0027` refuses both paths
+  (`fn_create_po`, `fn_resubmit_po`) and says which admin action fixes it. 11 assertions in
+  `tests/81_po_routing_tests.sql`, including the control case — without it the refusal would pass for the
+  wrong reason.
+- **"Running low" fired on an LED panel** bought for one truck. `low_stock_threshold` defaults to 0 and a
+  per-build part is supposed to sit at zero between builds, so the badge was permanently on for everything
+  that should never be reordered, and the consumables that *should* be were buried. `item_catalog.is_essential`
+  now draws that line, in the model (`StockRow.low`), the repository and the UI.
+
+**Pass 2 — the Design role, studied end to end.** It started as a question about one checklist item — *"it
+says 'Layout approved by client', but what if I tick it and the client never approved?"* — and the answer
+was that nothing stopped you. Reading further, the role was running as **two disconnected systems**:
+`design_artifacts` had no `stage_id`, so a *Design & Layout* stage and the designs for that build were
+unrelated rows. A build could reach 100% and be delivered with nothing the client had approved.
+
+`0028`:
+
+- `design_artifacts.stage_id`, and `fn_create_design(p_stage => …)` to set it — refusing a stage on a
+  different build.
+- `fn_submit_stage` refuses a **design-discipline** stage until an approved design exists on that build.
+  Scoped deliberately: it would be absurd for a welder to wait on a layout approval to report their weld,
+  and `tests/82_design_stage_tests.sql` pins that down too.
+- `fn_client_decide_design` notifies whoever holds the stage — *"your stage can be submitted"* — under its
+  own types `stage_ready` / `stage_waiting`, so it is a different row from the design-approved notification
+  and each opens the right thing.
+- `trg_guard_checklist`: the PM and an admin can rename, add and remove checklist items; the assignee can
+  only tick. A checklist that cannot be corrected outlives its mistake on every build from that template;
+  a checklist the assignee can rewrite is worthless as evidence.
+- `fn_infer_discipline` widened to *mockup*, *concept*, *render*, *client sign-off*, *artwork* — without
+  swallowing a bare *Final approval*, which is the PM's, not the designer's.
+
+**Then the screen that reads it.** Design's Studio had two sections asking "what needs you" and giving
+different answers: *My design stages* showed an overdue stage while *Needs your attention* showed a green
+**All caught up**, because that panel read `design_artifacts` alone and the designer had no designs at all.
+The most blocking fact on their plate was the one thing the screen could not see. Both are now one ranked
+list (`designTodos`), worst first, reading the stage **and** its designs — which is the only honest reading
+once `0028` makes them one piece of work — with the next action named on every row and the screen that
+performs it one tap away. Designs sitting with the client are counted *beside* the list, not in it: a
+to-do list that includes things you cannot act on stops being a to-do list.
+
+**Multi-project pass.** The owner asked the same question of screen after screen — *"this looks good for
+one build; is it still good when one person holds eight?"* Mostly it was not: summary sections were
+`Column(children: …)` over everything, which is both an unbounded screen and an eager build. Every one is
+now a `CappedSection` — the worst four, sorted so the cap keeps the right ones, with *See all N* behind a
+sheet — and the full lists (Store Stock, the Designs library) are `SliverList.builder` with search and
+counted filter chips. The PM's Schedule, which was a flat date list, became two lenses over the same
+stages (by date / by build) with a pipeline strip and a member sheet.
+
+**What CI caught that local work could not.** Twice:
+
+1. The new stage notification reused `type = 'approved'`, giving the designer two rows where
+   `10_workflow_tests.sql` asserts exactly one. The test was right and stayed; the notification got its own
+   type.
+2. `create or replace function fn_create_design` with an **added parameter** creates an overload rather than
+   a replacement, so every call became `is not unique`. The old signature is dropped first now — the same
+   precaution `0015` already takes for `fn_recompute_schedule` — and every migration was swept for the
+   pattern (those two were the only signature changes in the chain).
+
+**Verified:** 223/223 backend assertions across 10 suites, `flutter analyze` clean, `flutter test` 137/137.
+
+⏭️ **Next:** apply `0028` to the live project before demoing this branch — the app reads
+`design_artifacts.stage_id` and calls `fn_create_design(p_stage => …)`. Still open: the template
+management screen (§3 #2), and both storage buckets are public-read, so a contract URL is readable by
+anyone who has it (`downloadFromUrl` makes signed URLs a one-function change).
+
+---
+
 ## 13 Oct 2026: Pre-demo audit + fix pass ✅ (migration `0026`)
 
 The ask: read the whole project as a senior developer, check it actually does what the docs say, then fix

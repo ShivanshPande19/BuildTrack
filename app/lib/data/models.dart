@@ -1044,6 +1044,169 @@ class BuildSchedule {
   }
 }
 
+/// One thing a designer should do next, and why.
+///
+/// The Design Studio asked the same question twice — "my design stages" and
+/// "needs your attention" — and answered it twice, differently: the stage
+/// section showed an overdue stage while the attention panel showed a green
+/// tick, because the panel read `design_artifacts` alone and the designer had
+/// no designs at all. The most blocking fact on their plate was the one thing
+/// the screen could not see.
+///
+/// Since 0028 a design stage cannot be submitted until the client approves a
+/// design, so a stage and its designs are one piece of work and have to be
+/// read together. This does that, and names the next action rather than
+/// leaving it to be worked out.
+enum DesignTodoKind {
+  /// The PM sent the stage back.
+  rework,
+  /// An approved design exists and the stage has not been submitted. One tap.
+  readyToSubmit,
+  /// The client asked for changes; a new version has to go round.
+  changesRequested,
+  /// The stage is late and no design has been started at all.
+  overdueNoDesign,
+  /// A design is sitting in draft, doing nothing until it is sent.
+  unsentDraft,
+  /// Assigned, not late, nothing started yet.
+  notStarted,
+}
+
+class DesignTodo {
+  final DesignTodoKind kind;
+  final String title, detail, action;
+  /// The stage to open, when this is about one.
+  final WorkshopTask? task;
+  /// The design to open, when this is about one.
+  final DesignItem? design;
+
+  const DesignTodo(this.kind, {required this.title, required this.detail,
+    required this.action, this.task, this.design});
+
+  /// Lower sorts first. Rework leads because someone is already waiting on it;
+  /// "ready to submit" comes next because it is the cheapest thing on the list
+  /// and it unblocks the build.
+  int get rank => switch (kind) {
+    DesignTodoKind.rework            => 0,
+    DesignTodoKind.readyToSubmit     => 1,
+    DesignTodoKind.changesRequested  => 2,
+    DesignTodoKind.overdueNoDesign   => 3,
+    DesignTodoKind.unsentDraft       => 4,
+    DesignTodoKind.notStarted        => 5,
+  };
+}
+
+/// What this designer should do next, worst first.
+///
+/// Deliberately **excludes** designs sitting with the client. A designer can do
+/// nothing about those, and a to-do list that includes things you cannot act on
+/// stops being a to-do list. [designsWithClient] carries that count separately,
+/// so the screen can say it without putting it in the queue.
+({List<DesignTodo> todos, int designsWithClient}) designTodos({
+  required List<WorkshopTask> tasks,
+  required List<DesignItem> designs,
+}) {
+  final out = <DesignTodo>[];
+  final claimed = <String>{};   // design ids already spoken for by a stage
+  // Designs sitting with the client, counted once over the whole set. Counting
+  // them per-stage instead would both miss the ones no stage reads and
+  // double-count the ones two stages on a build both see.
+  final withClient = designs.where((d) => d.status == 'pending_approval').length;
+
+  List<DesignItem> forStage(WorkshopTask t) {
+    final linked = designs.where((d) => d.stageId == t.stageId).toList();
+    if (linked.isNotEmpty) return linked;
+    return designs.where((d) => d.projectId == t.projectId).toList();
+  }
+
+  for (final t in tasks.where((t) => t.status != 'done')) {
+    final mine = forStage(t);
+    // The stage speaks for *every* design on its build, not just the ones it
+    // read. A stage linked to one design still covers the older loose designs
+    // on the same truck — otherwise the loop below would raise a second card
+    // for the same build and the same person.
+    for (final d in designs) {
+      if (d.projectId == t.projectId || d.stageId == t.stageId) claimed.add(d.id);
+    }
+    final where = '${t.projectCode} · ${t.stageName}';
+
+    // Already with the PM: nothing for the designer to do until they decide.
+    if (t.awaitingApproval) continue;
+
+    if (t.status == 'rework') {
+      out.add(DesignTodo(DesignTodoKind.rework, task: t,
+        title: where,
+        detail: t.reworkNote ?? 'Your project manager sent this stage back.',
+        action: 'Open stage'));
+      continue;
+    }
+
+    if (mine.any((d) => d.status == 'approved')) {
+      out.add(DesignTodo(DesignTodoKind.readyToSubmit, task: t,
+        title: where,
+        detail: 'The client approved a design. Submit this stage to your project manager.',
+        action: 'Submit stage'));
+      continue;
+    }
+
+    // With the client: theirs to decide, not yours to chase. Already counted
+    // in withClient above.
+    if (mine.any((d) => d.status == 'pending_approval')) continue;
+
+    final revision = mine.where((d) => d.status == 'revision').toList();
+    if (revision.isNotEmpty) {
+      out.add(DesignTodo(DesignTodoKind.changesRequested, design: revision.first, task: t,
+        title: where,
+        detail: revision.first.clientFeedback?.trim().isNotEmpty == true
+            ? revision.first.clientFeedback!.trim()
+            : 'The client asked for changes. Upload a revised version.',
+        action: 'Upload revision'));
+      continue;
+    }
+
+    final draft = mine.where((d) => d.status == 'draft').toList();
+    if (draft.isNotEmpty) {
+      out.add(DesignTodo(DesignTodoKind.unsentDraft, design: draft.first, task: t,
+        title: where,
+        detail: 'A design is still a draft. It does nothing until the client sees it.',
+        action: 'Send for approval'));
+      continue;
+    }
+
+    out.add(DesignTodo(
+      t.isOverdue ? DesignTodoKind.overdueNoDesign : DesignTodoKind.notStarted,
+      task: t,
+      title: where,
+      detail: t.isOverdue
+          ? 'Overdue, and no design has been started. This stage finishes when the client approves one.'
+          : 'No design yet. This stage finishes when the client approves one.',
+      action: 'Start a design'));
+  }
+
+  // Designs on builds this designer holds no open stage on — made ahead of an
+  // assignment, or left behind when a stage was reassigned. Still theirs.
+  for (final d in designs) {
+    if (claimed.contains(d.id)) continue;
+    final where = '${d.projectCode ?? 'Build'} · ${d.type}';
+    if (d.status == 'revision') {
+      out.add(DesignTodo(DesignTodoKind.changesRequested, design: d,
+        title: where,
+        detail: d.clientFeedback?.trim().isNotEmpty == true
+            ? d.clientFeedback!.trim()
+            : 'The client asked for changes. Upload a revised version.',
+        action: 'Upload revision'));
+    } else if (d.status == 'draft') {
+      out.add(DesignTodo(DesignTodoKind.unsentDraft, design: d,
+        title: where,
+        detail: 'A design is still a draft. It does nothing until the client sees it.',
+        action: 'Send for approval'));
+    }
+  }
+
+  out.sort((a, b) => a.rank.compareTo(b.rank));
+  return (todos: out, designsWithClient: withClient);
+}
+
 /// A client-visible document (contract/invoice/warranty/handover).
 class ClientDoc {
   final String id, type;
