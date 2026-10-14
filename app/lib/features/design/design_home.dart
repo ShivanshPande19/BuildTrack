@@ -24,14 +24,26 @@ class DesignHome extends ConsumerStatefulWidget {
 class _DesignHomeState extends ConsumerState<DesignHome> {
   int _tab = 0;
   String _filter = 'all';
+  final _search = TextEditingController();
+  String _q = '';
   int _buildsPage = 0;
   final PageController _buildsCtrl = PageController(viewportFraction: 0.9);
   static const _labels = ['Studio', 'Designs', 'Approvals'];
   static final _fmt = DateFormat('d MMM');
 
   @override
+  void initState() {
+    super.initState();
+    _search.addListener(() {
+      final v = _search.text.trim().toLowerCase();
+      if (v != _q) setState(() => _q = v);
+    });
+  }
+
+  @override
   void dispose() {
     _buildsCtrl.dispose();
+    _search.dispose();
     super.dispose();
   }
 
@@ -130,6 +142,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         const MyStagesSection(
           label: 'My design stages',
           tint: BT.pink,
+          designGate: true,
           emptySubtitle: 'When a project manager assigns you a design stage, you can '
                          'start it and submit it for approval here.',
         ),
@@ -156,12 +169,20 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
                 const SizedBox(width: 11),
                 Expanded(child: _stat('Approved', approved, BT.lime, Icons.verified_rounded)),
               ]),
-              const SectionLabel('Needs your attention'),
-              if (attention.isEmpty)
-                const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
-                  title: 'All caught up', subtitle: 'New drafts and change requests will show here.')
-              else
-                ...attention.map(_designCard),
+              // Capped: Studio is a summary. Change requests come first — a
+              // client is waiting on those — then drafts.
+              CappedSection(
+                label: 'Needs your attention',
+                sheetTitle: 'Needs your attention',
+                max: 4,
+                items: [
+                  for (final d in [...attention]..sort((a, b) =>
+                      (a.status == 'revision' ? 0 : 1).compareTo(b.status == 'revision' ? 0 : 1)))
+                    _designCard(d),
+                ],
+                empty: const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
+                  title: 'All caught up', subtitle: 'New drafts and change requests will show here.'),
+              ),
             ], stepMs: 45));
           },
         ),
@@ -283,40 +304,110 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   // ── DESIGNS (full library, filterable) ────────────────────
   Widget _designsTab() {
     final designs = ref.watch(myDesignsProvider);
+    final list = designs.valueOrNull ?? const <DesignItem>[];
+
+    int countOf(String f) => f == 'all' ? list.length : list.where((d) => d.status == f).length;
     const filters = [
       ['all', 'All'], ['draft', 'Drafts'], ['pending_approval', 'Awaiting'],
       ['revision', 'Changes'], ['approved', 'Approved'],
     ];
+
+    var shown = _filter == 'all' ? list : list.where((d) => d.status == _filter).toList();
+    if (_q.isNotEmpty) {
+      shown = shown.where((d) =>
+        (d.projectCode ?? '').toLowerCase().contains(_q) ||
+        (d.projectName ?? '').toLowerCase().contains(_q) ||
+        d.type.toLowerCase().contains(_q)).toList();
+    }
+
     return RefreshIndicator(
       onRefresh: () async => ref.refresh(myDesignsProvider.future),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 110), children: [
-        _header('LIBRARY', 'Designs'),
-        const SizedBox(height: 14),
-        FadeSlideIn(delay: Motion.stagger(1), child: ChipBar(chips: [
-          for (final f in filters) _filterChip(f[0], f[1]),
-        ])),
-        const SizedBox(height: 14),
-        designs.when(
-          loading: () => const SkeletonList(count: 4),
-          error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
-          data: (list) {
-            final shown = _filter == 'all' ? list : list.where((d) => d.status == _filter).toList();
-            if (shown.isEmpty) {
-              return EmptyState(icon: Icons.palette_outlined, tint: BT.pink,
-                title: 'No designs here',
-                subtitle: list.isEmpty
-                  ? 'Designs appear once a PM assigns you a design stage on a build.'
-                  : 'Nothing matches this filter. Tap + to start a new design.');
-            }
-            return Column(children: staggered(shown.map(_designCard).toList()));
-          },
+      // Slivers, not a ListView of children: the library is the one list here
+      // that grows with every design on every build, and it was building all of
+      // them on every frame.
+      child: CustomScrollView(slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          sliver: SliverToBoxAdapter(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _header('LIBRARY', 'Designs'),
+              const SizedBox(height: 12),
+              FadeSlideIn(delay: Motion.stagger(1), child: _searchField()),
+              const SizedBox(height: 12),
+              FadeSlideIn(delay: Motion.stagger(2), child: ChipBar(chips: [
+                for (final f in filters)
+                  if (f[0] == 'all' || countOf(f[0]) > 0) _filterChip(f[0], f[1], countOf(f[0])),
+              ])),
+              const SizedBox(height: 14),
+            ],
+          )),
         ),
+        if (designs.isLoading && !designs.hasValue)
+          const SliverPadding(padding: EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(child: SkeletonList(count: 4)))
+        else if (designs.hasError)
+          SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(child: ErrorCard(
+              'Could not load your designs.\n${friendlyError(designs.error!)}',
+              onRetry: () => ref.invalidate(myDesignsProvider))))
+        else if (shown.isEmpty)
+          SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 20),
+            sliver: SliverToBoxAdapter(child: _q.isNotEmpty
+              ? EmptyState(icon: Icons.search_off_rounded, tint: BT.mut2,
+                  title: 'No match',
+                  subtitle: 'No design matches "${_search.text.trim()}".')
+              : EmptyState(icon: Icons.palette_outlined, tint: BT.pink,
+                  title: 'No designs here',
+                  subtitle: list.isEmpty
+                    ? 'Designs appear once a PM assigns you a design stage on a build.'
+                    : 'Nothing matches this filter. Tap + to start a new design.')))
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
+            sliver: SliverList.builder(
+              itemCount: shown.length,
+              itemBuilder: (_, i) {
+                final card = _designCard(shown[i]);
+                // Only the first screenful cascades; staggering by index would
+                // make a row you scrolled to wait before appearing.
+                return i < 8
+                  ? FadeSlideIn(delay: Motion.stagger(i, stepMs: 35, maxMs: 280), child: card)
+                  : card;
+              },
+            ),
+          ),
       ]),
     );
   }
 
-  Widget _filterChip(String value, String label) => AppChip(label,
-    selected: _filter == value, onTap: () => setState(() => _filter = value));
+  Widget _searchField() => Container(
+    height: 44,
+    padding: const EdgeInsets.symmetric(horizontal: 14),
+    decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: BT.line)),
+    child: Row(children: [
+      const Icon(Icons.search_rounded, size: 18, color: BT.mut2),
+      const SizedBox(width: 9),
+      Expanded(child: TextField(
+        controller: _search,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: BT.ink),
+        decoration: const InputDecoration(
+          isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero,
+          hintText: 'Search by build or type',
+          hintStyle: TextStyle(color: BT.mut2, fontWeight: FontWeight.w500, fontSize: 14.5)),
+      )),
+      if (_q.isNotEmpty)
+        PressableScale(pressedScale: 0.88, haptic: true,
+          onTap: () => _search.clear(),
+          child: const Icon(Icons.close_rounded, size: 17, color: BT.mut2)),
+    ]),
+  );
+
+  Widget _filterChip(String value, String label, int count) => AppChip(label,
+    selected: _filter == value, count: count,
+    onTap: () => setState(() => _filter = value));
 
   // ── APPROVALS (submitted → outcome + feedback) ────────────
   Widget _approvalsTab() {
@@ -330,12 +421,22 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
           loading: () => const SkeletonList(count: 4),
           error: (e, _) => ErrorCard('Could not load.\n${friendlyError(e)}'),
           data: (list) {
-            final submitted = list.where((d) => d.status != 'draft').toList();
+            // Waiting on the client first, then changes they asked for, then
+            // the approved ones — which are history and can sink.
+            final submitted = list.where((d) => d.status != 'draft').toList()
+              ..sort((a, b) {
+                int rank(DesignItem d) => switch (d.status) {
+                  'pending_approval' => 0, 'revision' => 1, _ => 2,
+                };
+                return rank(a).compareTo(rank(b));
+              });
             if (submitted.isEmpty) {
               return const EmptyState(icon: Icons.send_outlined, tint: BT.sky,
                 title: 'Nothing submitted yet', subtitle: 'Designs you send for approval show their status here.');
             }
-            return Column(children: staggered(submitted.map(_designCard).toList()));
+            return CappedSection(
+              label: 'Submitted', sheetTitle: 'Everything submitted', max: 8,
+              items: submitted.map(_designCard).toList());
           },
         ),
       ]),

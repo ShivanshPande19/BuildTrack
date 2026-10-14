@@ -35,6 +35,17 @@ class _NewDesignState extends ConsumerState<NewDesign> {
 
   bool get _isVersion => widget.artifactId != null;
 
+  /// The design stage this designer holds on [projectId], if any. Read from
+  /// the same list the Studio shows, so it costs nothing extra.
+  WorkshopTask? _stageFor(String? projectId) {
+    if (projectId == null) return null;
+    final tasks = ref.read(myTasksProvider).valueOrNull ?? const <WorkshopTask>[];
+    for (final t in tasks) {
+      if (t.projectId == projectId && t.status != 'done') return t;
+    }
+    return null;
+  }
+
   static const _types = [
     ['layout', 'Layout'], ['interior', 'Interior'], ['exterior', 'Exterior'], ['branding', 'Branding'],
   ];
@@ -132,7 +143,9 @@ class _NewDesignState extends ConsumerState<NewDesign> {
         await repo.addVersion(artifactId: widget.artifactId!, modelUrl: _modelUrl, imageUrl: _imageUrl,
           changeNote: _note.text.trim(), submit: submit);
       } else {
-        await repo.create(projectId: _projectId!, type: _type, modelUrl: _modelUrl, imageUrl: _imageUrl,
+        await repo.create(projectId: _projectId!, type: _type,
+          stageId: _stageFor(_projectId)?.stageId,
+          modelUrl: _modelUrl, imageUrl: _imageUrl,
           changeNote: _note.text.trim(), submit: submit);
       }
       ref.invalidate(myDesignsProvider);
@@ -191,6 +204,26 @@ class _NewDesignState extends ConsumerState<NewDesign> {
               hint: 'Select a truck', title: 'Choose a build', value: _projectId,
               options: [for (final p in projects) SelectOption(p.id, '${p.code} · ${p.name}')],
               onChanged: (v) => setState(() => _projectId = v)),
+            // Which stage this design discharges. Filled in from the design
+            // stage the PM assigned on that build, so nobody has to pick it —
+            // and so the stage cannot be submitted until the client approves
+            // this design (0028). Shown, not hidden, because the designer
+            // should know their stage is riding on it.
+            if (_stageFor(_projectId) != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+                decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+                child: Row(children: [
+                  const Icon(Icons.link_rounded, size: 17, color: BT.mut),
+                  const SizedBox(width: 9),
+                  Expanded(child: Text(
+                    'Counts towards your stage "${_stageFor(_projectId)!.stageName}" — '
+                    'it can be submitted once the client approves this design.',
+                    style: const TextStyle(fontSize: 11.5, color: BT.mut, height: 1.35))),
+                ]),
+              ),
+            ],
             const SizedBox(height: 14),
             _label('DESIGN TYPE'),
             Wrap(spacing: 9, runSpacing: 9, children: _types.map(_typeChip).toList()),

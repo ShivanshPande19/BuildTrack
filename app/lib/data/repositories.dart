@@ -1126,6 +1126,30 @@ class WorkshopRepo {
     await sb.rpc('fn_start_stage', params: {'p_stage': stageId});
   }
 
+  /// Edit a build's checklist. PM and admin only — `trg_guard_checklist` (0028)
+  /// enforces that server-side, because the assignee holds write on the same
+  /// rows so they can tick items and could otherwise rewrite what "done" means.
+  ///
+  /// This edits *this build's* checklist, not the workflow template it came
+  /// from: fixing a typo on a live build should not silently change every
+  /// future build, and changing the template should not rewrite history on
+  /// builds already running.
+  Future<void> renameCheck(String id, String label) async {
+    final v = label.trim();
+    if (v.isEmpty) throw Exception('A checklist item needs a label.');
+    await sb.from('checklist_items').update({'label': v}).eq('id', id);
+  }
+
+  Future<void> addCheck(String stageId, String label) async {
+    final v = label.trim();
+    if (v.isEmpty) throw Exception('A checklist item needs a label.');
+    await sb.from('checklist_items').insert({'stage_id': stageId, 'label': v, 'done': false});
+  }
+
+  Future<void> removeCheck(String id) async {
+    await sb.from('checklist_items').delete().eq('id', id);
+  }
+
   Future<void> toggleChecklist(String id, bool done) async {
     await sb.from('checklist_items').update({'done': done}).eq('id', id);
   }
@@ -1873,7 +1897,7 @@ final loginlessClientsProvider = FutureProvider<int>((ref) {
 /// submit for client approval, and track the outcome / feedback loop.
 class DesignRepo {
   static const _artifactSelect =
-      'id,type,status,project_id,current_version_id,client_feedback, projects(code,name)';
+      'id,type,status,project_id,stage_id,current_version_id,client_feedback, projects(code,name)';
 
   /// Design work that is actually mine: artifacts on the builds a PM assigned me
   /// a stage on, plus anything I authored myself.
@@ -1910,7 +1934,7 @@ class DesignRepo {
 
   Future<DesignDetailData> detail(String artifactId) async {
     final r = await sb.from('design_artifacts')
-        .select('id,type,status,project_id,current_version_id,client_feedback, projects(code,name)')
+        .select('id,type,status,project_id,stage_id,current_version_id,client_feedback, projects(code,name)')
         .eq('id', artifactId).single();
     final vs = await sb.from('design_versions')
         .select('id,model_url,file_url,version_no,change_note,created_at')
@@ -1931,13 +1955,19 @@ class DesignRepo {
   /// (which rendered as a broken, un-openable design); and it notifies the
   /// client and the PM when the design is submitted. The screen has always said
   /// "they've been notified" — now that is true.
+  /// [stageId] links the design to the stage it is the deliverable for (0028).
+  /// Null is allowed — a build may have no design stage, or the designer may be
+  /// working ahead of one — and the submit rule then falls back to "any
+  /// approved design on this build".
   Future<void> create({
     required String projectId, required String type,
+    String? stageId,
     String? modelUrl, String? imageUrl, String? changeNote, required bool submit,
   }) async {
     await sb.rpc('fn_create_design', params: {
       'p_project': projectId,
       'p_type': type,
+      'p_stage': stageId,
       'p_model_url': _clean(modelUrl),
       'p_image_url': _clean(imageUrl),
       'p_change_note': _clean(changeNote),
@@ -2048,6 +2078,7 @@ class DesignRepo {
       imageUrl: v?['file_url'] as String?,
       changeNote: v?['change_note'] as String?,
       clientFeedback: r['client_feedback'] as String?,
+      stageId: r['stage_id'] as String?,
       versionNo: (v?['version_no'] as num?)?.toInt() ?? 1,
     );
   }

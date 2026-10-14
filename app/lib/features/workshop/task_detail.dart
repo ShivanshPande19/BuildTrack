@@ -22,7 +22,12 @@ import 'scan_install.dart';
 class TaskDetailScreen extends ConsumerWidget {
   final WorkshopTask task;
   final bool showInstallPart;
-  const TaskDetailScreen({super.key, required this.task, this.showInstallPart = true});
+  /// Set on a **design** stage. Its deliverable is a design the client has
+  /// approved (0028 refuses the submit otherwise), so the screen says so before
+  /// the button is pressed rather than letting the database say it afterwards.
+  final bool designGate;
+  const TaskDetailScreen({super.key, required this.task,
+    this.showInstallPart = true, this.designGate = false});
 
   static final _fmt = DateFormat('d MMM');
   String _shortDate(DateTime d) => _fmt.format(d);
@@ -129,7 +134,11 @@ class TaskDetailScreen extends ConsumerWidget {
       // actions
       const SizedBox(height: 16),
       Row(children: [
-        Expanded(child: SecondaryButton('Photo', icon: Icons.photo_camera_outlined, onTap: () => _addPhoto(context, ref))),
+        // "Photo" means a site photo — a workshop idea. A designer attaching
+        // one is attaching a reference, so the button says what it does for
+        // whoever is reading it.
+        Expanded(child: SecondaryButton(showInstallPart ? 'Photo' : 'Reference',
+          icon: Icons.photo_camera_outlined, onTap: () => _addPhoto(context, ref))),
         if (showInstallPart) ...[
           const SizedBox(width: 11),
           Expanded(child: SecondaryButton('Install part', icon: Icons.qr_code_scanner_rounded, onTap: () =>
@@ -157,6 +166,26 @@ class TaskDetailScreen extends ConsumerWidget {
         // AsyncPrimaryButton: a double-tap on site can't start or submit twice.
         AsyncPrimaryButton('Start work', icon: Icons.play_arrow_rounded, bg: BT.ink, fg: Colors.white,
           onTap: () => _start(context, ref))
+      else if (designGate && !_designApproved(ref)) ...[
+        // Not a disabled button: a button that does nothing explains nothing.
+        // This states the one thing standing in the way and who it is with.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(color: BT.card2,
+            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.palette_outlined, size: 19, color: BT.mut),
+            const SizedBox(width: 11),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Waiting on the client',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              const SizedBox(height: 3),
+              Text(_designHint(ref),
+                style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+            ])),
+          ]),
+        ),
+      ]
       else
         AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Submit with checks open',
           icon: Icons.check_rounded, bg: BT.ink, fg: Colors.white,
@@ -242,6 +271,39 @@ class TaskDetailScreen extends ConsumerWidget {
       bar.clearSnackBars();
       bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
     }
+  }
+
+
+  /// Has the client approved a design that discharges this stage?
+  ///
+  /// Mirrors the server rule in 0028: a design linked to this stage if there
+  /// is one, otherwise any approved design on the build — so a design made
+  /// before the stage link existed still counts.
+  bool _designApproved(WidgetRef ref) {
+    final all = ref.watch(myDesignsProvider).valueOrNull;
+    if (all == null) return true;   // unknown: do not accuse the designer
+    final linked = all.where((d) => d.stageId == task.stageId).toList();
+    final pool = linked.isNotEmpty ? linked : all.where((d) => d.projectId == task.projectId);
+    return pool.any((d) => d.status == 'approved');
+  }
+
+  String _designHint(WidgetRef ref) {
+    final all = ref.watch(myDesignsProvider).valueOrNull ?? const <DesignItem>[];
+    final mine = all.where((d) => d.projectId == task.projectId).toList();
+    if (mine.isEmpty) {
+      return 'This stage finishes when the client approves a design for this '
+             'build. Create one and submit it for their approval.';
+    }
+    if (mine.any((d) => d.status == 'pending_approval')) {
+      return 'A design is with the client now. Once they approve it, you can '
+             'submit this stage to your project manager.';
+    }
+    if (mine.any((d) => d.status == 'revision')) {
+      return 'The client asked for changes. Upload a revised version and send '
+             'it back — the stage can move once they approve one.';
+    }
+    return 'Your design is still a draft. Submit it for the client\'s approval '
+           'first; this stage finishes when they sign off.';
   }
 
   Future<void> _start(BuildContext context, WidgetRef ref) async {

@@ -31,6 +31,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       (icon: Icons.check_rounded, bg: BT.lime, fg: const Color(0xFF3A4A12)),
     'stage_assigned' || 'project_assigned' || 'stage_started' =>
       (icon: Icons.assignment_ind_rounded, bg: BT.sky, fg: const Color(0xFF1C3A4A)),
+    // The client's design decision, told to whoever holds the design stage:
+    // what it means for *their* work, not what happened to the design (0028).
+    'stage_ready' =>
+      (icon: Icons.play_circle_outline_rounded, bg: BT.lime, fg: const Color(0xFF3A4A12)),
+    'stage_waiting' =>
+      (icon: Icons.hourglass_bottom_rounded, bg: BT.amber, fg: const Color(0xFF4A3410)),
     'stage_submitted' || 'po_approval' =>
       (icon: Icons.pending_actions_rounded, bg: BT.amber, fg: const Color(0xFF4A3410)),
     'rework' || 'revision' || 'po_rejected' =>

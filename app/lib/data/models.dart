@@ -1103,10 +1103,13 @@ class DesignRow {
 class DesignItem {
   final String id, type, status, projectId;
   final String? projectCode, projectName, modelUrl, imageUrl, changeNote, clientFeedback;
+  /// The build stage this design is the deliverable for (0028). Null for
+  /// designs made before the link existed, or on a build with no design stage.
+  final String? stageId;
   final int versionNo;
   DesignItem({required this.id, required this.type, required this.status, required this.projectId,
     this.projectCode, this.projectName, this.modelUrl, this.imageUrl, this.changeNote,
-    this.clientFeedback, this.versionNo = 1});
+    this.clientFeedback, this.stageId, this.versionNo = 1});
 }
 
 /// One version of a design (history on the design detail screen).
