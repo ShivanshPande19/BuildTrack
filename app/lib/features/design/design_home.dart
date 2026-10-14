@@ -9,7 +9,7 @@ import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
 import 'new_design.dart';
 import 'design_detail.dart';
-import '../../shared/my_stages.dart';
+import '../workshop/task_detail.dart';
 
 /// Designer shell — nav: Studio · Designs · Approvals · Profile.
 /// Designers create designs, upload 2D previews + .glb models, submit them for
@@ -101,6 +101,130 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
   Widget _header(String kicker, String title) =>
       FadeSlideIn(child: RoleHeader(role: 'design', eyebrow: kicker, title: title));
 
+
+  /// The one list that answers "what should I do next".
+  ///
+  /// This replaced two sections that asked the same question and disagreed:
+  /// "My design stages" showed an overdue stage while "Needs your attention"
+  /// showed a green tick, because the latter read `design_artifacts` alone and
+  /// a designer with no designs at all had, by that reading, nothing to attend
+  /// to. Since 0028 a design stage cannot be submitted until the client
+  /// approves a design, so the stage and its designs are one piece of work and
+  /// have to be read together.
+  Widget _whatNeedsYou() {
+    final tasksAsync = ref.watch(myTasksProvider);
+    final designsAsync = ref.watch(myDesignsProvider);
+
+    if (!tasksAsync.hasValue || !designsAsync.hasValue) {
+      // Saying "all caught up" before the data lands is the exact lie this
+      // section exists to stop telling.
+      return const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SectionLabel('What needs you'),
+        SkeletonList(count: 2),
+      ]);
+    }
+
+    final r = designTodos(
+      tasks: tasksAsync.value ?? const [],
+      designs: designsAsync.value ?? const [],
+    );
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      CappedSection(
+        label: 'What needs you',
+        sheetTitle: 'What needs you',
+        max: 4,
+        items: [for (final t in r.todos) _todoCard(t)],
+        empty: EmptyState(
+          icon: Icons.check_circle_outline_rounded, tint: BT.lime,
+          title: r.designsWithClient > 0 ? 'Nothing on you' : 'All caught up',
+          subtitle: r.designsWithClient > 0
+            ? 'Everything you can move is moving. '
+              '${r.designsWithClient} ${r.designsWithClient == 1 ? 'design is' : 'designs are'} '
+              'with the client.'
+            : 'Stages a project manager assigns you, and designs the client '
+              'sends back, show up here.'),
+      ),
+      // Not a to-do: there is nothing to do about it. Said anyway, because
+      // "nothing on you" reads as "nothing happening" otherwise.
+      if (r.todos.isNotEmpty && r.designsWithClient > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 2, left: 4),
+          child: Text(
+            '${r.designsWithClient} ${r.designsWithClient == 1 ? 'design is' : 'designs are'} '
+            'with the client — nothing for you to do there.',
+            style: const TextStyle(fontSize: 11.5, color: BT.mut2)),
+        ),
+    ]);
+  }
+
+  ({Color tint, IconData icon}) _todoTone(DesignTodoKind k) => switch (k) {
+    DesignTodoKind.rework           => (tint: BT.coral, icon: Icons.replay_rounded),
+    DesignTodoKind.readyToSubmit    => (tint: BT.lime,  icon: Icons.send_rounded),
+    DesignTodoKind.changesRequested => (tint: BT.coral, icon: Icons.rate_review_rounded),
+    DesignTodoKind.overdueNoDesign  => (tint: BT.coral, icon: Icons.priority_high_rounded),
+    DesignTodoKind.unsentDraft      => (tint: BT.amber, icon: Icons.edit_note_rounded),
+    DesignTodoKind.notStarted       => (tint: BT.card2, icon: Icons.palette_outlined),
+  };
+
+  Widget _todoCard(DesignTodo t) {
+    final tone = _todoTone(t.kind);
+    return Padding(padding: const EdgeInsets.only(bottom: 11), child: AppCard(
+      onTap: () => _openTodo(t),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(width: 40, height: 40, alignment: Alignment.center,
+          decoration: BoxDecoration(color: tone.tint, borderRadius: BorderRadius.circular(12),
+            border: t.kind == DesignTodoKind.notStarted ? Border.all(color: BT.line) : null),
+          child: Icon(tone.icon, size: 19,
+            color: t.kind == DesignTodoKind.notStarted ? BT.mut : BT.ink)),
+        const SizedBox(width: 13),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+          const SizedBox(height: 3),
+          Text(t.detail, maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.3)),
+          const SizedBox(height: 7),
+          // The next action, named. A card that only describes a problem makes
+          // you work out the move yourself every time you read it.
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Text(t.action,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: BT.ink)),
+            const Icon(Icons.chevron_right_rounded, size: 15, color: BT.ink),
+          ]),
+        ])),
+      ]),
+    ));
+  }
+
+  Future<void> _openTodo(DesignTodo t) async {
+    switch (t.kind) {
+      // Both of these are stage moves: open the stage screen, where Start work
+      // and Submit live.
+      case DesignTodoKind.rework:
+      case DesignTodoKind.readyToSubmit:
+        if (t.task != null) {
+          await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TaskDetailScreen(task: t.task!,
+              showInstallPart: false, designGate: true)));
+        }
+      // These are design moves: open the design, or start one if there is none.
+      case DesignTodoKind.changesRequested:
+      case DesignTodoKind.unsentDraft:
+        if (t.design != null) {
+          await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => DesignDetailScreen(artifactId: t.design!.id)));
+        }
+      case DesignTodoKind.overdueNoDesign:
+      case DesignTodoKind.notStarted:
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewDesign()));
+    }
+    ref.invalidate(myTasksProvider);
+    ref.invalidate(myDesignsProvider);
+    ref.invalidate(myAssignedBuildsProvider);
+  }
+
   // ── STUDIO (home) ─────────────────────────────────────────
   Widget _studioTab() {
     final designs = ref.watch(myDesignsProvider);
@@ -136,16 +260,7 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
                 FadeSlideIn(delay: Motion.stagger(2), child: _assignedCarousel(list)),
               ],
         ),
-        // Stages a PM assigned to me, with Start work / Submit for approval.
-        // Without this a design stage sat on 'todo' forever and the build's
-        // progress could never reach 100%.
-        const MyStagesSection(
-          label: 'My design stages',
-          tint: BT.pink,
-          designGate: true,
-          emptySubtitle: 'When a project manager assigns you a design stage, you can '
-                         'start it and submit it for approval here.',
-        ),
+        _whatNeedsYou(),
         // The single-build card used to sit flush against the stats grid.
         const SizedBox(height: 16),
         designs.when(
@@ -156,7 +271,6 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
             final awaiting = list.where((d) => d.status == 'pending_approval').length;
             final changes  = list.where((d) => d.status == 'revision').length;
             final approved = list.where((d) => d.status == 'approved').length;
-            final attention = list.where((d) => d.status == 'draft' || d.status == 'revision').toList();
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: staggered([
               Row(children: [
                 Expanded(child: _stat('Drafts', drafts, BT.card2, Icons.edit_note_rounded)),
@@ -169,20 +283,6 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
                 const SizedBox(width: 11),
                 Expanded(child: _stat('Approved', approved, BT.lime, Icons.verified_rounded)),
               ]),
-              // Capped: Studio is a summary. Change requests come first — a
-              // client is waiting on those — then drafts.
-              CappedSection(
-                label: 'Needs your attention',
-                sheetTitle: 'Needs your attention',
-                max: 4,
-                items: [
-                  for (final d in [...attention]..sort((a, b) =>
-                      (a.status == 'revision' ? 0 : 1).compareTo(b.status == 'revision' ? 0 : 1)))
-                    _designCard(d),
-                ],
-                empty: const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
-                  title: 'All caught up', subtitle: 'New drafts and change requests will show here.'),
-              ),
             ], stepMs: 45));
           },
         ),

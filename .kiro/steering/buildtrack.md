@@ -55,6 +55,16 @@ A command exiting 0 is not proof; check the actual result.
 - New backend behaviour goes in a **new numbered migration** (`supabase/migrations/00NN_*.sql`),
   written to be **idempotent** and safe to re-run. Never edit an applied migration. Add a detector row
   for it to `supabase/check_migrations.sql`: an object only that migration creates.
+- Two traps this codebase has already been bitten by, both twice:
+  - **`create or replace function` with a changed parameter list makes an overload, not a replacement**,
+    and every existing call then fails as `is not unique`. `drop function if exists <name>(<old types>);`
+    first — see `0015` (`fn_recompute_schedule`) and `0028` (`fn_create_design`).
+  - **plpgsql is three-valued.** `if not <expr>` is *false* when `<expr>` is NULL, so a guard written as
+    `if not (a or b) then raise` silently lets everything through the moment one side is NULL (and
+    `my_client_account()` is NULL for every staff member). Wrap the condition in `coalesce(…, false)`.
+- A summary section must stay **bounded**: a role carrying eight builds has to get the worst four and a
+  *See all N* sheet, not an unbounded `Column`. And it must read every source of the fact it claims —
+  twice now a section said "all caught up" because it read one table and the blocking thing was in another.
 - `supabase/full_setup.sql` is **generated** — regenerate with `cd supabase && sh build_full_setup.sh`,
   never hand-edit.
 - Flutter: Riverpod providers in `data/repositories.dart`, models in `data/models.dart`, design
