@@ -142,6 +142,14 @@ end $$;
 -- fn_create_design gains the stage it discharges. The app passes the design
 -- stage the designer is assigned on that build, so a design created from
 -- "My design stages" is linked without anybody choosing anything.
+--
+-- The 0026 signature is dropped first. `create or replace` with an extra
+-- parameter does not replace anything — it adds an overload, and since every
+-- argument after p_type has a default, a four-argument call then matches both
+-- and Postgres refuses it as ambiguous. (0015 hit the same thing adding an
+-- argument to fn_recompute_schedule.)
+drop function if exists public.fn_create_design(uuid, design_type, text, text, text, boolean);
+
 create or replace function public.fn_create_design(
   p_project     uuid,
   p_type        design_type,
