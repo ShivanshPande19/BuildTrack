@@ -79,7 +79,11 @@ with checks(migration, applied) as (values
      and exists (select 1 from pg_proc where proname = 'my_role' and prosrc ilike '%disabled%')),
   ('0027_po_needs_a_pm',
      exists (select 1 from pg_proc where proname = 'fn_create_po'
-               and prosrc ilike '%has no project manager yet%'))
+               and prosrc ilike '%has no project manager yet%')),
+  ('0028_design_stage_link',
+     exists (select 1 from information_schema.columns where table_schema = 'public'
+               and table_name = 'design_artifacts' and column_name = 'stage_id')
+     and exists (select 1 from pg_proc where proname = 'trg_guard_checklist'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

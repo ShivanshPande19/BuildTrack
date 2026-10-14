@@ -5,7 +5,6 @@ import '../core/theme.dart';
 import '../data/models.dart';
 import '../data/repositories.dart';
 import '../features/workshop/task_detail.dart';
-import 'animations.dart';
 import 'widgets.dart';
 
 /// "My stages" — the stages the signed-in person has been assigned, with Start
@@ -24,6 +23,9 @@ import 'widgets.dart';
 class MyStagesSection extends ConsumerWidget {
   /// Shown above the list. "My design stages" / "My service stages".
   final String label;
+  /// Design stages finish on the client's approval, not on the PM's alone
+  /// (0028). The Design studio turns this on so the stage screen can say so.
+  final bool designGate;
   /// What to say when there is nothing assigned — role-specific, because the
   /// reason is role-specific.
   final String emptySubtitle;
@@ -33,6 +35,7 @@ class MyStagesSection extends ConsumerWidget {
     required this.label,
     required this.emptySubtitle,
     this.tint = BT.lav,
+    this.designGate = false,
   });
 
   static final _fmt = DateFormat('d MMM');
@@ -52,19 +55,35 @@ class MyStagesSection extends ConsumerWidget {
       data: (list) {
         // A stage the PM has already approved is history, not work.
         final open = list.where((t) => t.status != 'done').toList();
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          SectionLabel(label),
-          if (open.isEmpty)
-            EmptyState(icon: Icons.assignment_outlined, tint: tint,
-              title: 'No stages assigned', subtitle: emptySubtitle)
-          else
-            ...staggered([
-              for (final t in open) Padding(
-                padding: const EdgeInsets.only(bottom: 11),
-                child: _StageCard(task: t, fmt: _fmt),
-              ),
-            ], stepMs: 40, maxMs: 240),
-        ]);
+        // Capped: a designer carrying stages on eight builds needs the ones
+        // that are late or sent back, not all eight, on a screen that is a
+        // summary of their work. Sorted so the cap keeps the right ones —
+        // rework first (someone is waiting on a fix), then overdue, then the
+        // soonest due.
+        final sorted = [...open]..sort((a, b) {
+          int rank(WorkshopTask t) => t.status == 'rework' ? 0 : (t.isOverdue ? 1 : 2);
+          final r = rank(a).compareTo(rank(b));
+          if (r != 0) return r;
+          final ad = a.assignedDue, bd = b.assignedDue;
+          if (ad == null && bd == null) return a.projectCode.compareTo(b.projectCode);
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return ad.compareTo(bd);
+        });
+
+        return CappedSection(
+          label: label,
+          sheetTitle: label,
+          max: 4,
+          items: [
+            for (final t in sorted) Padding(
+              padding: const EdgeInsets.only(bottom: 11),
+              child: _StageCard(task: t, fmt: _fmt, designGate: designGate),
+            ),
+          ],
+          empty: EmptyState(icon: Icons.assignment_outlined, tint: tint,
+            title: 'No stages assigned', subtitle: emptySubtitle),
+        );
       },
     );
   }
@@ -73,7 +92,8 @@ class MyStagesSection extends ConsumerWidget {
 class _StageCard extends ConsumerWidget {
   final WorkshopTask task;
   final DateFormat fmt;
-  const _StageCard({required this.task, required this.fmt});
+  final bool designGate;
+  const _StageCard({required this.task, required this.fmt, this.designGate = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -88,7 +108,8 @@ class _StageCard extends ConsumerWidget {
     return AppCard(
       onTap: () async {
         await Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => TaskDetailScreen(task: task, showInstallPart: false)));
+          builder: (_) => TaskDetailScreen(task: task,
+            showInstallPart: false, designGate: designGate)));
         // Starting or submitting a stage changes this list, the PM's approvals
         // queue and the build's progress — refresh what the person can see.
         ref.invalidate(myTasksProvider);
