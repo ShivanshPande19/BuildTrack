@@ -361,9 +361,11 @@ class _ChecklistEditorState extends ConsumerState<_ChecklistEditor> {
         const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Icon(Icons.photo_camera_outlined, size: 13, color: BT.mut2),
           SizedBox(width: 7),
-          Expanded(child: Text('Tap the camera on a row to make that check need a photo. '
-                               'Use it where the work is hidden once the next stage '
-                               'covers it — not on everything, or the photos stop meaning anything.',
+          Expanded(child: Text('Whoever works the stage is offered the camera on every check '
+                               'they tick. Tap the camera on a row to make the photo '
+                               'compulsory for that one — use it where the work is hidden '
+                               'once the next stage covers it, not on everything, or the '
+                               'photos stop meaning anything.',
             style: TextStyle(color: BT.mut2, fontSize: 11.5, height: 1.35))),
         ]),
         const SizedBox(height: 10),

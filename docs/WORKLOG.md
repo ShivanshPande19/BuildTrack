@@ -86,12 +86,98 @@ Also fixed on the way: a retry button I had just written pointed at the wrong pr
 watches a build-keyed family now), and Store logging a part did not invalidate the fitter's view of
 stock.
 
+### Then the screen was used, not read (15 Oct, migration `0030`)
+
+Three complaints, all fair:
+
+> *"this truck full record ka button bilkul neeche and photos bhi aari h ajeeb jagah pe"*
+
+The screen had no order. The primary action was in the **middle** — after the checklist and the
+materials, before the photos, the delays, the fitted parts and the truck record — so *Submit* was
+something you scrolled past, and the record link was the last thing on a long scroll. Actions lived
+in one block away from what they affected. Now: **what this stage is → what you have recorded → the
+whole truck**, each section carrying its own action in its heading, and the primary action in a
+**pinned bar** that still explains itself when it is unavailable.
+
+> *"ye photos ka kya scene h delete nhi kr skte h kya"*
+
+No — a photo could be added and never taken back, so the wrong shot stayed on the client's build
+timeline forever. Each thumbnail has a remove button now, behind a confirm that names the check it
+proves if it proves one. `0030` puts the rule behind it: `attachments` had carried
+`for all using (is_staff())` since 0002, so *any* staff member could delete *any* photo on *any*
+truck — including after the PM approved the stage and signed off on those photos. A check whose
+proof a passer-by can delete is not proof, which made 0029 half a rule. Now: whoever took it, the
+build's PM, or an admin; and once approved, only an admin.
+
+> *"ye checklist tick krne pe kehta h ticked before it was recorded"*
+
+My bug, from the previous commit. The provenance line read the **optimistic** flag rather than the
+server's `done`. The tick flips instantly so a slow connection does not feel dead, but the name and
+date only exist once the write lands — so the moment you ticked anything, the row claimed it had
+been ticked before the app started recording. Alarming nonsense for a check you just ticked. It
+reads the server now and says *Saving…* in between; the genuinely-old case was reworded to
+*"Ticked earlier — before the app recorded who"*.
+
+Verified on the device: the new order, delete (confirm → *Photo removed* → empty state), and a tick
+showing *Vikas · 15 Oct*.
+
+### …and the photo found its home (same day)
+
+> *"checklist ko tick krne ke time pe … usme photo upload for the task to mark it complete hona
+> chahiye ig, and add photos extra photos add krne ke liye use hojayenge, and even jo checklist m
+> photo upload hogi usko bhi photos m show krdenge"*
+
+Half of that already worked and was worth saying so: a check's photo has always been an ordinary
+stage attachment, so it already appeared in the Photos list, captioned with the check it came from,
+with a **Proof** link on the row. What did not work was the *framing* — a photo was only asked for
+on the checks a PM had flagged, so ticking an ordinary check did nothing, and the camera also lived
+in a separate *Add photo* action. Three ways to end up with a picture, none of them obviously the
+main one.
+
+The disagreement was only about **forcing** it. Some checks have nothing to photograph — *client
+sign-off received*, *keys handed over* — and demanding one anyway is how a fitter learns to
+photograph the floor to get past the sheet; once the list fills with pictures of the floor, the
+checks where a photo genuinely mattered lose their reader too. So: **offered on every tick, forced
+only where the PM said so.** Ticking any check opens the sheet — *Take a photo now*, or one already
+on the stage, or **Tick it without a photo** — and that last option is absent on a `photo_required`
+check, where the server would refuse the tick regardless.
+
+Verified end to end on the device: tick → sheet → gallery → the check reads *Vikas · 15 Oct ·
+Proof*, and the photo is in **Photos · 1** captioned *"Base frame weld…"*.
+
+### Then it was actually run (15 Oct, same branch)
+
+`0028` and `0029` were applied to the live project and the app was driven on an iPhone 15 Pro
+simulator. Five more defects, none of which any test or code read had surfaced — the first four
+because nothing had ever *picked a photo*, and the last because it was introduced by this pass:
+
+- **Choosing a photo from the gallery froze the app** (§3 #63). `AlertDialog` measures its body
+  through an `IntrinsicWidth`, which asserts `input.isFinite`; the preview was
+  `Image.memory(…, width: double.infinity)`, an infinite intrinsic width. The assertion fired every
+  frame, so the dialog's route pushed and dimmed the screen but the dialog never laid out. Dark,
+  unresponsive, nothing on it. The log said it plainly once the app was run with `flutter run`:
+  `proxy_box.dart:665 'input.isFinite': is not true`, error-causing widget `AlertDialog`.
+- **Transient network errors were unhandled exceptions** (§3 #64) — which in debug *pauses the
+  isolate*, i.e. actually freezes the app, and Supabase's token refresh throws one on every bad
+  connection.
+- **Uploads had no timeout** (§3 #65), behind a one-minute "Uploading photo…" snackbar.
+- **The camera-unavailable fallback overflowed by 188px** (§3 #66) — the manual-serial escape hatch
+  was off-screen on any device without a working camera.
+- **`PGRST201` on every stage screen** (§3 #67), introduced here: `profiles(full_name)` added to the
+  stages select is ambiguous, because `stages` points at `profiles` twice. The same trap documented
+  two passes ago for PM Approvals, walked into while optimising a round trip away.
+
+All five fixed and **verified on the device**: Photo → gallery → pick → preview dialog → Upload →
+*Photo uploaded* → the new **Photos · 1** section renders the thumbnail.
+
 **Verified:** `flutter analyze` clean, `flutter test` **169/169** (up from 137, 32 new).
-⚠️ **`0029` is unverified locally** — this machine has no Docker and no local Postgres, so
+⚠️ **`0029` was unverified locally when first written** — this machine has no Docker and no local Postgres, so
 `supabase/tests/run.sh` could not run. CI's Postgres job is the gate.
 
-⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing — ticking a check fails
-outright without `0029`. Still open: template management (§3 #2), the PO read scope (§3 #16), and
+⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing. Without `0029` the
+**whole stage screen fails to load**, not just the tick: `stageBundle` selects `done_at` /
+`photo_required` and embeds `done_by` and the proof attachment, so PostgREST refuses the query.
+The app and these migrations ship together. Still open: template management (§3 #2), the PO read scope (§3 #16), and
 both storage buckets are public-read.
 
 ---

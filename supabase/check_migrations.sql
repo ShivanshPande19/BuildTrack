@@ -87,7 +87,9 @@ with checks(migration, applied) as (values
   ('0029_checklist_is_evidence',
      exists (select 1 from information_schema.columns where table_schema = 'public'
                and table_name = 'checklist_items' and column_name = 'done_by')
-     and exists (select 1 from pg_proc where proname = 'fn_tick_check'))
+     and exists (select 1 from pg_proc where proname = 'fn_tick_check')),
+  ('0030_a_photo_is_evidence_too',
+     exists (select 1 from pg_proc where proname = 'trg_guard_attachments'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

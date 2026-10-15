@@ -38,10 +38,21 @@ class TaskDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bundle = ref.watch(stageBundleProvider(task.stageId));
     return Scaffold(
-      body: SafeArea(child: RefreshIndicator(
+      // The primary action is pinned, not scrolled to.
+      //
+      // It used to sit in the middle of the page — after the checklist and the
+      // materials, but before the photos, the delays, the installed parts and
+      // the truck record — so the screen read as a pile rather than an order,
+      // and "submit" was something you scrolled past on the way to the bottom.
+      // Everything above is now what the stage *is*; the one thing you do with
+      // it is always within reach.
+      bottomNavigationBar: bundle.hasValue
+        ? _actionBar(context, ref, bundle.value!)
+        : null,
+      body: SafeArea(bottom: false, child: RefreshIndicator(
         onRefresh: () async => ref.refresh(stageBundleProvider(task.stageId).future),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
           children: [
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
               const BackChip(),
@@ -65,14 +76,43 @@ class TaskDetailScreen extends ConsumerWidget {
     );
   }
 
+  /// A section heading with the action that belongs to it on the same line.
+  ///
+  /// Every action used to live in one block in the middle of the page, away
+  /// from the thing it affected — "Photo" nowhere near the photos, "Install
+  /// part" nowhere near the parts. Put each one on its own section and the
+  /// page stops needing to be learned.
+  Widget _sectionHeader(String label, {String? action, VoidCallback? onAction}) =>
+    Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(children: [
+        Expanded(child: Text(label.toUpperCase(),
+          style: const TextStyle(fontSize: 11, letterSpacing: 1.2,
+            color: BT.mut, fontWeight: FontWeight.w600))),
+        if (action != null && onAction != null)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onAction,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 12),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.add_rounded, size: 15, color: BT.ink),
+                const SizedBox(width: 3),
+                Text(action, style: const TextStyle(fontSize: 12.5,
+                  fontWeight: FontWeight.w700, color: BT.ink)),
+              ]),
+            ),
+          ),
+      ]),
+    );
+
   Widget _content(BuildContext context, WidgetRef ref, StageBundle b) {
     final total = b.checklist.length;
     final done = b.checklist.where((c) => c.done).length;
     final pct = total == 0 ? 0 : (done / total * 100).round();
-    final allDone = total > 0 && done == total;
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      // what the PM asked for when handing this over
+      // ── Where this stage stands ──────────────────────────────────────
       if (task.status == 'rework') ...[
         Container(
           padding: const EdgeInsets.all(15),
@@ -108,7 +148,6 @@ class TaskDetailScreen extends ConsumerWidget {
         const SizedBox(height: 12),
       ],
 
-      // progress
       AppCard(padding: const EdgeInsets.fromLTRB(18, 16, 18, 18), child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           const Text('PROGRESS', style: TextStyle(fontSize: 11, letterSpacing: 1.2, color: BT.mut, fontWeight: FontWeight.w600)),
@@ -120,8 +159,8 @@ class TaskDetailScreen extends ConsumerWidget {
           backgroundColor: BT.track, valueColor: const AlwaysStoppedAnimation(BT.lime))),
       ])),
 
-      // checklist
-      const SectionLabel('Checklist'),
+      // ── The work ─────────────────────────────────────────────────────
+      _sectionHeader('Checklist'),
       if (b.checklist.isEmpty)
         const EmptyState(icon: Icons.checklist_rounded, tint: BT.lime, title: 'No checklist', subtitle: 'This stage has no checklist items.')
       else
@@ -134,8 +173,6 @@ class TaskDetailScreen extends ConsumerWidget {
                 photos: b.photos, frozen: task.isClosed,
                 divider: i < b.checklist.length - 1),
           ])),
-      // A check that wants a photo and has not got one is the fitter's own cue,
-      // said once under the list rather than shouted on every row.
       if (b.proofOutstanding > 0)
         Padding(padding: const EdgeInsets.only(top: 9, left: 4),
           child: Row(children: [
@@ -147,9 +184,9 @@ class TaskDetailScreen extends ConsumerWidget {
               style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.3))),
           ])),
 
-      // what this stage is meant to be built from
+      // ── What this stage is built from ────────────────────────────────
       if (b.materials.isNotEmpty) ...[
-        const SectionLabel('Parts this stage needs'),
+        _sectionHeader('Parts this stage needs'),
         AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(
           children: [
             for (var i = 0; i < b.materials.length; i++)
@@ -184,128 +221,70 @@ class TaskDetailScreen extends ConsumerWidget {
           ])),
       ],
 
-      // actions
-      const SizedBox(height: 16),
-      if (!task.isClosed) Row(children: [
-        // "Photo" means a site photo — a workshop idea. A designer attaching
-        // one is attaching a reference, so the button says what it does for
-        // whoever is reading it.
-        Expanded(child: SecondaryButton(showInstallPart ? 'Photo' : 'Reference',
-          icon: Icons.photo_camera_outlined, onTap: () => _addPhoto(context, ref))),
-        if (showInstallPart) ...[
-          const SizedBox(width: 11),
-          Expanded(child: SecondaryButton('Install part', icon: Icons.qr_code_scanner_rounded, onTap: () =>
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
-        ],
-      ]),
-      // Report a slip against your own stage.
-      //
-      // `delay_logs` has always granted the workshop role write, and the fitter
-      // is the one who knows the steel did not arrive — but no screen ever
-      // offered it, so the PM had to notice the stage was late and then guess.
-      // 0029 narrowed the grant to the stage's own assignee, which is what made
-      // it safe to put here.
-      if (!task.isClosed && !task.canStart) ...[
-        const SizedBox(height: 11),
-        SecondaryButton('Report a hold-up', icon: Icons.schedule_rounded,
-          onTap: () => _logDelay(context, ref)),
-      ],
-      const SizedBox(height: 11),
-      if (task.isDelivered)
-        // The truck has gone out. fn_mark_delivered(force) leaves open stages
-        // open deliberately — closing them would rewrite what happened — but
-        // offering Start work on a customer's truck is not a live action.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          decoration: BoxDecoration(color: BT.card2,
-            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.local_shipping_outlined, size: 19, color: BT.mut),
-            const SizedBox(width: 11),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('This truck has been delivered',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              const SizedBox(height: 3),
-              const Text('The build was closed with this stage still open. It is kept '
-                         'as a record — talk to your project manager if work is still needed.',
-                style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
-            ])),
-          ]),
-        )
-      else if (task.awaitingApproval)
-        // Nothing to do until the PM decides — offering Submit again would just
-        // bounce off the duplicate-submission guard.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          decoration: BoxDecoration(color: BT.amber.withOpacity(0.35),
-            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-          child: const Row(children: [
-            Icon(Icons.hourglass_top_rounded, size: 19, color: BT.ink),
-            SizedBox(width: 10),
-            Expanded(child: Text('Waiting for your PM to approve this stage.',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5, height: 1.3))),
-          ]),
-        )
-      else if (task.canStart)
-        // The transition nothing used to make: until a stage is started it stays
-        // 'todo', which kept it out of the PM's day view and the workload numbers.
-        // AsyncPrimaryButton: a double-tap on site can't start or submit twice.
-        AsyncPrimaryButton('Start work', icon: Icons.play_arrow_rounded, bg: BT.ink, fg: Colors.white,
-          onTap: () => _start(context, ref))
-      else if (designGate && !_designApproved(ref)) ...[
-        // Not a disabled button: a button that does nothing explains nothing.
-        // This states the one thing standing in the way and who it is with.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-          decoration: BoxDecoration(color: BT.card2,
-            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
-          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.palette_outlined, size: 19, color: BT.mut),
-            const SizedBox(width: 11),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Waiting on the client',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
-              const SizedBox(height: 3),
-              Text(_designHint(ref),
-                style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
-            ])),
-          ]),
-        ),
-      ]
+      // ── What you have recorded ───────────────────────────────────────
+      _sectionHeader(
+        b.photos.isEmpty ? 'Photos' : 'Photos · ${b.photos.length}',
+        action: task.isClosed ? null : (showInstallPart ? 'Add photo' : 'Add reference'),
+        onAction: task.isClosed ? null : () => _addPhoto(context, ref)),
+      if (b.photos.isEmpty)
+        EmptyState(icon: Icons.photo_camera_outlined, tint: BT.card2,
+          title: task.isClosed ? 'No photos on this stage' : 'No photos yet',
+          subtitle: showInstallPart
+            ? 'Your project manager and the client see these as the evidence of the work.'
+            : 'Attach a reference your project manager should see.')
       else
-        AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Submit with checks open',
-          icon: Icons.check_rounded, bg: BT.ink, fg: Colors.white,
-          // With checks still open the button used to read "Mark stage
-          // complete" and submit regardless — the PM then got a submission
-          // whose own checklist said it wasn't finished. It still goes through
-          // (sometimes a check genuinely doesn't apply), but deliberately.
-          onTap: () => _submit(context, ref, openChecks: total - done)),
-      if (!task.isDelivered && !task.awaitingApproval && !task.canStart && !allDone && total > 0)
-        Padding(padding: const EdgeInsets.only(top: 10),
-          // Full width so textAlign.center actually centres it (it sat left).
-          child: SizedBox(width: double.infinity, child: Text('$done of $total checks done — finish all before final approval.',
-            textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12)))),
-
-      // The photos on this stage.
-      //
-      // The bundle has always fetched these and the screen never drew them —
-      // so the person who took the photo could not see it, could not tell what
-      // had already gone up, and could not check the right thing was in frame.
-      // The client sees them; the fitter could not.
-      if (b.photos.isNotEmpty) ...[
-        SectionLabel('Photos · ${b.photos.length}'),
-        SizedBox(height: 104, child: ListView.separated(
+        SizedBox(height: 118, child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: b.photos.length,
           separatorBuilder: (_, __) => const SizedBox(width: 10),
-          itemBuilder: (_, i) => _PhotoThumb(photo: b.photos[i]),
+          itemBuilder: (_, i) => _PhotoThumb(
+            photo: b.photos[i],
+            // Removing a photo is the PM's or the person who took it — and
+            // nobody's once the stage is signed off (0030).
+            onDelete: task.isClosed || b.photos[i].id == null
+              ? null
+              : () => _deletePhoto(context, ref, b, b.photos[i]),
+          ),
         )),
-        const SizedBox(height: 4),
+
+      if (showInstallPart) ...[
+        _sectionHeader(
+          b.parts.isEmpty ? 'Parts fitted here' : 'Parts fitted here · ${b.parts.length}',
+          action: task.isClosed ? null : 'Install part',
+          onAction: task.isClosed ? null : () =>
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task)))),
+        if (b.parts.isEmpty)
+          const EmptyState(icon: Icons.memory_outlined, tint: BT.card2,
+            title: 'Nothing fitted yet',
+            subtitle: 'Scan a part\'s label to record it against this stage.')
+        else
+          AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(
+            children: [
+              for (var i = 0; i < b.parts.length; i++)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(border: i < b.parts.length - 1
+                      ? const Border(bottom: BorderSide(color: BT.line)) : null),
+                  child: Row(children: [
+                    const Icon(Icons.memory_rounded, size: 19, color: BT.ink),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(
+                      b.parts[i].model.isEmpty ? b.parts[i].name : '${b.parts[i].name} · ${b.parts[i].model}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+                    Text(b.parts[i].serial, style: const TextStyle(color: BT.mut, fontSize: 12)),
+                  ]),
+                ),
+            ])),
       ],
 
-      // Why this stage slipped — also fetched and never shown.
-      if (b.delays.isNotEmpty) ...[
-        const SectionLabel('Delays logged'),
+      // ── Why it slipped ───────────────────────────────────────────────
+      if (!task.isClosed || b.delays.isNotEmpty)
+        _sectionHeader(
+          b.delays.isEmpty ? 'Hold-ups' : 'Hold-ups · ${b.delays.length}',
+          action: task.isClosed || task.canStart ? null : 'Report one',
+          onAction: task.isClosed || task.canStart ? null : () => _logDelay(context, ref)),
+      if (b.delays.isNotEmpty)
         for (final d in b.delays)
           Padding(padding: const EdgeInsets.only(bottom: 10),
             child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -321,17 +300,17 @@ class TaskDetailScreen extends ConsumerWidget {
                       style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.3)),
                   ],
                 ])),
-              ]))),
-      ],
+              ])))
+      else if (!task.isClosed && !task.canStart)
+        Padding(padding: const EdgeInsets.only(left: 4),
+          child: Text(
+            'If something is holding this stage up — parts, a drawing, capacity — '
+            'say so and your project manager sees it on the build.',
+            style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.35))),
 
-      // The whole truck's record, for the person building it.
-      //
-      // `v_truck_components` has carried every part, its serial, its stage and
-      // who fitted it since 0023 — and the screen that shows it lived only
-      // inside the build screen, which Admin and the PM can open and Workshop
-      // cannot. The fitter had no way to see the record they were writing.
+      // ── The whole truck ──────────────────────────────────────────────
       if (showInstallPart) ...[
-        const SizedBox(height: 18),
+        const SizedBox(height: 22),
         AppCard(
           onTap: () => Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => TruckRecordScreen(projectId: task.projectId,
@@ -352,20 +331,127 @@ class TaskDetailScreen extends ConsumerWidget {
             const Icon(Icons.chevron_right_rounded, color: BT.mut),
           ])),
       ],
-
-      // installed parts on this stage
-      if (b.parts.isNotEmpty) ...[
-        const SectionLabel('Parts installed'),
-        ...b.parts.map((p) => Padding(padding: const EdgeInsets.only(bottom: 10),
-          child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13), child: Row(children: [
-            const Icon(Icons.memory_rounded, size: 20, color: BT.ink),
-            const SizedBox(width: 12),
-            Expanded(child: Text(p.model.isEmpty ? p.name : '${p.name} · ${p.model}',
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
-            Text(p.serial, style: const TextStyle(color: BT.mut, fontSize: 12)),
-          ])))),
-      ],
     ]);
+  }
+
+  /// The pinned bar: the one thing to do with this stage, and why you cannot.
+  Widget _actionBar(BuildContext context, WidgetRef ref, StageBundle b) {
+    final total = b.checklist.length;
+    final done = b.checklist.where((c) => c.done).length;
+    final allDone = total > 0 && done == total;
+
+    Widget wrap(Widget child, {String? hint}) => Container(
+      decoration: const BoxDecoration(
+        color: BT.bg, border: Border(top: BorderSide(color: BT.line))),
+      child: SafeArea(top: false, child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          child,
+          if (hint != null) ...[
+            const SizedBox(height: 8),
+            Text(hint, textAlign: TextAlign.center,
+              style: const TextStyle(color: BT.mut, fontSize: 12)),
+          ],
+        ]),
+      )),
+    );
+
+    Widget notice(IconData icon, String title, String body, {Color tint = BT.card2}) => wrap(
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(color: tint,
+          borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(icon, size: 19, color: BT.mut),
+          const SizedBox(width: 11),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+            const SizedBox(height: 3),
+            Text(body, style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+          ])),
+        ]),
+      ));
+
+    if (task.isDelivered) {
+      return notice(Icons.local_shipping_outlined, 'This truck has been delivered',
+        'The build was closed with this stage still open. It is kept as a record — '
+        'talk to your project manager if work is still needed.');
+    }
+    if (task.awaitingApproval) {
+      // Offering Submit again would just bounce off the duplicate guard.
+      return notice(Icons.hourglass_top_rounded, 'With your project manager',
+        'They have your submission. Nothing to do here until they decide.',
+        tint: BT.amber.withValues(alpha: 0.35));
+    }
+    if (task.canStart) {
+      // The transition nothing used to make: until a stage is started it stays
+      // 'todo', which kept it out of the PM's day view and the workload numbers.
+      // AsyncPrimaryButton: a double-tap on site can't start or submit twice.
+      return wrap(AsyncPrimaryButton('Start work', icon: Icons.play_arrow_rounded,
+        bg: BT.ink, fg: Colors.white, onTap: () => _start(context, ref)));
+    }
+    if (designGate && !_designApproved(ref)) {
+      // Not a disabled button: a button that does nothing explains nothing.
+      return notice(Icons.palette_outlined, 'Waiting on the client', _designHint(ref));
+    }
+    return wrap(
+      AsyncPrimaryButton(allDone || total == 0 ? 'Submit for approval' : 'Submit with checks open',
+        icon: Icons.check_rounded, bg: BT.ink, fg: Colors.white,
+        // With checks still open the button used to read "Mark stage complete"
+        // and submit regardless — the PM then got a submission whose own
+        // checklist said it wasn't finished. It still goes through (sometimes a
+        // check genuinely doesn't apply), but deliberately.
+        onTap: () => _submit(context, ref, openChecks: total - done)),
+      hint: allDone || total == 0
+        ? null
+        : '$done of $total checks done — finish all before final approval.');
+  }
+
+  /// Remove a photo, saying what it costs before it is gone.
+  Future<void> _deletePhoto(
+      BuildContext context, WidgetRef ref, StageBundle b, StagePhoto photo) async {
+    // A photo can be the proof that discharged a check. Deleting it leaves the
+    // check ticked with nothing behind it, so say which one rather than letting
+    // the fitter discover it afterwards.
+    final proofFor = b.checklist
+        .where((c) => c.proofUrl != null && c.proofUrl == photo.url)
+        .map((c) => c.label).toList();
+
+    final ok = await showDialog<bool>(context: context, builder: (dctx) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('Remove this photo?', style: display(18, w: FontWeight.w600)),
+      content: Text(
+        proofFor.isEmpty
+          ? 'Your project manager and the client can see this photo. '
+            'Removing it cannot be undone.'
+          : 'This photo is the proof for "${proofFor.first}". Removing it leaves '
+            'that check ticked with nothing behind it, and your project manager '
+            'will see that.',
+        style: const TextStyle(fontSize: 13.5, height: 1.35, color: BT.mut)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx, false),
+          child: const Text('Keep it', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, true),
+          child: const Text('Remove', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700))),
+      ],
+    ));
+    if (ok != true || !context.mounted) return;
+
+    try {
+      await ref.read(workshopRepoProvider).deleteStagePhoto(photo.id!);
+      ref.invalidate(stageBundleProvider(task.stageId));
+      ref.invalidate(truckPhotosProvider(task.projectId));
+      ref.invalidate(stagePhotosProvider(task.stageId));
+      if (context.mounted) {
+        Haptic.confirm();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: BT.ink, content: Text('Photo removed')));
+      }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    }
   }
 
   /// Take (or pick) a real photo, caption it, and upload it to the `builds`
@@ -380,20 +466,38 @@ class TaskDetailScreen extends ConsumerWidget {
       backgroundColor: BT.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text('Add photo', style: display(18, w: FontWeight.w600)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.memory(photo.bytes, height: 150, width: double.infinity, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(height: 150, alignment: Alignment.center,
-              color: BT.card2,
-              child: const Icon(Icons.broken_image_outlined, size: 26, color: BT.mut2))),
-        ),
-        const SizedBox(height: 12),
-        Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: TextField(controller: noteC,
-            decoration: const InputDecoration(hintText: 'Caption (optional)', border: InputBorder.none))),
-      ]),
+      // `double.maxFinite`, not `double.infinity`, and the width is set here
+      // rather than on the image.
+      //
+      // AlertDialog measures its body through an IntrinsicWidth, and
+      // RenderIntrinsicWidth asserts `input.isFinite`. An `Image.memory` with
+      // `width: double.infinity` reports an infinite intrinsic width, so the
+      // assertion fired during layout — every frame, for as long as the dialog
+      // was up. The route was pushed, so its barrier painted and dimmed the
+      // screen, but the dialog itself never laid out and never appeared: pick a
+      // photo and the app went dark and unresponsive with nothing on it. That
+      // is the "it froze when I chose a photo from the library" report.
+      //
+      // The stretch is what makes the preview fill the dialog now; the image
+      // only states its height.
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(photo.bytes, height: 150, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(height: 150, alignment: Alignment.center,
+                color: BT.card2,
+                child: const Icon(Icons.broken_image_outlined, size: 26, color: BT.mut2))),
+          ),
+          const SizedBox(height: 12),
+          Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: TextField(controller: noteC,
+              decoration: const InputDecoration(hintText: 'Caption (optional)', border: InputBorder.none))),
+        ]),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dctx, false),
           child: const Text('Cancel', style: TextStyle(color: BT.mut))),
@@ -572,29 +676,49 @@ class TaskDetailScreen extends ConsumerWidget {
 }
 
 
-/// One stage photo, tappable to open full-screen.
+/// One stage photo: tap to open it full-screen, × to remove it.
+///
+/// A photo could be added and never taken back, so a fitter who uploaded the
+/// wrong shot was stuck with it on the client's build timeline. [onDelete] is
+/// null when nobody may remove it — an approved stage's photos are part of
+/// what the PM signed off (0030).
 class _PhotoThumb extends StatelessWidget {
   final StagePhoto photo;
-  const _PhotoThumb({required this.photo});
+  final VoidCallback? onDelete;
+  const _PhotoThumb({required this.photo, this.onDelete});
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    onTap: () => openDocument(context, fileUrl: photo.url, title: photo.caption ?? 'Work photo'),
-    child: SizedBox(width: 104, child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start, children: [
-        ClipRRect(borderRadius: BorderRadius.circular(13),
-          child: Image.network(photo.url, width: 104, height: 76, fit: BoxFit.cover,
-            // A stage photo can be a dead URL (bucket cleared, bad upload). It
-            // must leave a gap, not take the screen down.
-            errorBuilder: (_, __, ___) => Container(width: 104, height: 76,
-              alignment: Alignment.center, color: BT.card2,
-              child: const Icon(Icons.broken_image_outlined, size: 20, color: BT.mut2)),
-            loadingBuilder: (_, child, p) => p == null ? child
-              : Container(width: 104, height: 76, color: BT.card2))),
-        const SizedBox(height: 4),
-        Text(photo.caption ?? 'Work photo', maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11, color: BT.mut)),
-      ])),
+  Widget build(BuildContext context) => SizedBox(width: 104, child: Column(
+    crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Stack(children: [
+        GestureDetector(
+          onTap: () => openDocument(context,
+            fileUrl: photo.url, title: photo.caption ?? 'Work photo'),
+          child: ClipRRect(borderRadius: BorderRadius.circular(13),
+            child: Image.network(photo.url, width: 104, height: 76, fit: BoxFit.cover,
+              // A stage photo can be a dead URL (bucket cleared, bad upload). It
+              // must leave a gap, not take the screen down.
+              errorBuilder: (_, __, ___) => Container(width: 104, height: 76,
+                alignment: Alignment.center, color: BT.card2,
+                child: const Icon(Icons.broken_image_outlined, size: 20, color: BT.mut2)),
+              loadingBuilder: (_, child, p) => p == null ? child
+                : Container(width: 104, height: 76, color: BT.card2))),
+        ),
+        if (onDelete != null) Positioned(top: 4, right: 4, child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onDelete,
+          // Generous tap target around a small mark — this is pressed with a
+          // work glove on.
+          child: Padding(padding: const EdgeInsets.all(4), child: Container(
+            width: 22, height: 22, alignment: Alignment.center,
+            decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+            child: const Icon(Icons.close_rounded, size: 14, color: Colors.white))),
+        )),
+      ]),
+      const SizedBox(height: 4),
+      Text(photo.caption ?? 'Work photo', maxLines: 1, overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11, color: BT.mut)),
+    ]),
   );
 }
 
@@ -650,13 +774,29 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
 
     final target = !(_optimistic ?? c.done);
 
-    // A check that asks for a photo needs one named before it can be ticked.
-    // The server refuses it either way; asking here means the fitter gets a
-    // picker instead of an error.
+    // Ticking a check is where a photo belongs.
+    //
+    // Marking the work done and photographing it are the same moment, so the
+    // camera is offered on **every** tick rather than only on the checks a PM
+    // flagged — that is what makes "Add photo" up in the Photos section mean
+    // "something extra", and it is why a check's photo lands in that list
+    // automatically: it is an ordinary stage attachment, captioned with the
+    // check it came from.
+    //
+    // Offered, not forced. Some checks have nothing to photograph — *client
+    // sign-off received*, *keys handed over* — and demanding one anyway is how
+    // a fitter learns to photograph the floor to get past the sheet. Once the
+    // list fills with pictures of the floor the PM stops opening any of them,
+    // and the checks where a photo genuinely mattered lose their reader too.
+    // So there is a Skip, except on the checks the PM marked as needing one,
+    // where the server would refuse the tick anyway.
+    //
+    // Un-ticking never asks.
     String? proof;
-    if (target && c.photoRequired) {
-      proof = await _pickProof();
-      if (proof == null) return;    // cancelled, or nothing to point at yet
+    if (target) {
+      final choice = await _pickProof(required: c.photoRequired);
+      if (choice == null) return;         // backed out — leave the check alone
+      proof = choice.id;                  // null when they chose to skip
     }
 
     setState(() { _optimistic = target; _busy = true; });
@@ -678,16 +818,29 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
   void _say(String msg) => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(backgroundColor: BT.ink, content: Text(msg)));
 
-  /// Which photo proves this check. Either one already on the stage, or a new
-  /// one taken now — the common case on a floor is "take it, then tick it".
-  Future<String?> _pickProof() async {
+  /// Which photo goes with this check: one taken now, one already on the stage,
+  /// or none.
+  ///
+  /// Returns null when the fitter backs out entirely — the check is then left
+  /// alone. A record with a null `id` means "tick it, no photo", which only the
+  /// un-required checks can offer.
+  Future<({String? id})?> _pickProof({required bool required}) async {
     final existing = widget.photos;
-    final choice = await showAppSheet<String>(context: context, builder: (sctx) => Column(
+    final choice = await showAppSheet<String>(
+      context: context,
+      // A required check cannot be ticked without a photo, so dismissing the
+      // sheet by dragging it away would silently do nothing. Dismissal is a
+      // real answer for the rest, and the Skip button is the obvious one.
+      builder: (sctx) => Column(
       mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('This check needs a photo', style: display(20, w: FontWeight.w600)),
+        Text(required ? 'This check needs a photo' : 'Add a photo?',
+          style: display(20, w: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text(widget.c.label,
+        Text(required
+            ? widget.c.label
+            : '${widget.c.label} — your project manager and the client see '
+              'these as the evidence of the work.',
           style: const TextStyle(fontSize: 13, color: BT.mut, height: 1.35)),
         const SizedBox(height: 16),
         PrimaryButton('Take a photo now', icon: Icons.photo_camera_rounded,
@@ -704,24 +857,35 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
               child: _PhotoThumb(photo: existing[i])),
           )),
         ],
+        if (!required) ...[
+          const SizedBox(height: 14),
+          SecondaryButton('Tick it without a photo', icon: Icons.check_rounded,
+            onTap: () => Navigator.pop(sctx, '__skip__')),
+        ],
         const SizedBox(height: 8),
       ]));
     if (choice == null || !mounted) return null;
+    if (choice == '__skip__') return (id: null);
 
     // An existing photo hands back its own attachment id, which is what the
     // server records against the check.
-    if (choice != '__new__') return choice;
+    if (choice != '__new__') return (id: choice);
 
     final photo = await pickPhoto(context);
+    // Backed out of the camera: fall back to the sheet's own question rather
+    // than silently ticking or silently doing nothing.
     if (photo == null || !mounted) return null;
     final bar = ScaffoldMessenger.of(context);
     bar.showSnackBar(const SnackBar(backgroundColor: BT.ink,
       duration: Duration(minutes: 1), content: Row(children: [
         SizedBox(width: 16, height: 16,
           child: CircularProgressIndicator(strokeWidth: 2, color: BT.lime)),
-        SizedBox(width: 12), Text('Uploading proof…'),
+        SizedBox(width: 12), Text('Uploading photo…'),
       ])));
     try {
+      // An ordinary stage attachment, captioned with the check it came from —
+      // which is what puts it in the Photos list automatically and tells the
+      // PM which check it belongs to without anyone having to say so.
       final id = await ref.read(workshopRepoProvider).addStagePhoto(
         widget.stageId, photo.bytes,
         filename: photo.filename, contentType: photo.contentType,
@@ -729,10 +893,12 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
       bar.clearSnackBars();
       ref.invalidate(truckPhotosProvider(widget.projectId));
       ref.invalidate(stagePhotosProvider(widget.stageId));
-      return id;
+      return (id: id);
     } catch (e) {
       bar.clearSnackBars();
       bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      // The upload failed, so there is nothing to attach. The check is left
+      // un-ticked rather than ticked with a photo that never arrived.
       return null;
     }
   }
@@ -780,13 +946,27 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
               ],
             ]),
             // Who ticked it, and when. The whole reason 0029 exists.
-            if (done) ...[
+            //
+            // Driven by the **server's** `c.done`, not the optimistic flag. The
+            // tick flips instantly so a slow connection does not feel dead, but
+            // the name and date only exist once the write has landed — reading
+            // them off the optimistic state meant that the moment you ticked
+            // anything it said "Ticked before this was recorded", which is
+            // nonsense for a check you just ticked, and alarming nonsense at
+            // that. While the write is in flight the row says so instead.
+            if (_busy && (_optimistic ?? false) && !c.done) ...[
+              const SizedBox(height: 3),
+              const Text('Saving…',
+                style: TextStyle(fontSize: 11.5, color: BT.mut2)),
+            ] else if (c.done) ...[
               const SizedBox(height: 3),
               Row(children: [
                 Flexible(child: Text(
                   c.doneByName == null
+                    // Ticked before 0029 existed: the old write stored nothing,
+                    // so there is no name to recover and none is invented.
                     ? (c.doneAt == null
-                        ? 'Ticked before this was recorded'
+                        ? 'Ticked earlier — before the app recorded who'
                         : 'Ticked ${_fmt.format(c.doneAt!)}')
                     : '${c.doneByName}'
                       '${c.doneAt == null ? '' : ' · ${_fmt.format(c.doneAt!)}'}',
