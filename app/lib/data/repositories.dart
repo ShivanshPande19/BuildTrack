@@ -534,8 +534,14 @@ class ProjectsRepo {
   Future<StageBundle> stageBundle(String stageId) async {
     // The stage first, for its project — the BOM is per build, and the
     // assignee's name needs a second hop either way.
+    // `profiles` must be named by its foreign key: `stages` points at it twice
+    // (assignee_id and assigned_by), so a bare `profiles(...)` embed is
+    // ambiguous and PostgREST refuses the whole query with PGRST201. This is
+    // the same trap that silently broke PM Approvals (§3) — the embed has to
+    // say which relationship it means.
     final srow = await sb.from('stages')
-        .select('assignee_id,template_stage_id,project_id,profiles(full_name)')
+        .select('assignee_id,template_stage_id,project_id,'
+                'profiles!stages_assignee_id_fkey(full_name)')
         .eq('id', stageId).maybeSingle();
 
     final results = await Future.wait([

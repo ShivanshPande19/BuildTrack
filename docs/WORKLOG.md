@@ -90,8 +90,10 @@ stock.
 ⚠️ **`0029` is unverified locally** — this machine has no Docker and no local Postgres, so
 `supabase/tests/run.sh` could not run. CI's Postgres job is the gate.
 
-⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing — ticking a check fails
-outright without `0029`. Still open: template management (§3 #2), the PO read scope (§3 #16), and
+⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing. Without `0029` the
+**whole stage screen fails to load**, not just the tick: `stageBundle` selects `done_at` /
+`photo_required` and embeds `done_by` and the proof attachment, so PostgREST refuses the query.
+The app and these migrations ship together. Still open: template management (§3 #2), the PO read scope (§3 #16), and
 both storage buckets are public-read.
 
 ---

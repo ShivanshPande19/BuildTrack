@@ -141,8 +141,22 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     );
   }
 
+  /// Shown when there is no camera, or permission was refused — which is also
+  /// every run on a simulator.
+  ///
+  /// `mobile_scanner` returns this builder's widget straight into whatever box
+  /// the scanner itself got, and that box is not always the full screen. This
+  /// content is 243px tall and was being handed 55, so it overflowed by 188 and
+  /// the fitter saw a striped bar instead of the manual-entry button — on the
+  /// one screen whose whole job is to be the escape hatch when the label will
+  /// not scan. It now centres when there is room and scrolls when there is not,
+  /// so it cannot overflow whatever box it is given.
   Widget _cameraUnavailable(Object error) => Container(
     color: BT.bg,
+    child: LayoutBuilder(builder: (context, box) => SingleChildScrollView(
+      child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: box.maxHeight.isFinite ? box.maxHeight : 0),
+      child: Padding(
     padding: const EdgeInsets.all(28),
     child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
       Container(width: 58, height: 58, alignment: Alignment.center,
@@ -174,6 +188,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         child: const Text('Go back', style: TextStyle(color: BT.mut, fontSize: 13)),
       ),
     ]),
+      ),
+      ),
+    )),
   );
 
   Widget _circleBtn(IconData icon, VoidCallback onTap) => GestureDetector(
