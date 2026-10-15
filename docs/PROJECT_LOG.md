@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **15 Oct 2026** (the Workshop role aligned: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
+Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simulator — which found the photo-picker freeze (§3 #63) and four more: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
 
 ---
 
@@ -322,6 +322,38 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
 62. ✅ ~~**Workshop could not see the record it was writing.**~~ `v_truck_components` has carried
     every part, serial, stage and fitter since `0023`, and `TruckRecordScreen` lived only inside
     `BuildScreen`, which Admin and the PM can open and Workshop cannot. The stage screen now opens it.
+
+### Found driving the app on a simulator, 15 Oct 2026
+63. ✅ ~~**Picking a photo from the gallery froze the app.**~~ `AlertDialog` measures its body
+    through an `IntrinsicWidth`, and `RenderIntrinsicWidth` asserts `input.isFinite`. The "Add photo"
+    dialog's preview was `Image.memory(…, width: double.infinity)`, which reports an **infinite**
+    intrinsic width — so the assertion fired during layout, every frame, for as long as the dialog
+    was up. The route was pushed, so its barrier painted and dimmed the screen, but the dialog itself
+    never laid out and never appeared: choose a photo and the app went dark and unresponsive with
+    nothing on it. Only reachable by actually picking a photo, which is why it survived the §3 #44
+    pass that fixed the *decode* half of the same screen. The content is a `SizedBox(width:
+    double.maxFinite)` with a stretched column now, and the image states only its height.
+64. ✅ ~~**A transient network error was an unhandled exception.**~~ Nothing set
+    `PlatformDispatcher.instance.onError`, and `supabase_flutter` refreshes the access token on a
+    timer — on a bad connection that throws `AuthRetryableFetchException` straight into the zone. In
+    release that is log noise; in a **debug** build it is reported as unhandled, which pauses the
+    isolate, so the Dart thread stops and the app looks frozen wherever it happened to be. A
+    workshop has bad signal by definition. Transient network errors are now swallowed deliberately
+    and everything else is still passed on.
+65. ✅ ~~**An upload had no timeout.**~~ `uploadToBuilds` awaited Supabase Storage forever, behind an
+    "Uploading photo…" snackbar with a one-minute duration — which reads as the app having frozen
+    rather than as a bad connection. 45 seconds, then a message that says nothing was saved.
+66. ✅ ~~**The camera-unavailable fallback overflowed by 188px.**~~ `mobile_scanner` hands the
+    `errorBuilder`'s widget straight into whatever box the scanner got, and that is not always the
+    full screen — it was 55px tall against 243px of content. So on a simulator, and on any phone
+    where camera permission is refused, the fitter got a striped overflow bar instead of **Enter
+    serial manually** — on the one screen whose whole job is to be the escape hatch when a label
+    will not scan.
+67. ✅ ~~**`PGRST201` on every Workshop stage screen.**~~ Introduced in this same pass: parallelising
+    `stageBundle` added `profiles(full_name)` to the stages select to save a round trip, but `stages`
+    points at `profiles` **twice** (`assignee_id`, `assigned_by`), so the embed is ambiguous and
+    PostgREST refuses the whole query. The same trap that had silently broken PM Approvals since the
+    beginning (#not-numbered, see §6 13 Oct). The embed names its relationship now.
 
 ---
 

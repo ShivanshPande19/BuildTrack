@@ -86,8 +86,33 @@ Also fixed on the way: a retry button I had just written pointed at the wrong pr
 watches a build-keyed family now), and Store logging a part did not invalidate the fitter's view of
 stock.
 
+### Then it was actually run (15 Oct, same branch)
+
+`0028` and `0029` were applied to the live project and the app was driven on an iPhone 15 Pro
+simulator. Five more defects, none of which any test or code read had surfaced — the first four
+because nothing had ever *picked a photo*, and the last because it was introduced by this pass:
+
+- **Choosing a photo from the gallery froze the app** (§3 #63). `AlertDialog` measures its body
+  through an `IntrinsicWidth`, which asserts `input.isFinite`; the preview was
+  `Image.memory(…, width: double.infinity)`, an infinite intrinsic width. The assertion fired every
+  frame, so the dialog's route pushed and dimmed the screen but the dialog never laid out. Dark,
+  unresponsive, nothing on it. The log said it plainly once the app was run with `flutter run`:
+  `proxy_box.dart:665 'input.isFinite': is not true`, error-causing widget `AlertDialog`.
+- **Transient network errors were unhandled exceptions** (§3 #64) — which in debug *pauses the
+  isolate*, i.e. actually freezes the app, and Supabase's token refresh throws one on every bad
+  connection.
+- **Uploads had no timeout** (§3 #65), behind a one-minute "Uploading photo…" snackbar.
+- **The camera-unavailable fallback overflowed by 188px** (§3 #66) — the manual-serial escape hatch
+  was off-screen on any device without a working camera.
+- **`PGRST201` on every stage screen** (§3 #67), introduced here: `profiles(full_name)` added to the
+  stages select is ambiguous, because `stages` points at `profiles` twice. The same trap documented
+  two passes ago for PM Approvals, walked into while optimising a round trip away.
+
+All five fixed and **verified on the device**: Photo → gallery → pick → preview dialog → Upload →
+*Photo uploaded* → the new **Photos · 1** section renders the thumbnail.
+
 **Verified:** `flutter analyze` clean, `flutter test` **169/169** (up from 137, 32 new).
-⚠️ **`0029` is unverified locally** — this machine has no Docker and no local Postgres, so
+⚠️ **`0029` was unverified locally when first written** — this machine has no Docker and no local Postgres, so
 `supabase/tests/run.sh` could not run. CI's Postgres job is the gate.
 
 ⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing. Without `0029` the

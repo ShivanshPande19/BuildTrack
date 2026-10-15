@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +25,36 @@ Future<void> main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
   await initSupabase();
+
+  // Nothing was catching async errors that escape a callback, and one of them
+  // escapes routinely: supabase_flutter refreshes the access token on a timer,
+  // and on a bad connection that throws AuthRetryableFetchException straight
+  // into the zone. A workshop has bad signal by definition.
+  //
+  // In release that is only noise in the log. In a debug build it is reported
+  // as an **unhandled** exception, which pauses the isolate — the Dart thread
+  // stops, the UI stops painting, and the app looks frozen with whatever route
+  // was on screen stuck there. That is a genuine "the app froze" report that
+  // has nothing to do with the screen the person was on.
+  //
+  // Returning true means "handled": the error is swallowed deliberately,
+  // because there is nothing the person can do about a refresh that will be
+  // retried anyway, and the screens already say when a read fails. Anything we
+  // do not recognise is passed on so it still shows up in development.
+  PlatformDispatcher.instance.onError = (error, stack) {
+    final text = error.toString();
+    final isTransientNetwork = error is SocketException
+        || error is TimeoutException
+        || text.contains('AuthRetryableFetchException')
+        || text.contains('Failed host lookup')
+        || text.contains('ClientException');
+    if (isTransientNetwork) {
+      debugPrint('BuildTrack: ignoring transient network error — $error');
+      return true;
+    }
+    return false;
+  };
+
   runApp(const ProviderScope(child: BuildTrackApp()));
 }
 

@@ -380,20 +380,38 @@ class TaskDetailScreen extends ConsumerWidget {
       backgroundColor: BT.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text('Add photo', style: display(18, w: FontWeight.w600)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Image.memory(photo.bytes, height: 150, width: double.infinity, fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Container(height: 150, alignment: Alignment.center,
-              color: BT.card2,
-              child: const Icon(Icons.broken_image_outlined, size: 26, color: BT.mut2))),
-        ),
-        const SizedBox(height: 12),
-        Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: TextField(controller: noteC,
-            decoration: const InputDecoration(hintText: 'Caption (optional)', border: InputBorder.none))),
-      ]),
+      // `double.maxFinite`, not `double.infinity`, and the width is set here
+      // rather than on the image.
+      //
+      // AlertDialog measures its body through an IntrinsicWidth, and
+      // RenderIntrinsicWidth asserts `input.isFinite`. An `Image.memory` with
+      // `width: double.infinity` reports an infinite intrinsic width, so the
+      // assertion fired during layout — every frame, for as long as the dialog
+      // was up. The route was pushed, so its barrier painted and dimmed the
+      // screen, but the dialog itself never laid out and never appeared: pick a
+      // photo and the app went dark and unresponsive with nothing on it. That
+      // is the "it froze when I chose a photo from the library" report.
+      //
+      // The stretch is what makes the preview fill the dialog now; the image
+      // only states its height.
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: Image.memory(photo.bytes, height: 150, fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => Container(height: 150, alignment: Alignment.center,
+                color: BT.card2,
+                child: const Icon(Icons.broken_image_outlined, size: 26, color: BT.mut2))),
+          ),
+          const SizedBox(height: 12),
+          Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: TextField(controller: noteC,
+              decoration: const InputDecoration(hintText: 'Caption (optional)', border: InputBorder.none))),
+        ]),
+      ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dctx, false),
           child: const Text('Cancel', style: TextStyle(color: BT.mut))),

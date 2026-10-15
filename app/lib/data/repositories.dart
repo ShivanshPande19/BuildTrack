@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -151,13 +152,28 @@ String friendlyError(Object e) {
 /// Shared by workshop site photos (`stages/<stageId>/…`) and client ticket
 /// photos (`tickets/<ticketId>/…`) — the storage policy in 0011 only lets a
 /// client write under `tickets/`.
+/// How long an upload may take before we give up and say so.
+///
+/// Generous, because a 1600px photo over a weak site connection is genuinely
+/// slow — but finite, because the alternative is what shipped: no timeout at
+/// all, so a request that never completes left the caller awaiting forever
+/// behind a "Uploading photo…" snackbar, which reads as the app having frozen
+/// rather than as a bad connection.
+const uploadTimeout = Duration(seconds: 45);
+
 Future<String> uploadToBuilds(Uint8List bytes, {
   required String filename, required String contentType, required String folder,
 }) async {
   final safe = filename.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
   final path = '$folder/${DateTime.now().millisecondsSinceEpoch}_$safe';
-  await sb.storage.from('builds').uploadBinary(
-    path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: true));
+  try {
+    await sb.storage.from('builds').uploadBinary(
+      path, bytes, fileOptions: FileOptions(contentType: contentType, upsert: true))
+      .timeout(uploadTimeout);
+  } on TimeoutException {
+    throw Exception('The upload timed out. Check your connection and try again — '
+                    'nothing was saved.');
+  }
   return sb.storage.from('builds').getPublicUrl(path);
 }
 
