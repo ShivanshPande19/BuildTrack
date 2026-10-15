@@ -121,6 +121,30 @@ reads the server now and says *Saving…* in between; the genuinely-old case was
 Verified on the device: the new order, delete (confirm → *Photo removed* → empty state), and a tick
 showing *Vikas · 15 Oct*.
 
+### …and the photo found its home (same day)
+
+> *"checklist ko tick krne ke time pe … usme photo upload for the task to mark it complete hona
+> chahiye ig, and add photos extra photos add krne ke liye use hojayenge, and even jo checklist m
+> photo upload hogi usko bhi photos m show krdenge"*
+
+Half of that already worked and was worth saying so: a check's photo has always been an ordinary
+stage attachment, so it already appeared in the Photos list, captioned with the check it came from,
+with a **Proof** link on the row. What did not work was the *framing* — a photo was only asked for
+on the checks a PM had flagged, so ticking an ordinary check did nothing, and the camera also lived
+in a separate *Add photo* action. Three ways to end up with a picture, none of them obviously the
+main one.
+
+The disagreement was only about **forcing** it. Some checks have nothing to photograph — *client
+sign-off received*, *keys handed over* — and demanding one anyway is how a fitter learns to
+photograph the floor to get past the sheet; once the list fills with pictures of the floor, the
+checks where a photo genuinely mattered lose their reader too. So: **offered on every tick, forced
+only where the PM said so.** Ticking any check opens the sheet — *Take a photo now*, or one already
+on the stage, or **Tick it without a photo** — and that last option is absent on a `photo_required`
+check, where the server would refuse the tick regardless.
+
+Verified end to end on the device: tick → sheet → gallery → the check reads *Vikas · 15 Oct ·
+Proof*, and the photo is in **Photos · 1** captioned *"Base frame weld…"*.
+
 ### Then it was actually run (15 Oct, same branch)
 
 `0028` and `0029` were applied to the live project and the app was driven on an iPhone 15 Pro

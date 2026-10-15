@@ -377,6 +377,17 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     *Saving…* while the write is in flight. The genuinely-old case was reworded too: *"Ticked
     earlier — before the app recorded who"*.
 
+71. ✅ ~~**The photo had no natural home.**~~ A photo was only ever asked for on the checks a PM had
+    flagged, so ticking an ordinary check did nothing and the camera lived in a separate *Add photo*
+    action — three different ways to end up with a picture, none of them obviously the main one.
+    Marking the work done and photographing it are the **same moment**, so the camera is now offered
+    on **every** tick, which makes *Add photo* mean "something extra" and puts a check's photo in the
+    Photos list automatically (it is an ordinary stage attachment, captioned with the check it came
+    from, so the PM can see which check it belongs to). Offered, not forced: there is a **Tick it
+    without a photo**, except on the checks the PM marked as needing one, where the server refuses
+    the tick anyway. Forcing one everywhere is how a fitter learns to photograph the floor to get
+    past the sheet — and once the list fills with pictures of the floor, the checks where a photo
+    genuinely mattered lose their reader too.
 
 ---
 

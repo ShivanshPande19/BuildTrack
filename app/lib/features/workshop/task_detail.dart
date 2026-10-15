@@ -774,13 +774,29 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
 
     final target = !(_optimistic ?? c.done);
 
-    // A check that asks for a photo needs one named before it can be ticked.
-    // The server refuses it either way; asking here means the fitter gets a
-    // picker instead of an error.
+    // Ticking a check is where a photo belongs.
+    //
+    // Marking the work done and photographing it are the same moment, so the
+    // camera is offered on **every** tick rather than only on the checks a PM
+    // flagged — that is what makes "Add photo" up in the Photos section mean
+    // "something extra", and it is why a check's photo lands in that list
+    // automatically: it is an ordinary stage attachment, captioned with the
+    // check it came from.
+    //
+    // Offered, not forced. Some checks have nothing to photograph — *client
+    // sign-off received*, *keys handed over* — and demanding one anyway is how
+    // a fitter learns to photograph the floor to get past the sheet. Once the
+    // list fills with pictures of the floor the PM stops opening any of them,
+    // and the checks where a photo genuinely mattered lose their reader too.
+    // So there is a Skip, except on the checks the PM marked as needing one,
+    // where the server would refuse the tick anyway.
+    //
+    // Un-ticking never asks.
     String? proof;
-    if (target && c.photoRequired) {
-      proof = await _pickProof();
-      if (proof == null) return;    // cancelled, or nothing to point at yet
+    if (target) {
+      final choice = await _pickProof(required: c.photoRequired);
+      if (choice == null) return;         // backed out — leave the check alone
+      proof = choice.id;                  // null when they chose to skip
     }
 
     setState(() { _optimistic = target; _busy = true; });
@@ -802,16 +818,29 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
   void _say(String msg) => ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(backgroundColor: BT.ink, content: Text(msg)));
 
-  /// Which photo proves this check. Either one already on the stage, or a new
-  /// one taken now — the common case on a floor is "take it, then tick it".
-  Future<String?> _pickProof() async {
+  /// Which photo goes with this check: one taken now, one already on the stage,
+  /// or none.
+  ///
+  /// Returns null when the fitter backs out entirely — the check is then left
+  /// alone. A record with a null `id` means "tick it, no photo", which only the
+  /// un-required checks can offer.
+  Future<({String? id})?> _pickProof({required bool required}) async {
     final existing = widget.photos;
-    final choice = await showAppSheet<String>(context: context, builder: (sctx) => Column(
+    final choice = await showAppSheet<String>(
+      context: context,
+      // A required check cannot be ticked without a photo, so dismissing the
+      // sheet by dragging it away would silently do nothing. Dismissal is a
+      // real answer for the rest, and the Skip button is the obvious one.
+      builder: (sctx) => Column(
       mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('This check needs a photo', style: display(20, w: FontWeight.w600)),
+        Text(required ? 'This check needs a photo' : 'Add a photo?',
+          style: display(20, w: FontWeight.w600)),
         const SizedBox(height: 4),
-        Text(widget.c.label,
+        Text(required
+            ? widget.c.label
+            : '${widget.c.label} — your project manager and the client see '
+              'these as the evidence of the work.',
           style: const TextStyle(fontSize: 13, color: BT.mut, height: 1.35)),
         const SizedBox(height: 16),
         PrimaryButton('Take a photo now', icon: Icons.photo_camera_rounded,
@@ -828,24 +857,35 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
               child: _PhotoThumb(photo: existing[i])),
           )),
         ],
+        if (!required) ...[
+          const SizedBox(height: 14),
+          SecondaryButton('Tick it without a photo', icon: Icons.check_rounded,
+            onTap: () => Navigator.pop(sctx, '__skip__')),
+        ],
         const SizedBox(height: 8),
       ]));
     if (choice == null || !mounted) return null;
+    if (choice == '__skip__') return (id: null);
 
     // An existing photo hands back its own attachment id, which is what the
     // server records against the check.
-    if (choice != '__new__') return choice;
+    if (choice != '__new__') return (id: choice);
 
     final photo = await pickPhoto(context);
+    // Backed out of the camera: fall back to the sheet's own question rather
+    // than silently ticking or silently doing nothing.
     if (photo == null || !mounted) return null;
     final bar = ScaffoldMessenger.of(context);
     bar.showSnackBar(const SnackBar(backgroundColor: BT.ink,
       duration: Duration(minutes: 1), content: Row(children: [
         SizedBox(width: 16, height: 16,
           child: CircularProgressIndicator(strokeWidth: 2, color: BT.lime)),
-        SizedBox(width: 12), Text('Uploading proof…'),
+        SizedBox(width: 12), Text('Uploading photo…'),
       ])));
     try {
+      // An ordinary stage attachment, captioned with the check it came from —
+      // which is what puts it in the Photos list automatically and tells the
+      // PM which check it belongs to without anyone having to say so.
       final id = await ref.read(workshopRepoProvider).addStagePhoto(
         widget.stageId, photo.bytes,
         filename: photo.filename, contentType: photo.contentType,
@@ -853,10 +893,12 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
       bar.clearSnackBars();
       ref.invalidate(truckPhotosProvider(widget.projectId));
       ref.invalidate(stagePhotosProvider(widget.stageId));
-      return id;
+      return (id: id);
     } catch (e) {
       bar.clearSnackBars();
       bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      // The upload failed, so there is nothing to attach. The check is left
+      // un-ticked rather than ticked with a photo that never arrived.
       return null;
     }
   }
