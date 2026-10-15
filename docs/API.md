@@ -43,16 +43,18 @@ Errors: 401 unauthorized, 403 `forbidden: admin only`, 400 validation / auth err
 ### Builds & stages
 | ✅ | Function | Who | Effect |
 |---|---|---|---|
-| ✅ | `fn_onboard_project(p_project)` | admin | Requires a template with stages **and a PM**. Creates stages (with discipline) and checklists from the template, backward-schedules them, generates BOM requirements, and notifies the PM. |
+| ✅ | `fn_onboard_project(p_project)` | admin | Requires a template with stages **and a PM**. Creates stages (with discipline) and checklists from the template — carrying each check's `photo_required` since `0029` — backward-schedules them, generates BOM requirements, and notifies the PM. Every step is guarded, so re-onboarding cannot duplicate. |
 | ✅ | `fn_assign_pm(p_project, p_pm)` | admin | Target must be an active `pm`. Records who and when, notifies the new and old PM. **`0026`:** also moves pending stage approvals and unsigned POs on that build to the new PM, and tells them what is waiting. |
 | ✅ | `fn_assign_stage(p_stage, p_assignee, p_start?, p_due?, p_override=false)` | admin · build's PM | Assignee must be an active workshop / design / store / service member. A discipline mismatch needs `p_override`. Sets `assigned_*` and notifies the new and old assignee. `p_assignee = null` unassigns. |
 | ✅ | `fn_start_stage(p_stage)` | admin · assignee · build's PM | todo / rework → in_progress, sets `actual_start`, notifies the PM. Reachable by **every** discipline since `0026` — Design and Service have a stage screen too. |
 | ✅ | `fn_submit_stage(p_stage) → uuid` | admin · assignee | One pending `stage_approvals` row addressed to the build's PM. Refuses duplicates and PM-less builds. **`0028`:** a **design**-discipline stage is also refused until an approved design exists on that build — a stage whose checklist says *"layout approved by client"* cannot be closed without the client having approved one. Other disciplines are untouched. |
 | ✅ | `fn_decide_stage(p_approval, p_approve, p_note?)` | admin · build's PM | **Approve:** stage done, **next todo stage auto-starts**, and the submitter, next assignee and client are notified. **Reject:** stage goes to `rework` and the note reaches the assignee. |
-| ✅ | `fn_install_component(p_component, p_stage)` | admin · stage assignee · store | Part must be `in_stock`. Links it to the truck and stage (`installed`). This is the **only** path that marks a part installed: Store's intake screen only *reserves* one for a build (`0026`). |
+| ✅ | `fn_install_component(p_component, p_stage)` | admin · stage assignee · store | Part must be `in_stock`. Links it to the truck and stage (`installed`). This is the **only** path that marks a part installed: Store's intake screen only *reserves* one for a build (`0026`). **`0029`:** refuses a stage already **approved** (the evidence of a signed-off stage must not change afterwards — `fn_start_stage` and `fn_submit_stage` have refused one since `0026`), and refuses a part **earmarked for a different build** rather than overwriting `installed_in_project_id` silently. |
 | ✅ | `fn_mark_delivered(p_project, p_date?, p_force=false)` | admin · build's PM | Refuses while stages are open unless `p_force`. Sets the delivery date and status `delivered`, and notifies the client and every service member. |
 | ✅ | `fn_recompute_schedule(p_project, p_rebaseline_assigned=false)` | *no check* ⚠️ | Backward schedule + order-by dates, then refreshes the build's status (`0026`). `true` is a full re-plan: it re-baselines the assigned stage dates **and** moves each still-pending requirement's `needed_by_date` onto the new plan, so the order-by engine never alerts against a schedule that is no longer live. |
 | ✅ | `fn_refresh_all_statuses() → int` | *no check* ⚠️ | Recomputes every build's status. Called when the fleet, PM and Command Center screens load. |
+| ✅ | `fn_tick_check(p_item, p_done, p_proof?)` | admin · stage assignee · build's PM | **`0029`. The only way `done` moves on a checklist item** — a direct UPDATE is refused by `trg_guard_checklist`, which is what leaves the record no hole. Writes `done_by` / `done_at` (cleared again on un-tick: a check that is not done was not done by anybody) and audits as `tick_check` / `untick_check`. Refuses a stage already **approved**, for everyone but an admin. A check marked `photo_required` needs `p_proof` — an attachment **on that stage**, checked, since otherwise any attachment id would satisfy it — and the row keeps which photo discharged it. |
+| | `fn_check_rpc_begin()` | internal · revoked | Marks the transaction a sanctioned checklist write, transaction-local. Same pattern as `fn_stage_rpc_begin` (`0026`). |
 | | `fn_recompute_progress` · `fn_recompute_status` · `fn_recompute_current_stage` | internal | Called by triggers and the RPCs above. |
 
 ### Design
@@ -122,7 +124,6 @@ stay granted — the app calls both directly. See `PROJECT_LOG.md` §3 #13.
 | `projects` insert (then `fn_onboard_project`) | Admin → Onboard project |
 | `projects.target_delivery_date` update (then `fn_recompute_schedule(…, true)`) | PM → build → Delivery date; Log delay with push |
 | `procurement_requirements` insert / update / delete | PM → build → Materials |
-| `delay_logs` insert | PM → build → Log a delay |
 | `documents` insert (after upload to `builds/docs/`) | Build → Overview → Add document |
 | `workflow_templates`, `template_stages`, `template_stage_items`, `template_stage_checks` inserts | Onboard → Template "New" |
 | `item_catalog` insert | inline "New item" (New PO, Materials, Create template, and Store — `0026` added `store` to the policy) |
@@ -130,8 +131,8 @@ stay granted — the app calls both directly. See `PROJECT_LOG.md` §3 #13.
 | `company_settings` update | Admin → Team → Company details |
 | `purchase_orders` update to dispatched + `expected_date` | Procurement → Mark dispatched |
 | `component_instances` insert | Store → Log component |
-| `checklist_items.done` update | Workshop / Design / Service → stage detail (the assignee may **only** tick) |
-| `checklist_items` insert / `label` update / delete | PM · admin → stage detail → **Edit checks** (`trg_guard_checklist`, `0028`) |
+| `checklist_items` insert / `label` + `photo_required` update / delete | PM · admin → stage detail → **Edit checks** (`trg_guard_checklist`, `0028`/`0029`). Locked once the stage is approved. |
+| `delay_logs` insert | PM · admin → build → Log a delay · **the stage's own assignee → Report a hold-up** (`0029`) |
 | `attachments` insert | Workshop stage photo; client ticket photo |
 | `tickets` insert | Client → Raise request |
 | `design_artifacts` update (status) | Design → Submit for approval (the insert goes through `fn_create_design`) |

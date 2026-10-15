@@ -53,23 +53,17 @@ class MyStagesSection extends ConsumerWidget {
           onRetry: () => ref.invalidate(myTasksProvider)),
       ),
       data: (list) {
-        // A stage the PM has already approved is history, not work.
-        final open = list.where((t) => t.status != 'done').toList();
+        // A stage the PM has already approved is history, not work — and so is
+        // one on a truck that has already been delivered (fn_mark_delivered
+        // with force leaves open stages open, on purpose).
+        final open = list.where((t) => !t.isClosed).toList();
         // Capped: a designer carrying stages on eight builds needs the ones
         // that are late or sent back, not all eight, on a screen that is a
-        // summary of their work. Sorted so the cap keeps the right ones —
-        // rework first (someone is waiting on a fix), then overdue, then the
-        // soonest due.
-        final sorted = [...open]..sort((a, b) {
-          int rank(WorkshopTask t) => t.status == 'rework' ? 0 : (t.isOverdue ? 1 : 2);
-          final r = rank(a).compareTo(rank(b));
-          if (r != 0) return r;
-          final ad = a.assignedDue, bd = b.assignedDue;
-          if (ad == null && bd == null) return a.projectCode.compareTo(b.projectCode);
-          if (ad == null) return 1;
-          if (bd == null) return -1;
-          return ad.compareTo(bd);
-        });
+        // summary of their work. [WorkshopTask.compare] is the one ordering
+        // every list of stages uses — rework first (someone is waiting on a
+        // fix), then overdue, then due today, then the soonest due, undated
+        // last.
+        final sorted = [...open]..sort(WorkshopTask.compare);
 
         return CappedSection(
           label: label,

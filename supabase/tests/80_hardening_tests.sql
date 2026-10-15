@@ -128,14 +128,14 @@ select t_assert((select count(*) from stage_approvals
                   where stage_id='7c000000-0000-0000-0000-0000000000b2' and status='pending') = 1,
                 'H3 Submit for approval still works');
 
--- the checklist is still the assignee's to tick
+-- the checklist is still the assignee's to tick — through fn_tick_check since
+-- 0029, which is what records who ticked it and when
 reset role; set test.uid = '';
-insert into checklist_items (stage_id, label) values
-  ('7c000000-0000-0000-0000-0000000000b2','Weld the frame');
+insert into checklist_items (id, stage_id, label) values
+  ('7c000000-0000-0000-0000-0000000000d1','7c000000-0000-0000-0000-0000000000b2','Weld the frame');
 set role authenticated;
 set test.uid = 'd0000000-0000-0000-0000-000000000001';
-update checklist_items set done = true
- where stage_id = '7c000000-0000-0000-0000-0000000000b2';
+select public.fn_tick_check('7c000000-0000-0000-0000-0000000000d1', true);
 select t_assert((select done from checklist_items
                   where stage_id='7c000000-0000-0000-0000-0000000000b2') is true,
                 'H3 the assignee can still tick their checklist');

@@ -11,6 +11,91 @@ verified through CI, not locally).
 
 ---
 
+## 15 Oct 2026: The Workshop role aligned, and a checklist that is evidence ✅ (migration `0029`)
+
+Branch `feat/workshop-checklist-evidence`. Same method as the Design pass: read one role end to end
+— its screens, the RPCs behind them, and the RLS under those — rather than looking for bugs.
+
+**The question that started it.** *"Does this checklist just tick with no proof? And the parts that
+get installed — do they show up anywhere?"*
+
+The second half had a good answer. `v_truck_components` (`0023`) is a proper digital twin: every
+part's item and model, serial, vendor, the stage it went into, **who fitted it**, install date,
+warranty state and bill. The problem was only that **Workshop could not reach it** — `TruckRecordScreen`
+lives inside `BuildScreen`, which Admin and the PM open and Workshop has no tab for. The person
+writing the record could not read it. One link on the stage screen.
+
+The first half had no good answer. The table was `(id, stage_id, label, done)` and the write was
+`update checklist_items set done = …`. Nothing recorded who or when, there was no column to hang
+proof on, `fn_audit` was never called, and the policy allowed the **PM** to tick too — so a PM could
+tick the checks and then approve their own evidence. A check on an approved stage could still be
+un-ticked. Meanwhile `fn_install_component` on the same stage *was* audited.
+
+Asked which of three options to take — record-only, record + freeze, or per-check proof — the answer
+was **both of the last two**.
+
+### `0029`
+
+- `checklist_items` gains `done_by`, `done_at`, `photo_required`, `proof_attachment_id`
+  (`ON DELETE SET NULL`: deleting a photo must not delete the check, but it must stop the check
+  claiming a photo that is gone). Rows ticked before this keep nulls — the old write stored nothing,
+  so there is no name to recover, and the row reads *"ticked before this was recorded"* rather than
+  inventing an actor.
+- **`fn_tick_check(p_item, p_done, p_proof)`** is the only way `done` moves. It checks the caller,
+  refuses an approved stage, enforces the photo rule, verifies the photo is on *this* stage (without
+  that, any attachment id in the system would satisfy it), writes the record, and audits. A direct
+  write to `done`, `done_by`, `done_at` or the proof is refused by `trg_guard_checklist` — the
+  sanctioned-transaction pattern `0026` used for `trg_guard_stages`, so the RPC is not merely the
+  polite path.
+- **The freeze.** An approved stage's checklist is closed to everyone but an admin — including to
+  the PM's rename/add/remove, which `0028` had left open to them.
+- **`photo_required` travels.** `template_stage_checks` carries it and `fn_onboard_project` copies it
+  onto every build; the PM can also set it per stage, from a camera toggle beside the label.
+- `fn_install_component` now refuses an **approved** stage (`fn_start_stage` and `fn_submit_stage`
+  have since `0026`; this did not, and the install screen offered approved stages) and refuses a
+  part **reserved for another build** instead of overwriting the earmark silently.
+- `delay_logs` write narrowed from `{admin,pm,workshop}` by role to the stage's **own assignee**,
+  their PM, and an admin.
+
+`tests/83_checklist_evidence_tests.sql`: 31 assertions. Two existing tests changed deliberately —
+`80` and `82` both ticked a check with a direct `update`, which is now exactly what is refused.
+
+### The app, nine more defects (§3 #50–#62)
+
+The one that would have shown in a demo: **every stage due today wore a red "Overdue" pill.**
+`assigned_due` is a `date`, so it parses to midnight, and `isBefore(DateTime.now())` is true from
+00:01. This was the **third** copy of the trap — `AssignedBuild.isOverdue` had it, and
+`ComponentRow.warrantyActive` was a **fourth**, so a part whose warranty ended today read *Expired*
+in Workshop's Parts tab, Store's Parts list and the component record. `StageTick` and
+`ScheduleEntry` were already correct, which is worse than all four being wrong: the fitter and their
+PM could look at the same stage and disagree. There is now a test asserting the definitions agree.
+
+The rest: a **delivered** truck still offered *Start work* (`fn_mark_delivered(force)` leaves stages
+open on purpose, and `myTasks()` never read the build's status); **"My Week" had no dates in it** and
+filled with finished stages, with cards that did nothing when tapped; the task list was ordered by
+`ord`, a stage's position *inside its own build*, so two trucks interleaved and an overdue stage
+could sort last; all three tabs were eager and unbounded; **reserved parts were drawn as fitted**;
+the stage's **BOM** was nowhere and the install list was every serialised part in the building, flat
+and alphabetical, with the earmark not even shown; the stage's **photos and delays were fetched on
+every open and never rendered** — the client saw the photos, the fitter who took them did not; the
+fitter had **no way to report a hold-up** though the schema has allowed it since `0009`; and the
+in-app Roles screen told the user Workshop *cannot* see PO rates, which is false
+(`purchase_orders_read` is `is_staff()`).
+
+Also fixed on the way: a retry button I had just written pointed at the wrong provider (the screen
+watches a build-keyed family now), and Store logging a part did not invalidate the fitter's view of
+stock.
+
+**Verified:** `flutter analyze` clean, `flutter test` **169/169** (up from 137, 32 new).
+⚠️ **`0029` is unverified locally** — this machine has no Docker and no local Postgres, so
+`supabase/tests/run.sh` could not run. CI's Postgres job is the gate.
+
+⏭️ **Next:** apply `0028` **and** `0029` to the live project before demoing — ticking a check fails
+outright without `0029`. Still open: template management (§3 #2), the PO read scope (§3 #16), and
+both storage buckets are public-read.
+
+---
+
 ## 14 Oct 2026: Demo walk + the Design role aligned ✅ (migrations `0027`–`0028`)
 
 Branch `feat/design-stage-alignment`. Two passes on one branch.

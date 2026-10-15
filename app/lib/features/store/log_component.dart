@@ -65,6 +65,9 @@ class _LogComponentState extends ConsumerState<LogComponent> {
       // component list this screen shows.
       ref.invalidate(stockProvider);
       ref.invalidate(inStockProvider);
+      // Workshop picks from a per-build view of the same stock.
+      ref.invalidate(inStockForProvider);
+      ref.invalidate(reservedForProvider);
       if (_projectId != null) ref.invalidate(truckComponentsProvider(_projectId!));
       if (!mounted) return;
       if (another) {

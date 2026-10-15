@@ -42,7 +42,7 @@ BuildTrack/
 │   ├── analysis_options.yaml     # lint + strict-cast rules CI enforces
 │   └── pubspec.lock              # committed: every machine resolves the same versions
 ├── supabase/                 # backend
-│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0028 design stage link
+│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0029 checklist evidence
 │   ├── functions/                # Edge Functions (admin create/delete member)
 │   ├── tests/                    # run.sh: 202 assertions on real Postgres, as real users
 │   ├── check_migrations.sql      # read-only: which migrations a database has
@@ -83,6 +83,8 @@ BuildTrack/
 | Order-by survives a re-plan · GST document adds up · photos can't crash a screen | ✅ `0026` |
 | A design stage can't close without the client's approval · the PM can correct a checklist | ✅ `0028` |
 | A PO can't skip the PM's signature · only essentials go "running low" · every home holds many builds | ✅ `0027` + app |
+| A checklist tick is recorded, can require a photo, and locks once the PM approves | ✅ `0029` |
+| A part can't be fitted into an approved stage, or taken off another build's reservation | ✅ `0029` |
 | Reproducible build + CI (analyze, test, Android build, Postgres suite) | ✅ |
 | Known gaps: no template management, a few DB rules still bypassable, buckets are public-read | ⬜ `docs/PROJECT_LOG.md` §3 |
 | Offline · push notifications · realtime · pagination · localization | ⏭️ not started |

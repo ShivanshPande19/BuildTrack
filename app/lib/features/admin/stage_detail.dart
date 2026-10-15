@@ -310,6 +310,8 @@ class _ChecklistEditorState extends ConsumerState<_ChecklistEditor> {
                     () => ref.read(workshopRepoProvider).renameCheck(c.id, v)),
                   onRemove: () => _run(c.id,
                     () => ref.read(workshopRepoProvider).removeCheck(c.id)),
+                  onPhotoRequired: (v) => _run(c.id,
+                    () => ref.read(workshopRepoProvider).setCheckPhotoRequired(c.id, v)),
                 ),
             ],
           )),
@@ -350,7 +352,25 @@ class _ChecklistEditorState extends ConsumerState<_ChecklistEditor> {
         // Ticking is the assignee's job and stays on their screen; this sheet
         // is only about what the list says.
         const Text('Only the project manager and an admin can change these. '
-                   'Whoever is working the stage ticks them off.',
+                   'Whoever is working the stage ticks them off, and the app '
+                   'records who did and when.',
+          style: TextStyle(color: BT.mut2, fontSize: 11.5, height: 1.35)),
+        const SizedBox(height: 7),
+        // The camera toggle needs saying once: it is the difference between a
+        // check that is a promise and one that is evidence.
+        const Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.photo_camera_outlined, size: 13, color: BT.mut2),
+          SizedBox(width: 7),
+          Expanded(child: Text('Tap the camera on a row to make that check need a photo. '
+                               'Use it where the work is hidden once the next stage '
+                               'covers it — not on everything, or the photos stop meaning anything.',
+            style: TextStyle(color: BT.mut2, fontSize: 11.5, height: 1.35))),
+        ]),
+        const SizedBox(height: 10),
+        // Once the PM approves, the list is the evidence they approved — the
+        // server refuses a change from here on, so the sheet says so.
+        const Text('Once you approve the stage, its checklist is locked as part of '
+                   'that approval.',
           style: TextStyle(color: BT.mut2, fontSize: 11.5, height: 1.35)),
       ]);
   }
@@ -363,8 +383,10 @@ class _EditableCheckRow extends StatefulWidget {
   final bool busy;
   final ValueChanged<String> onRename;
   final VoidCallback onRemove;
+  /// Whether this check cannot be ticked without a photo on the stage (0029).
+  final ValueChanged<bool> onPhotoRequired;
   const _EditableCheckRow({super.key, required this.item, required this.busy,
-    required this.onRename, required this.onRemove});
+    required this.onRename, required this.onRemove, required this.onPhotoRequired});
   @override
   State<_EditableCheckRow> createState() => _EditableCheckRowState();
 }
@@ -426,12 +448,22 @@ class _EditableCheckRowState extends State<_EditableCheckRow> {
           const Padding(padding: EdgeInsets.all(12),
             child: SizedBox(width: 16, height: 16,
               child: CircularProgressIndicator(strokeWidth: 2, color: BT.mut2)))
-        else
+        else ...[
+          PressableScale(
+            pressedScale: 0.88, haptic: true,
+            onTap: () => widget.onPhotoRequired(!widget.item.photoRequired),
+            child: Padding(padding: const EdgeInsets.all(9),
+              child: Icon(
+                widget.item.photoRequired
+                  ? Icons.photo_camera_rounded : Icons.photo_camera_outlined,
+                size: 18,
+                color: widget.item.photoRequired ? BT.ink : BT.mut2))),
           PressableScale(
             pressedScale: 0.88, haptic: true,
             onTap: widget.onRemove,
-            child: const Padding(padding: EdgeInsets.all(10),
+            child: const Padding(padding: EdgeInsets.all(9),
               child: Icon(Icons.delete_outline_rounded, size: 19, color: BT.mut2))),
+        ],
       ]),
     ),
   );

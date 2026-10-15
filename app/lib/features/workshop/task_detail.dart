@@ -7,6 +7,8 @@ import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
 import '../../shared/photo_picker.dart';
+import '../../shared/document_viewer.dart';
+import '../admin/truck_record.dart';
 import 'scan_install.dart';
 
 /// Stage detail for whoever the stage is assigned to: checklist, site photos,
@@ -128,12 +130,63 @@ class TaskDetailScreen extends ConsumerWidget {
             // No divider under the last row (it doubled up with the card's edge).
             for (var i = 0; i < b.checklist.length; i++)
               _ChecklistTile(key: ValueKey(b.checklist[i].id), c: b.checklist[i], stageId: task.stageId,
+                projectId: task.projectId,
+                photos: b.photos, frozen: task.isClosed,
                 divider: i < b.checklist.length - 1),
           ])),
+      // A check that wants a photo and has not got one is the fitter's own cue,
+      // said once under the list rather than shouted on every row.
+      if (b.proofOutstanding > 0)
+        Padding(padding: const EdgeInsets.only(top: 9, left: 4),
+          child: Row(children: [
+            const Icon(Icons.photo_camera_outlined, size: 14, color: BT.mut),
+            const SizedBox(width: 7),
+            Expanded(child: Text(
+              '${b.proofOutstanding} ${b.proofOutstanding == 1 ? 'check needs' : 'checks need'} '
+              'a photo before ${b.proofOutstanding == 1 ? 'it' : 'they'} can be ticked.',
+              style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.3))),
+          ])),
+
+      // what this stage is meant to be built from
+      if (b.materials.isNotEmpty) ...[
+        const SectionLabel('Parts this stage needs'),
+        AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Column(
+          children: [
+            for (var i = 0; i < b.materials.length; i++)
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(border: i < b.materials.length - 1
+                    ? const Border(bottom: BorderSide(color: BT.line)) : null),
+                child: Row(children: [
+                  Icon(b.materials[i].isReceived
+                      ? Icons.check_circle_rounded : Icons.schedule_rounded,
+                    size: 16, color: b.materials[i].isReceived ? BT.lime : BT.mut2),
+                  const SizedBox(width: 11),
+                  Expanded(child: Text(b.materials[i].name,
+                    maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600))),
+                  Text('×${b.materials[i].qty}',
+                    style: const TextStyle(fontSize: 12.5, color: BT.mut)),
+                  const SizedBox(width: 10),
+                  StatusPill(
+                    switch (b.materials[i].status) {
+                      'received' => 'In store',
+                      'ordered'  => 'On order',
+                      _          => 'Not ordered',
+                    },
+                    color: switch (b.materials[i].status) {
+                      'received' => BT.lime,
+                      'ordered'  => BT.sky,
+                      _          => BT.card2,
+                    }),
+                ]),
+              ),
+          ])),
+      ],
 
       // actions
       const SizedBox(height: 16),
-      Row(children: [
+      if (!task.isClosed) Row(children: [
         // "Photo" means a site photo — a workshop idea. A designer attaching
         // one is attaching a reference, so the button says what it does for
         // whoever is reading it.
@@ -145,8 +198,41 @@ class TaskDetailScreen extends ConsumerWidget {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => ScanInstall(task: task))))),
         ],
       ]),
+      // Report a slip against your own stage.
+      //
+      // `delay_logs` has always granted the workshop role write, and the fitter
+      // is the one who knows the steel did not arrive — but no screen ever
+      // offered it, so the PM had to notice the stage was late and then guess.
+      // 0029 narrowed the grant to the stage's own assignee, which is what made
+      // it safe to put here.
+      if (!task.isClosed && !task.canStart) ...[
+        const SizedBox(height: 11),
+        SecondaryButton('Report a hold-up', icon: Icons.schedule_rounded,
+          onTap: () => _logDelay(context, ref)),
+      ],
       const SizedBox(height: 11),
-      if (task.awaitingApproval)
+      if (task.isDelivered)
+        // The truck has gone out. fn_mark_delivered(force) leaves open stages
+        // open deliberately — closing them would rewrite what happened — but
+        // offering Start work on a customer's truck is not a live action.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(color: BT.card2,
+            borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.local_shipping_outlined, size: 19, color: BT.mut),
+            const SizedBox(width: 11),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('This truck has been delivered',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              const SizedBox(height: 3),
+              const Text('The build was closed with this stage still open. It is kept '
+                         'as a record — talk to your project manager if work is still needed.',
+                style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+            ])),
+          ]),
+        )
+      else if (task.awaitingApproval)
         // Nothing to do until the PM decides — offering Submit again would just
         // bounce off the duplicate-submission guard.
         Container(
@@ -194,11 +280,78 @@ class TaskDetailScreen extends ConsumerWidget {
           // whose own checklist said it wasn't finished. It still goes through
           // (sometimes a check genuinely doesn't apply), but deliberately.
           onTap: () => _submit(context, ref, openChecks: total - done)),
-      if (!task.awaitingApproval && !task.canStart && !allDone && total > 0)
+      if (!task.isDelivered && !task.awaitingApproval && !task.canStart && !allDone && total > 0)
         Padding(padding: const EdgeInsets.only(top: 10),
           // Full width so textAlign.center actually centres it (it sat left).
           child: SizedBox(width: double.infinity, child: Text('$done of $total checks done — finish all before final approval.',
             textAlign: TextAlign.center, style: const TextStyle(color: BT.mut, fontSize: 12)))),
+
+      // The photos on this stage.
+      //
+      // The bundle has always fetched these and the screen never drew them —
+      // so the person who took the photo could not see it, could not tell what
+      // had already gone up, and could not check the right thing was in frame.
+      // The client sees them; the fitter could not.
+      if (b.photos.isNotEmpty) ...[
+        SectionLabel('Photos · ${b.photos.length}'),
+        SizedBox(height: 104, child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: b.photos.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (_, i) => _PhotoThumb(photo: b.photos[i]),
+        )),
+        const SizedBox(height: 4),
+      ],
+
+      // Why this stage slipped — also fetched and never shown.
+      if (b.delays.isNotEmpty) ...[
+        const SectionLabel('Delays logged'),
+        for (final d in b.delays)
+          Padding(padding: const EdgeInsets.only(bottom: 10),
+            child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.schedule_rounded, size: 17, color: BT.coral),
+                const SizedBox(width: 11),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('${d.reason} · ${d.days} day${d.days == 1 ? '' : 's'}',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                  if (d.note != null && d.note!.trim().isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(d.note!.trim(),
+                      style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.3)),
+                  ],
+                ])),
+              ]))),
+      ],
+
+      // The whole truck's record, for the person building it.
+      //
+      // `v_truck_components` has carried every part, its serial, its stage and
+      // who fitted it since 0023 — and the screen that shows it lived only
+      // inside the build screen, which Admin and the PM can open and Workshop
+      // cannot. The fitter had no way to see the record they were writing.
+      if (showInstallPart) ...[
+        const SizedBox(height: 18),
+        AppCard(
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TruckRecordScreen(projectId: task.projectId,
+              code: task.projectCode, name: task.projectName))),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          child: Row(children: [
+            Container(width: 38, height: 38, alignment: Alignment.center,
+              decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.fact_check_outlined, size: 19, color: Color(0xFF123040))),
+            const SizedBox(width: 13),
+            const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('This truck\'s full record',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              SizedBox(height: 2),
+              Text('Every part fitted so far, its serial and who fitted it.',
+                style: TextStyle(fontSize: 12, color: BT.mut)),
+            ])),
+            const Icon(Icons.chevron_right_rounded, color: BT.mut),
+          ])),
+      ],
 
       // installed parts on this stage
       if (b.parts.isNotEmpty) ...[
@@ -306,6 +459,65 @@ class TaskDetailScreen extends ConsumerWidget {
            'first; this stage finishes when they sign off.';
   }
 
+  /// Report why this stage is held up — reason, days, and a note the PM reads.
+  Future<void> _logDelay(BuildContext context, WidgetRef ref) async {
+    String reason = 'procurement';
+    final daysC = TextEditingController(text: '1');
+    final noteC = TextEditingController();
+
+    final ok = await showAppSheet<bool>(context: context, builder: (sctx) =>
+      StatefulBuilder(builder: (sctx, setLocal) => Column(
+        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Report a hold-up', style: display(21, w: FontWeight.w600)),
+          const SizedBox(height: 4),
+          const Text('Your project manager sees this against the stage, with the reason '
+                     'attributed on the build.',
+            style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+          const SizedBox(height: 16),
+          const SectionLabel('What is holding it up'),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final r in const [
+              ('procurement', 'Parts not here'),
+              ('design_approval', 'Waiting on design'),
+              ('workshop_capacity', 'No capacity'),
+              ('quality', 'Quality rework'),
+              ('weather', 'Weather'),
+              ('client', 'Waiting on client'),
+              ('other', 'Something else'),
+            ])
+              AppChip(r.$2, selected: reason == r.$1,
+                onTap: () => setLocal(() => reason = r.$1)),
+          ]),
+          const SizedBox(height: 16),
+          LabelledField('DAYS LOST SO FAR', controller: daysC,
+            hint: '1', keyboardType: TextInputType.number),
+          const SizedBox(height: 11),
+          LabelledField('ANYTHING YOUR PM SHOULD KNOW', controller: noteC, lines: 3,
+            hint: 'The gas line fittings have not arrived from stores.'),
+          const SizedBox(height: 18),
+          PrimaryButton('Report it', icon: Icons.send_rounded,
+            onTap: () => Navigator.pop(sctx, true)),
+          const SizedBox(height: 6),
+        ])));
+    if (ok != true || !context.mounted) return;
+
+    final days = int.tryParse(daysC.text.trim()) ?? 1;
+    try {
+      await ref.read(workshopRepoProvider).logStageDelay(task.stageId,
+        reasonCode: reason, days: days < 0 ? 0 : days, note: noteC.text);
+      ref.invalidate(stageBundleProvider(task.stageId));
+      if (context.mounted) {
+        Haptic.confirm();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: BT.ink, content: Text('Reported — your PM can see it on the build')));
+      }
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    }
+  }
+
   Future<void> _start(BuildContext context, WidgetRef ref) async {
     try {
       await ref.read(workshopRepoProvider).startTask(task.stageId);
@@ -360,16 +572,56 @@ class TaskDetailScreen extends ConsumerWidget {
 }
 
 
-/// One checklist row. Toggling is optimistic (the tick flips immediately, so a
-/// slow workshop connection doesn't feel dead), guarded against a re-tap while
-/// the write is in flight, and surfaces a failure instead of silently swallowing
-/// it — the old inline toggle did none of these, so a failed write looked like
-/// the checkbox just wouldn't tick and the user kept tapping.
+/// One stage photo, tappable to open full-screen.
+class _PhotoThumb extends StatelessWidget {
+  final StagePhoto photo;
+  const _PhotoThumb({required this.photo});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    onTap: () => openDocument(context, fileUrl: photo.url, title: photo.caption ?? 'Work photo'),
+    child: SizedBox(width: 104, child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+        ClipRRect(borderRadius: BorderRadius.circular(13),
+          child: Image.network(photo.url, width: 104, height: 76, fit: BoxFit.cover,
+            // A stage photo can be a dead URL (bucket cleared, bad upload). It
+            // must leave a gap, not take the screen down.
+            errorBuilder: (_, __, ___) => Container(width: 104, height: 76,
+              alignment: Alignment.center, color: BT.card2,
+              child: const Icon(Icons.broken_image_outlined, size: 20, color: BT.mut2)),
+            loadingBuilder: (_, child, p) => p == null ? child
+              : Container(width: 104, height: 76, color: BT.card2))),
+        const SizedBox(height: 4),
+        Text(photo.caption ?? 'Work photo', maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11, color: BT.mut)),
+      ])),
+  );
+}
+
+/// One checklist row — the tick, and since 0029 the record behind it.
+///
+/// Toggling is optimistic (the tick flips immediately, so a slow workshop
+/// connection doesn't feel dead), guarded against a re-tap while the write is
+/// in flight, and surfaces a failure instead of silently swallowing it.
+///
+/// What is new is that the tick is no longer a bare column write. It goes
+/// through `fn_tick_check`, which records who ticked it and when, audits it,
+/// refuses it once the PM has approved the stage, and refuses a
+/// **photo-required** check with nothing to show. So this row has to be able
+/// to say all of that: who ticked it, that it wants a photo, and which photo
+/// discharged it.
 class _ChecklistTile extends ConsumerStatefulWidget {
   final ChecklistItem c;
-  final String stageId;
+  final String stageId, projectId;
+  /// The stage's photos — a photo-required check is discharged by picking one.
+  final List<StagePhoto> photos;
+  /// The stage is approved, or its truck has gone out: the checklist is the
+  /// evidence as signed off and the server will refuse a change.
+  final bool frozen;
   final bool divider;
-  const _ChecklistTile({super.key, required this.c, required this.stageId, this.divider = true});
+  const _ChecklistTile({super.key, required this.c, required this.stageId,
+    required this.projectId, required this.photos,
+    this.frozen = false, this.divider = true});
   @override
   ConsumerState<_ChecklistTile> createState() => _ChecklistTileState();
 }
@@ -377,6 +629,8 @@ class _ChecklistTile extends ConsumerStatefulWidget {
 class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
   bool? _optimistic; // set while a toggle is pending / until the refetch agrees
   bool _busy = false;
+
+  static final _fmt = DateFormat('d MMM');
 
   @override
   void didUpdateWidget(covariant _ChecklistTile old) {
@@ -387,11 +641,29 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
 
   Future<void> _toggle() async {
     if (_busy) return;
-    final target = !(_optimistic ?? widget.c.done);
+    final c = widget.c;
+
+    if (widget.frozen) {
+      _say('This stage is signed off — its checklist is part of the approval.');
+      return;
+    }
+
+    final target = !(_optimistic ?? c.done);
+
+    // A check that asks for a photo needs one named before it can be ticked.
+    // The server refuses it either way; asking here means the fitter gets a
+    // picker instead of an error.
+    String? proof;
+    if (target && c.photoRequired) {
+      proof = await _pickProof();
+      if (proof == null) return;    // cancelled, or nothing to point at yet
+    }
+
     setState(() { _optimistic = target; _busy = true; });
     Haptic.tap();
     try {
-      await ref.read(workshopRepoProvider).toggleChecklist(widget.c.id, target);
+      await ref.read(workshopRepoProvider)
+          .toggleChecklist(c.id, target, proofAttachmentId: proof);
       ref.invalidate(stageBundleProvider(widget.stageId));
     } catch (e) {
       if (!mounted) return; // reverts nothing / shows nothing if we're gone
@@ -403,9 +675,72 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
     }
   }
 
+  void _say(String msg) => ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(backgroundColor: BT.ink, content: Text(msg)));
+
+  /// Which photo proves this check. Either one already on the stage, or a new
+  /// one taken now — the common case on a floor is "take it, then tick it".
+  Future<String?> _pickProof() async {
+    final existing = widget.photos;
+    final choice = await showAppSheet<String>(context: context, builder: (sctx) => Column(
+      mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('This check needs a photo', style: display(20, w: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(widget.c.label,
+          style: const TextStyle(fontSize: 13, color: BT.mut, height: 1.35)),
+        const SizedBox(height: 16),
+        PrimaryButton('Take a photo now', icon: Icons.photo_camera_rounded,
+          onTap: () => Navigator.pop(sctx, '__new__')),
+        if (existing.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          const SectionLabel('…or use one already on this stage'),
+          SizedBox(height: 104, child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: existing.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (_, i) => GestureDetector(
+              onTap: () => Navigator.pop(sctx, existing[i].id),
+              child: _PhotoThumb(photo: existing[i])),
+          )),
+        ],
+        const SizedBox(height: 8),
+      ]));
+    if (choice == null || !mounted) return null;
+
+    // An existing photo hands back its own attachment id, which is what the
+    // server records against the check.
+    if (choice != '__new__') return choice;
+
+    final photo = await pickPhoto(context);
+    if (photo == null || !mounted) return null;
+    final bar = ScaffoldMessenger.of(context);
+    bar.showSnackBar(const SnackBar(backgroundColor: BT.ink,
+      duration: Duration(minutes: 1), content: Row(children: [
+        SizedBox(width: 16, height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2, color: BT.lime)),
+        SizedBox(width: 12), Text('Uploading proof…'),
+      ])));
+    try {
+      final id = await ref.read(workshopRepoProvider).addStagePhoto(
+        widget.stageId, photo.bytes,
+        filename: photo.filename, contentType: photo.contentType,
+        caption: widget.c.label);
+      bar.clearSnackBars();
+      ref.invalidate(truckPhotosProvider(widget.projectId));
+      ref.invalidate(stagePhotosProvider(widget.stageId));
+      return id;
+    } catch (e) {
+      bar.clearSnackBars();
+      bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final done = _optimistic ?? widget.c.done;
+    final c = widget.c;
+    final done = _optimistic ?? c.done;
     // The tick is optimistic and instant: the box fills, the check pops in
     // with a small overshoot, and the label fades to struck-through, all
     // before the server answers.
@@ -415,8 +750,8 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 13),
         decoration: BoxDecoration(border: widget.divider ? const Border(bottom: BorderSide(color: BT.line)) : null),
-        child: Row(children: [
-          AnimatedContainer(
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(padding: const EdgeInsets.only(top: 1), child: AnimatedContainer(
             duration: Motion.fast, curve: Motion.move,
             width: 26, height: 26, alignment: Alignment.center,
             decoration: BoxDecoration(color: done ? BT.lime : Colors.transparent, borderRadius: BorderRadius.circular(9),
@@ -425,16 +760,60 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
               scale: done ? 1 : 0,
               duration: done ? Motion.base : Motion.fast,
               curve: done ? Curves.easeOutBack : Motion.exit,
-              child: const Icon(Icons.check_rounded, size: 15, color: BT.ink))),
+              child: const Icon(Icons.check_rounded, size: 15, color: BT.ink)))),
           const SizedBox(width: 13),
-          Expanded(child: AnimatedDefaultTextStyle(
-            duration: Motion.fast,
-            // Start from the theme's body style so the app font is kept.
-            // AnimatedDefaultTextStyle replaces the ambient style, it doesn't merge.
-            style: Theme.of(context).textTheme.bodyMedium!.merge(TextStyle(fontSize: 14.5,
-              color: done ? BT.mut2 : BT.ink,
-              decoration: done ? TextDecoration.lineThrough : TextDecoration.none, decorationColor: BT.mut2)),
-            child: Text(widget.c.label))),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: AnimatedDefaultTextStyle(
+                duration: Motion.fast,
+                // Start from the theme's body style so the app font is kept.
+                // AnimatedDefaultTextStyle replaces the ambient style, it doesn't merge.
+                style: Theme.of(context).textTheme.bodyMedium!.merge(TextStyle(fontSize: 14.5,
+                  color: done ? BT.mut2 : BT.ink,
+                  decoration: done ? TextDecoration.lineThrough : TextDecoration.none, decorationColor: BT.mut2)),
+                child: Text(c.label))),
+              // Says what the check wants *before* it is tapped, so the rule
+              // is never a surprise refusal.
+              if (c.photoRequired && !done) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.photo_camera_outlined, size: 15, color: BT.mut2),
+              ],
+            ]),
+            // Who ticked it, and when. The whole reason 0029 exists.
+            if (done) ...[
+              const SizedBox(height: 3),
+              Row(children: [
+                Flexible(child: Text(
+                  c.doneByName == null
+                    ? (c.doneAt == null
+                        ? 'Ticked before this was recorded'
+                        : 'Ticked ${_fmt.format(c.doneAt!)}')
+                    : '${c.doneByName}'
+                      '${c.doneAt == null ? '' : ' · ${_fmt.format(c.doneAt!)}'}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5, color: BT.mut2))),
+                if (c.proofUrl != null) ...[
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => openDocument(context, fileUrl: c.proofUrl, title: c.label),
+                    child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.image_outlined, size: 13, color: BT.ink),
+                      SizedBox(width: 3),
+                      Text('Proof', style: TextStyle(fontSize: 11.5,
+                        fontWeight: FontWeight.w700, color: BT.ink)),
+                    ])),
+                ]
+                // Ticked, wants a photo, has none — only possible on a row
+                // ticked before the rule was added. Better said than shown as
+                // a tick that quietly means less than the one above it.
+                else if (c.proofMissing) ...[
+                  const SizedBox(width: 8),
+                  const Text('No photo on record', style: TextStyle(fontSize: 11.5,
+                    fontWeight: FontWeight.w600, color: BT.coral)),
+                ],
+              ]),
+            ],
+          ])),
         ]),
       ),
     );

@@ -526,35 +526,69 @@ class ProjectsRepo {
   }
 
   /// Everything for a single stage: assignee, checklist, photos, installed parts, delays.
+  /// Everything the person working a stage needs on one screen.
+  ///
+  /// The reads run **together**. They were six sequential awaits, which on a
+  /// workshop-floor connection is six round trips before anything draws; they
+  /// do not depend on each other, so there was never a reason to wait.
   Future<StageBundle> stageBundle(String stageId) async {
-    final checklist = await sb.from('checklist_items')
-        .select('id,label,done').eq('stage_id', stageId).order('id', ascending: true);
-    final photos = await sb.from('attachments')
-        .select('file_url,caption')
+    // The stage first, for its project — the BOM is per build, and the
+    // assignee's name needs a second hop either way.
+    final srow = await sb.from('stages')
+        .select('assignee_id,template_stage_id,project_id,profiles(full_name)')
+        .eq('id', stageId).maybeSingle();
+
+    final results = await Future.wait([
+      // done_by / done_at / photo_required / the proof photo are 0029: the
+      // record of a tick, which the old bare `done` column never kept.
+      sb.from('checklist_items')
+        .select('id,label,done,done_at,photo_required,'
+                'done_by_profile:profiles!checklist_items_done_by_fkey(full_name),'
+                'proof:attachments!checklist_items_proof_attachment_id_fkey(file_url)')
+        .eq('stage_id', stageId).order('id', ascending: true),
+      sb.from('attachments')
+        .select('id,file_url,caption')
         .eq('owner_type', 'stage').eq('owner_id', stageId)
-        .order('created_at', ascending: true);
-    final parts = await sb.from('component_instances')
+        .order('created_at', ascending: true),
+      sb.from('component_instances')
         .select('serial_number,status,install_date,warranty_end,item_catalog(name,model),vendors(name)')
-        .eq('installed_stage_id', stageId);
-    final delays = await sb.from('delay_logs')
-        .select('reason_code,days_delayed,note').eq('stage_id', stageId);
+        .eq('installed_stage_id', stageId),
+      sb.from('delay_logs')
+        .select('reason_code,days_delayed,note').eq('stage_id', stageId),
+      _stageMaterials(srow),
+    ]);
 
-    // assignee name (best-effort)
-    String? assignee;
-    final srow = await sb.from('stages').select('assignee_id').eq('id', stageId).maybeSingle();
-    final aid = srow?['assignee_id'] as String?;
-    if (aid != null) {
-      final pr = await sb.from('profiles').select('full_name').eq('id', aid).maybeSingle();
-      assignee = pr?['full_name'] as String?;
-    }
-
+    final pr = srow?['profiles'] as Map<String, dynamic>?;
     return StageBundle(
-      assignee: assignee,
-      checklist: (checklist as List).map((e) => ChecklistItem.fromMap(e as Map<String, dynamic>)).toList(),
-      photos: (photos as List).map((e) => StagePhoto.fromMap(e as Map<String, dynamic>)).toList(),
-      parts: (parts as List).map((e) => StagePart.fromMap(e as Map<String, dynamic>)).toList(),
-      delays: (delays as List).map((e) => StageDelay.fromMap(e as Map<String, dynamic>)).toList(),
+      assignee: pr?['full_name'] as String?,
+      checklist: [for (final e in results[0]) ChecklistItem.fromMap(e as Map<String, dynamic>)],
+      photos: [for (final e in results[1]) StagePhoto.fromMap(e as Map<String, dynamic>)],
+      parts: [for (final e in results[2]) StagePart.fromMap(e as Map<String, dynamic>)],
+      delays: [for (final e in results[3]) StageDelay.fromMap(e as Map<String, dynamic>)],
+      materials: [for (final e in results[4]) StageMaterial.fromMap(e as Map<String, dynamic>)],
     );
+  }
+
+  /// This stage's slice of the build's BOM.
+  ///
+  /// `procurement_requirements` carries no stage, only the build — the BOM
+  /// originates per *template* stage (`template_stage_items`), so the stage's
+  /// own items are the catalogue ids its template stage listed. A stage added
+  /// by hand has no template stage, and therefore no BOM, which is the honest
+  /// answer rather than showing the whole build's materials.
+  Future<List<dynamic>> _stageMaterials(Map<String, dynamic>? srow) async {
+    final tsId = srow?['template_stage_id'] as String?;
+    final projectId = srow?['project_id'] as String?;
+    if (tsId == null || projectId == null) return const [];
+    final items = await sb.from('template_stage_items')
+        .select('item_catalog_id').eq('template_stage_id', tsId);
+    final ids = [for (final e in (items as List)) e['item_catalog_id'] as String];
+    if (ids.isEmpty) return const [];
+    return await sb.from('procurement_requirements')
+        .select('qty,status,item_catalog(name)')
+        .eq('project_id', projectId)
+        .inFilter('item_catalog_id', ids)
+        .order('status', ascending: true);
   }
 }
 
@@ -1087,7 +1121,8 @@ class WorkshopRepo {
     if (uid == null) return [];
     // Disambiguate: stages ↔ projects has two FKs, so name the one we mean.
     final d = await sb.from('stages')
-        .select('id,name,status,project_id,assigned_due,projects!stages_project_id_fkey(code,name)')
+        .select('id,name,status,project_id,assigned_due,'
+                'projects!stages_project_id_fkey(code,name,status)')
         .eq('assignee_id', uid).order('ord', ascending: true);
     final tasks = (d as List).map((e) => WorkshopTask.fromMap(e as Map<String, dynamic>)).toList();
     if (tasks.isEmpty) return tasks;
@@ -1108,13 +1143,19 @@ class WorkshopRepo {
         if (n != null && n.trim().isNotEmpty) notes[sid] = n.trim();
       }
     }
+    // Sorted worst-first across every build, not by `ord`.
+    //
+    // `ord` is a stage's position *inside its own build*, so ordering a mixed
+    // list by it interleaves two trucks meaninglessly — and an overdue stage on
+    // AZ-205 could sort below a not-yet-started one on AZ-101. The person
+    // holding stages on eight builds is exactly who this list is for.
     return [
       for (final t in tasks)
         t.copyWith(
           awaitingApproval: pending.contains(t.stageId),
           reworkNote: t.status == 'rework' ? notes[t.stageId] : null,
         ),
-    ];
+    ]..sort(WorkshopTask.compare);
   }
 
   /// Mark a stage as actually started.
@@ -1150,15 +1191,82 @@ class WorkshopRepo {
     await sb.from('checklist_items').delete().eq('id', id);
   }
 
-  Future<void> toggleChecklist(String id, bool done) async {
-    await sb.from('checklist_items').update({'done': done}).eq('id', id);
+  /// Tick (or un-tick) one check.
+  ///
+  /// Through `fn_tick_check` since 0029, not a direct column write — that is
+  /// what records **who** ticked it and **when**, puts it in the audit log,
+  /// refuses it on a stage the PM has already approved, and enforces a
+  /// photo-required check. A direct update of `done` is now refused by
+  /// `trg_guard_checklist`, so there is no path around the record.
+  ///
+  /// [proofAttachmentId] is the stage photo that discharges a photo-required
+  /// check. The server checks the photo really is on this stage.
+  Future<void> toggleChecklist(String id, bool done, {String? proofAttachmentId}) async {
+    await sb.rpc('fn_tick_check', params: {
+      'p_item': id, 'p_done': done,
+      if (proofAttachmentId != null) 'p_proof': proofAttachmentId,
+    });
+  }
+
+  /// Whether a check needs a photo. The PM's call, on one build's stage —
+  /// `trg_guard_checklist` holds it to them and an admin.
+  Future<void> setCheckPhotoRequired(String id, bool required) async {
+    await sb.from('checklist_items').update({'photo_required': required}).eq('id', id);
+  }
+
+  /// Report why this stage slipped.
+  ///
+  /// The fitter is the one who knows — 0029 narrowed `delay_logs` from "any
+  /// workshop member, any stage" to the stage's own assignee, their PM and an
+  /// admin, which is what made it safe to offer here.
+  Future<void> logStageDelay(String stageId, {
+    required String reasonCode, required int days, String? note,
+  }) async {
+    await sb.from('delay_logs').insert({
+      'stage_id': stageId,
+      'reason_code': reasonCode,
+      'days_delayed': days,
+      'note': (note == null || note.trim().isEmpty) ? null : note.trim(),
+      'logged_by': _uid,
+    });
   }
 
   /// Components sitting in store (available to install).
-  Future<List<ComponentRow>> inStock() async {
+  ///
+  /// Ordered so the parts bought **for this build** come first. The fitter used
+  /// to get every serialised part in the building in one flat alphabetical
+  /// list, with the build each was earmarked for not even shown — which is how
+  /// the wrong part gets fitted. Parts reserved for a *different* build are
+  /// kept in the list rather than hidden: they are the ones most likely to be
+  /// reached for by mistake, and saying who they belong to is the point
+  /// (0029 refuses the install outright).
+  Future<List<ComponentRow>> inStock({String? forProjectId}) async {
     final d = await sb.from('component_instances').select(StoreRepo._compSelect)
         .eq('status', 'in_stock').order('serial_number', ascending: true);
-    return (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
+    final rows = (d as List).map((e) => ComponentRow.fromMap(e as Map<String, dynamic>)).toList();
+    if (forProjectId == null) return rows;
+
+    final mine = await sb.from('component_instances').select('id')
+        .eq('status', 'in_stock').eq('installed_in_project_id', forProjectId);
+    final reservedHere = {for (final e in (mine as List)) e['id'] as String};
+    int rank(ComponentRow c) {
+      if (reservedHere.contains(c.id)) return 0;   // bought for this truck
+      if (!c.isReserved) return 1;                 // free stock
+      return 2;                                   // someone else's
+    }
+    rows.sort((a, b) {
+      final r = rank(a).compareTo(rank(b));
+      return r != 0 ? r : a.serial.compareTo(b.serial);
+    });
+    return rows;
+  }
+
+  /// The ids of in-stock parts earmarked for this build, so the install screen
+  /// can say which row is the one that was bought for this truck.
+  Future<Set<String>> reservedFor(String projectId) async {
+    final d = await sb.from('component_instances').select('id')
+        .eq('status', 'in_stock').eq('installed_in_project_id', projectId);
+    return {for (final e in (d as List)) e['id'] as String};
   }
 
   /// Install a component into a truck+stage (Hero #2 install side).
@@ -1186,16 +1294,20 @@ class WorkshopRepo {
   /// This used to insert a random `picsum.photos` URL — the client's build
   /// gallery was showing stock photography. Now the bytes go to the public
   /// `builds` bucket (0011) and the attachment points at them.
-  Future<void> addStagePhoto(String stageId, Uint8List bytes, {
+  /// Returns the new attachment's id, because a photo is not only a photo any
+  /// more: 0029 lets a check demand one, and the check records *which* photo
+  /// discharged it.
+  Future<String> addStagePhoto(String stageId, Uint8List bytes, {
     required String filename, required String contentType, String? caption,
   }) async {
     final url = await uploadToBuilds(bytes,
       filename: filename, contentType: contentType, folder: 'stages/$stageId');
-    await sb.from('attachments').insert({
+    final row = await sb.from('attachments').insert({
       'owner_type': 'stage', 'owner_id': stageId, 'uploaded_by': _uid,
       'file_url': url,
       'caption': (caption == null || caption.trim().isEmpty) ? 'Work photo' : caption.trim(),
-    });
+    }).select('id').single();
+    return row['id'] as String;
   }
 
   /// Find a part by the serial the camera just read.
@@ -1237,12 +1349,28 @@ final inStockProvider = FutureProvider<List<ComponentRow>>((ref) {
   ref.watch(currentUserIdProvider);
   return ref.read(workshopRepoProvider).inStock();
 });
+/// Parts on the builds I hold a stage on.
+///
+/// Watches [myTasksProvider] rather than calling `myTasks()` again: this used
+/// to re-run the stages query *and* its approvals follow-up every time the
+/// Parts tab opened, and could then disagree with the Tasks tab it was derived
+/// from.
 final workshopPartsProvider = FutureProvider<List<ComponentRow>>((ref) async {
-  ref.watch(currentUserIdProvider);
-  final repo = ref.read(workshopRepoProvider);
-  final tasks = await repo.myTasks();
+  final tasks = await ref.watch(myTasksProvider.future);
   final ids = tasks.map((t) => t.projectId).toSet().toList();
-  return repo.installedForProjects(ids);
+  return ref.read(workshopRepoProvider).installedForProjects(ids);
+});
+
+/// In-stock components, with the ones bought for [projectId] first.
+final inStockForProvider = FutureProvider.family<List<ComponentRow>, String?>((ref, projectId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(workshopRepoProvider).inStock(forProjectId: projectId);
+});
+
+/// Which in-stock parts are earmarked for this build.
+final reservedForProvider = FutureProvider.family<Set<String>, String>((ref, projectId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(workshopRepoProvider).reservedFor(projectId);
 });
 
 /// Client — read-only build views of their own trucks (RLS scopes to their account).
