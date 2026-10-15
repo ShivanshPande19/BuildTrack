@@ -127,8 +127,8 @@ values ('7e000000-0000-0000-0000-0000000000c1','7e000000-0000-0000-0000-00000000
 set role authenticated;
 set test.uid = 'd0000000-0000-0000-0000-000000000002';        -- the assignee
 
--- Ticking is theirs.
-update checklist_items set done = true where id = '7e000000-0000-0000-0000-0000000000c1';
+-- Ticking is theirs — through fn_tick_check since 0029.
+select public.fn_tick_check('7e000000-0000-0000-0000-0000000000c1', true);
 select t_assert((select done from checklist_items
                   where id='7e000000-0000-0000-0000-0000000000c1') is true,
                 'D5 the assignee can tick their own checklist');

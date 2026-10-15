@@ -351,7 +351,10 @@ class AssignedBuild {
   final DateTime? due, targetDelivery;
   AssignedBuild({required this.projectId, required this.code, required this.name,
     required this.status, this.progressPct = 0, this.stageName, this.due, this.targetDelivery});
-  bool get isOverdue => due != null && status != 'delivered' && due!.isBefore(DateTime.now());
+  /// Calendar days — `due` is a date column, so comparing it to `now()` made
+  /// a build due today read as overdue. See [WorkshopTask.isOverdue].
+  bool get isOverdue =>
+      due != null && status != 'delivered' && daysUntil(due!) < 0;
 }
 
 /// A stage the PM still has to hand out, with its build context — powers the
@@ -364,21 +367,90 @@ class AssignableStage {
 }
 
 /// A checklist row under a stage.
+/// One check on a stage, and — since 0029 — the record of it being ticked.
+///
+/// The table used to be `(id, stage_id, label, done)` and the only write was a
+/// bare `update … set done = …`, so nothing said who ticked a check or when,
+/// there was nowhere to attach proof, and a check on an approved stage could
+/// still be un-ticked. It was a to-do list presented as evidence.
 class ChecklistItem {
   final String id, label;
   final bool done;
-  ChecklistItem({required this.id, required this.label, required this.done});
-  factory ChecklistItem.fromMap(Map<String, dynamic> m) => ChecklistItem(
-    id: m['id'] as String, label: m['label'] as String? ?? '', done: m['done'] as bool? ?? false);
+  /// Who ticked it, and when. Null on a check ticked before 0029 — the old
+  /// write stored nothing, so there is no name to recover and the UI says so
+  /// rather than inventing one.
+  final String? doneByName;
+  final DateTime? doneAt;
+  /// This check cannot be ticked without a photo on its stage. Set on the
+  /// workflow template, or by the build's PM on one stage.
+  final bool photoRequired;
+  /// The photo that discharged it, when there is one.
+  final String? proofUrl;
+
+  ChecklistItem({required this.id, required this.label, required this.done,
+    this.doneByName, this.doneAt, this.photoRequired = false, this.proofUrl});
+
+  factory ChecklistItem.fromMap(Map<String, dynamic> m) {
+    final by = m['done_by_profile'] as Map<String, dynamic>?;
+    final proof = m['proof'] as Map<String, dynamic>?;
+    return ChecklistItem(
+      id: m['id'] as String,
+      label: m['label'] as String? ?? '',
+      done: m['done'] as bool? ?? false,
+      doneByName: by?['full_name'] as String?,
+      doneAt: parseDate(m['done_at']),
+      photoRequired: m['photo_required'] as bool? ?? false,
+      proofUrl: proof?['file_url'] as String?,
+    );
+  }
+
+  /// Ticked, but with no proof behind a check that asks for one. Only reachable
+  /// on rows ticked before the rule was added — the RPC refuses it now — and
+  /// worth saying out loud rather than showing a tick that means less than the
+  /// one beside it.
+  bool get proofMissing => done && photoRequired && proofUrl == null;
+
+  /// A check the fitter cannot tick yet, because it wants a photo and the
+  /// stage has none to point at.
+  bool needsPhotoFirst(int stagePhotoCount) =>
+      !done && photoRequired && stagePhotoCount == 0;
+}
+
+/// What a stage's own BOM says should go into it — the template's
+/// `template_stage_items`, as the build's procurement requirements.
+///
+/// The fitter never had this. The stage screen showed a checklist and the
+/// install screen showed a flat list of everything in the building, so "which
+/// parts belong in this stage" was something you had to already know.
+class StageMaterial {
+  final String name;
+  final num qty;
+  /// pending · ordered · received — how close it is to being on the shelf.
+  final String status;
+  StageMaterial({required this.name, required this.qty, required this.status});
+  factory StageMaterial.fromMap(Map<String, dynamic> m) {
+    final ic = m['item_catalog'] as Map<String, dynamic>?;
+    return StageMaterial(
+      name: ic?['name'] as String? ?? 'Item',
+      qty: (m['qty'] as num?) ?? 1,
+      status: m['status'] as String? ?? 'pending',
+    );
+  }
+  bool get isReceived => status == 'received';
 }
 
 /// A photo / image attached to a stage (attachments where owner_type='stage').
+///
+/// [id] matters since 0029: a photo-required check records **which** photo
+/// discharged it, and the server takes the attachment's id, not its URL.
 class StagePhoto {
   final String url;
   final String? caption;
-  StagePhoto(this.url, this.caption);
+  final String? id;
+  StagePhoto(this.url, this.caption, {this.id});
   factory StagePhoto.fromMap(Map<String, dynamic> m) =>
-    StagePhoto(m['file_url'] as String? ?? '', m['caption'] as String?);
+    StagePhoto(m['file_url'] as String? ?? '', m['caption'] as String?,
+      id: m['id'] as String?);
 }
 
 /// A component/part installed during a stage (traceability, Hero #2).
@@ -445,8 +517,17 @@ class StageBundle {
   final List<StagePhoto> photos;
   final List<StagePart> parts;
   final List<StageDelay> delays;
+  /// What this stage's BOM says should go into it. The fitter had no way to
+  /// see this, so "which parts belong here" was knowledge, not screen.
+  final List<StageMaterial> materials;
   StageBundle({this.assignee, required this.checklist, required this.photos,
-    required this.parts, required this.delays});
+    required this.parts, required this.delays, this.materials = const []});
+
+  int get checksDone => checklist.where((c) => c.done).length;
+  /// Checks that want a photo and have not got one. The fitter's own cue, and
+  /// the reason a submit may be worth holding back.
+  int get proofOutstanding =>
+      checklist.where((c) => !c.done && c.photoRequired).length;
 }
 
 /// A project plus its stages — powers the Project detail screen.
@@ -795,8 +876,26 @@ class ComponentRow {
       installDate: parseDate(m['install_date']),
     );
   }
-  bool get warrantyActive => warrantyEnd != null && warrantyEnd!.isAfter(DateTime.now());
+  /// none | active | expiring | expired — the same [warrantyStateFor] every
+  /// other screen uses.
+  ///
+  /// This was the **third** copy of the warranty comparison, and it still had
+  /// the bug 0026 fixed in the other two: `warrantyEnd.isAfter(DateTime.now())`
+  /// on a date-only column is false all through the warranty's own last day, so
+  /// a part whose cover ends today read "Expired" in Workshop's Parts tab,
+  /// Store's Parts list and the component record.
+  String get warrantyState => warrantyStateFor(warrantyEnd);
+  bool get warrantyActive => warrantyState == 'active' || warrantyState == 'expiring';
   bool get hasBill => billUrl != null;
+
+  /// Store logged this part against a build but nobody has fitted it yet.
+  ///
+  /// 0026 made intake an **earmark**, not an installation: the part stays on
+  /// the shelf (`in_stock`) while naming the build it was bought for. Lists
+  /// that filter on the build alone therefore show reserved and fitted parts
+  /// together, which reads as if the truck already has them.
+  bool get isReserved => status == 'in_stock' && projectCode != null;
+  bool get isFitted => status == 'installed';
 }
 
 /// One component on a truck's complete record (row of v_truck_components):
@@ -910,9 +1009,16 @@ class WorkshopTask {
   final bool awaitingApproval;
   /// Why the PM sent it back (set when status == 'rework').
   final String? reworkNote;
+  /// The build's own status. A build can be marked delivered with stages still
+  /// open (`fn_mark_delivered(p_force => true)`, which deliberately does not
+  /// close them — that would rewrite history). Those stages stayed in the
+  /// assignee's list forever, offering Start work on a truck the customer
+  /// already has, so the list needs to know.
+  final String projectStatus;
   WorkshopTask({required this.stageId, required this.stageName, required this.status,
     required this.projectId, required this.projectCode, required this.projectName,
-    this.assignedDue, this.awaitingApproval = false, this.reworkNote});
+    this.assignedDue, this.awaitingApproval = false, this.reworkNote,
+    this.projectStatus = 'on_track'});
   factory WorkshopTask.fromMap(Map<String, dynamic> m) {
     final pr = m['projects'] as Map<String, dynamic>?;
     return WorkshopTask(
@@ -923,20 +1029,61 @@ class WorkshopTask {
       projectCode: pr?['code'] as String? ?? '',
       projectName: pr?['name'] as String? ?? '',
       assignedDue: parseDate(m['assigned_due']),
+      projectStatus: pr?['status'] as String? ?? 'on_track',
     );
   }
 
   WorkshopTask copyWith({bool? awaitingApproval, String? reworkNote}) => WorkshopTask(
     stageId: stageId, stageName: stageName, status: status, projectId: projectId,
     projectCode: projectCode, projectName: projectName, assignedDue: assignedDue,
+    projectStatus: projectStatus,
     awaitingApproval: awaitingApproval ?? this.awaitingApproval,
     reworkNote: reworkNote ?? this.reworkNote,
   );
 
   /// Nothing has started yet and it is not waiting on the PM.
   bool get canStart => status == 'todo' || status == 'rework';
-  bool get isOverdue =>
-      assignedDue != null && status != 'done' && assignedDue!.isBefore(DateTime.now());
+  /// The stage is finished, or the truck has gone out with it still open.
+  bool get isClosed => status == 'done' || isDelivered;
+  /// The truck has been handed over. Nothing on it is work any more.
+  bool get isDelivered => projectStatus == 'delivered';
+
+  /// Calendar days, not a timestamp comparison.
+  ///
+  /// `assigned_due` is a Postgres `date`, so it parses to midnight — and
+  /// `isBefore(DateTime.now())` is therefore **true for a stage due today**.
+  /// Every workshop stage due today read "Overdue", in a red pill, all day.
+  /// Same trap as the warranty that expired on its own last day, fixed in
+  /// 0026; [daysUntil] is the one definition both now use.
+  bool get isOverdue => !isClosed && assignedDue != null && daysUntil(assignedDue!) < 0;
+  bool get isDueToday => assignedDue != null && daysUntil(assignedDue!) == 0;
+  int? get daysLeft => assignedDue == null ? null : daysUntil(assignedDue!);
+
+  /// Worst first, for every list that shows these: someone is already waiting
+  /// on rework, then a missed date, then the soonest due. Undated sorts last —
+  /// nobody committed to a date, so it cannot be the most urgent thing.
+  int get urgencyRank {
+    if (isDelivered) return 5;
+    if (awaitingApproval) return 4;      // with the PM; not yours to move
+    if (status == 'rework') return 0;
+    if (isOverdue) return 1;
+    if (isDueToday) return 2;
+    return 3;
+  }
+
+  /// Orders a mixed list of stages across builds. `ord` alone — which is what
+  /// this list used — is the stage's order *within its own build*, so two
+  /// builds interleave meaninglessly and an overdue stage can sort last.
+  static int compare(WorkshopTask a, WorkshopTask b) {
+    final r = a.urgencyRank.compareTo(b.urgencyRank);
+    if (r != 0) return r;
+    final ad = a.daysLeft, bd = b.daysLeft;
+    if (ad != null && bd != null && ad != bd) return ad.compareTo(bd);
+    if (ad == null && bd != null) return 1;
+    if (ad != null && bd == null) return -1;
+    final c = a.projectCode.compareTo(b.projectCode);
+    return c != 0 ? c : a.stageName.compareTo(b.stageName);
+  }
 }
 
 
@@ -1119,7 +1266,7 @@ class DesignTodo {
     return designs.where((d) => d.projectId == t.projectId).toList();
   }
 
-  for (final t in tasks.where((t) => t.status != 'done')) {
+  for (final t in tasks.where((t) => !t.isClosed)) {
     final mine = forStage(t);
     // The stage speaks for *every* design on its build, not just the ones it
     // read. A stage linked to one design still covers the older loose designs

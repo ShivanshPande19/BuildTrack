@@ -89,7 +89,10 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
     try {
       await ref.read(workshopRepoProvider).installComponent(c.id, t.stageId);
       ref.invalidate(inStockProvider);
+      ref.invalidate(inStockForProvider);     // every build's view of stock
+      ref.invalidate(reservedForProvider);
       ref.invalidate(workshopPartsProvider);
+      ref.invalidate(truckComponentsProvider(t.projectId));
       ref.invalidate(stageBundleProvider(t.stageId));
       if (mounted) {
         Navigator.pop(context);
@@ -102,10 +105,74 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
     }
   }
 
+  /// One in-stock part, saying who it belongs to.
+  ///
+  /// `forThisBuild` is a part Store set aside for this truck — the one the
+  /// fitter is most likely looking for. `heldElsewhere` belongs to another
+  /// build: shown rather than hidden, because it is the one most likely to be
+  /// reached for by mistake, and 0029 refuses the install anyway.
+  Widget _stockCard(ComponentRow c, {
+    required bool forThisBuild, required bool heldElsewhere,
+  }) => Padding(padding: const EdgeInsets.only(bottom: 11),
+    child: PressableScale(pressedScale: heldElsewhere ? 1 : 0.98, haptic: !heldElsewhere,
+      onTap: () => heldElsewhere ? _sayHeld(c) : _install(c),
+      child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+        child: Row(children: [
+          Container(width: 46, height: 46, alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: heldElsewhere ? BT.card2 : (forThisBuild ? BT.lime : BT.sky),
+              borderRadius: BorderRadius.circular(14),
+              border: heldElsewhere ? Border.all(color: BT.line) : null),
+            child: Icon(heldElsewhere ? Icons.lock_outline_rounded : Icons.memory_rounded,
+              size: 21,
+              color: heldElsewhere ? BT.mut
+                : (forThisBuild ? BT.ink : const Color(0xFF123040)))),
+          const SizedBox(width: 13),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(c.model.isEmpty ? c.name : '${c.name} · ${c.model}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+              if (forThisBuild) ...[
+                const SizedBox(width: 8),
+                const StatusPill('For this build', color: BT.lime),
+              ],
+            ]),
+            const SizedBox(height: 2),
+            Text([
+              c.serial,
+              if (heldElsewhere && c.projectCode != null) 'held for ${c.projectCode}',
+              if (!heldElsewhere && c.vendorName != null) c.vendorName!,
+            ].join(' · '),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5,
+                color: heldElsewhere ? BT.coral : BT.mut)),
+          ])),
+          Icon(heldElsewhere ? Icons.block_rounded : Icons.add_circle_outline_rounded,
+            color: heldElsewhere ? BT.mut2 : BT.ink),
+        ]))));
+
+  void _sayHeld(ComponentRow c) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    backgroundColor: BT.coral,
+    content: Text('${c.serial} is set aside for ${c.projectCode ?? 'another build'} — '
+                  'ask Store to release it first.')));
+
   @override
   Widget build(BuildContext context) {
-    final inStock = ref.watch(inStockProvider);
-    final tasks = ref.watch(myTasksProvider).valueOrNull ?? [];
+    // Scoped to the build being worked, so the parts bought for this truck
+    // come first. It used to be every serialised part in the building, flat
+    // and alphabetical, with the build each was earmarked for not even shown.
+    final projectId = _target?.projectId;
+    final inStock = ref.watch(inStockForProvider(projectId));
+    final reserved = projectId == null
+        ? const <String>{}
+        : (ref.watch(reservedForProvider(projectId)).valueOrNull ?? const <String>{});
+    // Only stages a part can actually go into. The picker offered every stage
+    // the person had ever been assigned — including ones the PM had already
+    // approved, which 0029 now refuses server-side, and ones sitting with the
+    // PM, where adding a part changes the evidence after it was submitted.
+    final tasks = (ref.watch(myTasksProvider).valueOrNull ?? const <WorkshopTask>[])
+        .where((t) => !t.isClosed && !t.awaitingApproval).toList();
 
     return Scaffold(
       body: SafeArea(child: ListView(
@@ -162,25 +229,19 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
           const SectionLabel('In-stock components'),
           ContentReveal(child: inStock.when(
             loading: () => const SkeletonList(count: 3),
-            error: (e, _) => ErrorCard('Could not load stock.\n${friendlyError(e)}', onRetry: () => ref.invalidate(inStockProvider)),
+            // Retry the provider this screen actually watches — it is keyed by
+            // the build being worked, so invalidating the unkeyed one did
+            // nothing and the retry button looked broken.
+            error: (e, _) => ErrorCard('Could not load stock.\n${friendlyError(e)}',
+              onRetry: () => ref.invalidate(inStockForProvider(projectId))),
             data: (list) => list.isEmpty
               ? const EmptyState(icon: Icons.inventory_2_outlined, tint: BT.mint,
                   title: 'Nothing in stock', subtitle: 'Store logs components before they can be installed.')
-              : Column(children: list.map((c) => Padding(padding: const EdgeInsets.only(bottom: 11),
-                  child: PressableScale(pressedScale: 0.98, haptic: true, onTap: () => _install(c),
-                    child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14), child: Row(children: [
-                      Container(width: 46, height: 46, alignment: Alignment.center,
-                        decoration: BoxDecoration(color: BT.sky, borderRadius: BorderRadius.circular(14)),
-                        child: const Icon(Icons.memory_rounded, size: 21, color: Color(0xFF123040))),
-                      const SizedBox(width: 13),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(c.model.isEmpty ? c.name : '${c.name} · ${c.model}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                        const SizedBox(height: 2),
-                        Text('${c.serial}${c.vendorName != null ? ' · ${c.vendorName}' : ''}', style: const TextStyle(color: BT.mut, fontSize: 11.5)),
-                      ])),
-                      const Icon(Icons.add_circle_outline_rounded, color: BT.ink),
-                    ])),
-                  ))).toList()),
+              : Column(children: [
+                  for (final c in list) _stockCard(c,
+                    forThisBuild: reserved.contains(c.id),
+                    heldElsewhere: c.isReserved && !reserved.contains(c.id)),
+                ]),
           )),
         ],
       )),

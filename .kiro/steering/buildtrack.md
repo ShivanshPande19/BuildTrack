@@ -46,7 +46,8 @@ cd app && flutter analyze && flutter test   # app: 0 errors; CI (Flutter 3.47.2)
 ```
 
 When you add a rule, add assertions to the matching suite: `10_workflow`, `20_service`, `30_po_approval`,
-`40_ops`, `50_dossier`, `60_truck_record`, `70_status`, or a new `NN_*_tests.sql`. They use the `t_assert` /
+`40_ops`, `50_dossier`, `60_truck_record`, `70_status`, `80_hardening`, `81_po_routing`,
+`82_design_stage`, `83_checklist_evidence`, or a new `NN_*_tests.sql`. They use the `t_assert` /
 `t_expect_error` helpers defined in `10_workflow_tests.sql`. Read the real count off the run. Don't carry an old number forward.
 A command exiting 0 is not proof; check the actual result.
 
@@ -65,6 +66,19 @@ A command exiting 0 is not proof; check the actual result.
 - A summary section must stay **bounded**: a role carrying eight builds has to get the worst four and a
   *See all N* sheet, not an unbounded `Column`. And it must read every source of the fact it claims —
   twice now a section said "all caught up" because it read one table and the blocking thing was in another.
+- **Never compare a Postgres `date` against `DateTime.now()`.** It parses to local midnight, so
+  `isBefore(now)` is true from 00:01 and `isAfter(now)` is false all day: a stage due *today* read
+  "Overdue" and a warranty ending *today* read "Expired". This has now been fixed **four** times
+  (`0026` for two warranty sites, `0029` for `WorkshopTask`, `AssignedBuild` and
+  `ComponentRow.warrantyActive`). Use `daysUntil()` / `warrantyStateFor()`, never a new comparison,
+  and when adding a date predicate add a test that it agrees with the existing one — the real damage
+  was two screens disagreeing about the same stage, not either being wrong alone.
+- A column the app writes directly cannot carry a record of **who** changed it or **when**. If that
+  matters, make it an RPC and force it with a guard trigger plus a transaction-local flag
+  (`fn_stage_rpc_begin`, `fn_check_rpc_begin`) — otherwise the audit trail has a hole the client
+  library walks straight through.
+- Something approved is frozen. `fn_submit_stage` / `fn_start_stage` / `fn_install_component` /
+  `fn_tick_check` all refuse a `done` stage; a new RPC that touches a stage's evidence should too.
 - `supabase/full_setup.sql` is **generated** — regenerate with `cd supabase && sh build_full_setup.sh`,
   never hand-edit.
 - Flutter: Riverpod providers in `data/repositories.dart`, models in `data/models.dart`, design

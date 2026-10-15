@@ -41,6 +41,7 @@ void main() {
   scheduleTests();
   stockTests();
   designTodoTests();
+  workshopTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -785,6 +786,306 @@ void designTodoTests() {
         tasks: const [], designs: [ditem('AZ-X', 'pending_approval')]);
       expect(r.designsWithClient, 1);
       expect(r.todos, isEmpty);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// The Workshop role, read end to end. Every one of these is a defect that was
+// live: a stage due today in a red "Overdue" pill, a delivered truck still
+// offering Start work, a list ordered by a number that means nothing across
+// builds, and a warranty that expired on its own last day — for the third time.
+// ───────────────────────────────────────────────────────────────────────────
+
+WorkshopTask wtask({
+  String code = 'AZ-101',
+  String stageId = 'st1',
+  String status = 'in_progress',
+  int? dueInDays,
+  bool awaiting = false,
+  String projectStatus = 'on_track',
+}) {
+  final n = DateTime.now();
+  return WorkshopTask(
+    stageId: stageId, stageName: 'Chassis', status: status,
+    projectId: 'p-$code', projectCode: code, projectName: '$code Truck',
+    assignedDue: dueInDays == null ? null : DateTime(n.year, n.month, n.day + dueInDays),
+    awaitingApproval: awaiting, projectStatus: projectStatus,
+  );
+}
+
+void workshopTests() {
+  group('WorkshopTask.isOverdue · calendar days, not a timestamp', () {
+    test('a stage due TODAY is not overdue', () {
+      // This was the bug. `assigned_due` is a Postgres `date`, so it parses to
+      // midnight, and `isBefore(DateTime.now())` is true from 00:01 onwards —
+      // every stage due today wore a red "Overdue" pill all day, in Workshop's
+      // Tasks, Design's to-do list and Service's stages.
+      expect(wtask(dueInDays: 0).isOverdue, isFalse);
+      expect(wtask(dueInDays: 0).isDueToday, isTrue);
+    });
+
+    test('yesterday is overdue, tomorrow is not', () {
+      expect(wtask(dueInDays: -1).isOverdue, isTrue);
+      expect(wtask(dueInDays: 1).isOverdue, isFalse);
+    });
+
+    test('a stage with no date is never overdue', () {
+      expect(wtask().isOverdue, isFalse);
+      expect(wtask().daysLeft, isNull);
+    });
+
+    test('an approved stage is not overdue, however late it was', () {
+      expect(wtask(status: 'done', dueInDays: -90).isOverdue, isFalse);
+    });
+
+    test('it agrees with StageTick, which the PM screens use', () {
+      // Two definitions of "overdue" in one app is how the PM and the fitter
+      // end up looking at the same stage and disagreeing about it.
+      for (final offset in [-30, -1, 0, 1, 90]) {
+        final n = DateTime.now();
+        final due = DateTime(n.year, n.month, n.day + offset);
+        expect(wtask(dueInDays: offset).isOverdue,
+          StageTick(id: 's', name: 'n', status: 'in_progress', ord: 1, due: due).isOverdue,
+          reason: 'offset $offset disagrees with StageTick');
+      }
+    });
+  });
+
+  group('WorkshopTask · a delivered truck is not work', () {
+    test('a stage left open on a delivered build is closed, not live', () {
+      // fn_mark_delivered(p_force => true) leaves open stages open on purpose —
+      // closing them would rewrite what happened. But they stayed in the
+      // fitter's task list forever, with a live Start work button on a truck
+      // the customer already had.
+      final t = wtask(status: 'todo', projectStatus: 'delivered', dueInDays: -200);
+      expect(t.isDelivered, isTrue);
+      expect(t.isClosed, isTrue);
+      expect(t.isOverdue, isFalse, reason: 'it cannot be late once the truck has gone');
+    });
+
+    test('an open stage on a live build is not closed', () {
+      expect(wtask(status: 'todo').isClosed, isFalse);
+    });
+
+    test('copyWith keeps the build status', () {
+      // The approvals pass rebuilds every row through copyWith; dropping
+      // projectStatus there would quietly resurrect the delivered stages.
+      final t = wtask(projectStatus: 'delivered').copyWith(awaitingApproval: true);
+      expect(t.isDelivered, isTrue);
+    });
+  });
+
+  group('WorkshopTask.compare · ordering across builds', () {
+    test('rework leads, then overdue, then today, then soonest', () {
+      final list = [
+        wtask(code: 'AZ-E', stageId: 'e', dueInDays: 30),
+        wtask(code: 'AZ-C', stageId: 'c', dueInDays: 0),
+        wtask(code: 'AZ-A', stageId: 'a', status: 'rework'),
+        wtask(code: 'AZ-D', stageId: 'd', dueInDays: 3),
+        wtask(code: 'AZ-B', stageId: 'b', dueInDays: -5),
+      ]..sort(WorkshopTask.compare);
+      expect(list.map((t) => t.projectCode).toList(),
+        ['AZ-A', 'AZ-B', 'AZ-C', 'AZ-D', 'AZ-E']);
+    });
+
+    test('an undated stage sorts after every dated one', () {
+      // Nobody committed to a date, so it cannot be the most urgent thing —
+      // the same rule the PM's Schedule uses.
+      final list = [
+        wtask(code: 'AZ-N', stageId: 'n'),
+        wtask(code: 'AZ-F', stageId: 'f', dueInDays: 400),
+      ]..sort(WorkshopTask.compare);
+      expect(list.first.projectCode, 'AZ-F');
+    });
+
+    test('a stage with the PM sorts below live work, and delivered below that', () {
+      final list = [
+        wtask(code: 'AZ-X', stageId: 'x', projectStatus: 'delivered'),
+        wtask(code: 'AZ-W', stageId: 'w', awaiting: true, dueInDays: -9),
+        wtask(code: 'AZ-L', stageId: 'l', dueInDays: 60),
+      ]..sort(WorkshopTask.compare);
+      expect(list.map((t) => t.projectCode).toList(), ['AZ-L', 'AZ-W', 'AZ-X']);
+    });
+
+    test('two builds no longer interleave by their own stage order', () {
+      // `ord` is a stage's position *inside its own build*, which is what this
+      // list used to sort by: AZ-205's overdue third stage sorted below
+      // AZ-101's not-yet-started first one.
+      final list = [
+        wtask(code: 'AZ-101', stageId: 'a1', dueInDays: 20),
+        wtask(code: 'AZ-205', stageId: 'b3', dueInDays: -2),
+      ]..sort(WorkshopTask.compare);
+      expect(list.first.projectCode, 'AZ-205');
+    });
+  });
+
+  group('ChecklistItem · the tick is a record now', () {
+    ChecklistItem item(Map<String, dynamic> m) => ChecklistItem.fromMap({'id': 'c1', ...m});
+
+    test('reads who ticked it and when', () {
+      final c = item({
+        'label': 'Weld the frame', 'done': true, 'done_at': '2026-10-14T09:30:00Z',
+        'done_by_profile': {'full_name': 'Ravi Kumar'},
+      });
+      expect(c.doneByName, 'Ravi Kumar');
+      expect(c.doneAt, isNotNull);
+    });
+
+    test('a check ticked before 0029 has no name, and does not invent one', () {
+      // The old write stored nothing. Null is the honest answer and the row
+      // says "ticked before this was recorded" rather than naming somebody.
+      final c = item({'label': 'Weld', 'done': true});
+      expect(c.doneByName, isNull);
+      expect(c.doneAt, isNull);
+    });
+
+    test('a photo-required check carries its proof', () {
+      final c = item({
+        'label': 'Pressure-test the gas line', 'done': true, 'photo_required': true,
+        'proof': {'file_url': 'https://example.test/gas.jpg'},
+      });
+      expect(c.photoRequired, isTrue);
+      expect(c.proofUrl, 'https://example.test/gas.jpg');
+      expect(c.proofMissing, isFalse);
+    });
+
+    test('ticked, photo-required, no photo is called out', () {
+      // Only reachable on a row ticked before the rule was added — the RPC
+      // refuses it now. Better said out loud than shown as a tick that quietly
+      // means less than the one above it.
+      final c = item({'label': 'Gas line', 'done': true, 'photo_required': true});
+      expect(c.proofMissing, isTrue);
+    });
+
+    test('an un-ticked check is never "missing" proof', () {
+      expect(item({'label': 'x', 'done': false, 'photo_required': true}).proofMissing, isFalse);
+    });
+
+    test('needsPhotoFirst is about the stage having a photo at all', () {
+      final c = item({'label': 'x', 'done': false, 'photo_required': true});
+      expect(c.needsPhotoFirst(0), isTrue);
+      expect(c.needsPhotoFirst(3), isFalse);
+      // An ordinary check never needs one.
+      expect(item({'label': 'y', 'done': false}).needsPhotoFirst(0), isFalse);
+    });
+
+    test('survives a row where every new column is absent', () {
+      // RLS and column-level selects mean a screen can legitimately get a row
+      // without them; it must not throw.
+      final c = ChecklistItem.fromMap({'id': 'c1', 'label': 'x', 'done': false});
+      expect(c.photoRequired, isFalse);
+      expect(c.proofUrl, isNull);
+    });
+  });
+
+  group('StageBundle · the fitter\'s own cues', () {
+    StageBundle bundle(List<ChecklistItem> checks) => StageBundle(
+      checklist: checks, photos: const [], parts: const [], delays: const []);
+
+    test('counts the checks still wanting a photo', () {
+      final b = bundle([
+        ChecklistItem(id: 'a', label: 'a', done: false, photoRequired: true),
+        ChecklistItem(id: 'b', label: 'b', done: false, photoRequired: true),
+        ChecklistItem(id: 'c', label: 'c', done: true, photoRequired: true),
+        ChecklistItem(id: 'd', label: 'd', done: false),
+      ]);
+      expect(b.proofOutstanding, 2);
+      expect(b.checksDone, 1);
+    });
+
+    test('a stage with no photo rules has nothing outstanding', () {
+      expect(bundle([ChecklistItem(id: 'a', label: 'a', done: false)]).proofOutstanding, 0);
+    });
+  });
+
+  group('ComponentRow · reserved is not installed', () {
+    ComponentRow row({required String status, String? code}) => ComponentRow.fromMap({
+      'id': 'c1', 'serial_number': 'SN-1', 'status': status,
+      'item_catalog': {'name': 'LED Panel'},
+      if (code != null) 'projects': {'code': code},
+    });
+
+    test('an in-stock part named for a build is reserved, not fitted', () {
+      // 0026 made Store's intake an earmark: the part stays on the shelf while
+      // naming the truck it was bought for. Workshop's Parts tab filtered on
+      // the build alone, so these arrived looking exactly like fitted parts.
+      final c = row(status: 'in_stock', code: 'AZ-101');
+      expect(c.isReserved, isTrue);
+      expect(c.isFitted, isFalse);
+    });
+
+    test('free stock is neither', () {
+      final c = row(status: 'in_stock');
+      expect(c.isReserved, isFalse);
+      expect(c.isFitted, isFalse);
+    });
+
+    test('an installed part is fitted', () {
+      final c = row(status: 'installed', code: 'AZ-101');
+      expect(c.isFitted, isTrue);
+      expect(c.isReserved, isFalse);
+    });
+  });
+
+  group('ComponentRow warranty · one definition, app-wide', () {
+    ComponentRow part({int? endInDays}) {
+      final n = DateTime.now();
+      return ComponentRow(id: 'c1', itemCatalogId: 'i1', name: 'Griddle', model: '',
+        serial: 'SN-1', status: 'installed',
+        warrantyEnd: endInDays == null ? null : DateTime(n.year, n.month, n.day + endInDays));
+    }
+
+    test('a warranty ending TODAY is still cover', () {
+      // The third copy of the bug 0026 fixed in the other two: comparing a
+      // date-only column against DateTime.now() is false all through the
+      // warranty's own last day, so the part read "Expired" in Workshop's
+      // Parts tab, Store's Parts list and the component record.
+      expect(part(endInDays: 0).warrantyState, 'expiring');
+      expect(part(endInDays: 0).warrantyActive, isTrue);
+    });
+
+    test('yesterday is expired', () {
+      expect(part(endInDays: -1).warrantyState, 'expired');
+      expect(part(endInDays: -1).warrantyActive, isFalse);
+    });
+
+    test('inside the expiring window it is still active cover', () {
+      expect(part(endInDays: 10).warrantyState, 'expiring');
+      expect(part(endInDays: 10).warrantyActive, isTrue);
+    });
+
+    test('well in the future is plainly active', () {
+      expect(part(endInDays: 300).warrantyState, 'active');
+    });
+
+    test('nothing on record is not treated as covered', () {
+      expect(part().warrantyState, 'none');
+      expect(part().warrantyActive, isFalse);
+    });
+
+    test('it agrees with TruckComponent, which the truck record uses', () {
+      for (final d in [-5, 0, 10, 300]) {
+        final n = DateTime.now();
+        final end = DateTime(n.year, n.month, n.day + d);
+        expect(part(endInDays: d).warrantyState, warrantyStateFor(end),
+          reason: 'offset $d disagrees with the shared helper');
+      }
+    });
+  });
+
+  group('StageMaterial · what this stage is built from', () {
+    test('flattens the joined catalogue row', () {
+      final m = StageMaterial.fromMap({
+        'qty': 4, 'status': 'received', 'item_catalog': {'name': 'Steel sheet'},
+      });
+      expect(m.name, 'Steel sheet');
+      expect(m.qty, 4);
+      expect(m.isReceived, isTrue);
+    });
+
+    test('an unordered item is not on the shelf', () {
+      expect(StageMaterial.fromMap({'qty': 1, 'status': 'pending'}).isReceived, isFalse);
     });
   });
 }

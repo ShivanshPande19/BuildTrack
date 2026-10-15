@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **14 Oct 2026** (demo walk + the Design role aligned: migrations `0027`–`0028`, PO routing on a PM-less build, Store's inventory truth, an editable checklist, and the multi-project pass over every role's home.)
+Last updated: **15 Oct 2026** (the Workshop role aligned: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
 
 ---
 
@@ -12,12 +12,12 @@ Last updated: **14 Oct 2026** (demo walk + the Design role aligned: migrations `
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0028`: 33 tables, 5 views, 57 functions (about 33 called by the app), 2 Edge Functions |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0029`: 33 tables, 5 views, 59 functions (about 34 called by the app), 2 Edge Functions |
 | **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a live demo walk plus a study of the Design role (§6): `0027` stops a purchase order losing the PM's signature on a PM-less build, `0028` makes a design stage and its designs one piece of work — a design-discipline stage cannot be submitted until the client has approved a design — and lets the PM correct a checklist. On the app side Store stopped calling every project part "running low", and every role's home was re-read for the person carrying **many** builds at once rather than one. The remaining gaps are in §3 and are smaller than they were. |
-| **Verified** | 14 Oct 2026, on `feat/design-stage-alignment` — CI green on all three jobs. **Backend: 223/223 assertions** in 10 suites on real Postgres 15, run twice (the migration chain and `full_setup.sql`), as real non-superuser users, plus "newest migration is idempotent". **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 137/137** (76 model + 48 widget + 13 PO-document). Android debug build passes. `flutter build ios --simulator` succeeds locally and the app boots, on Flutter 3.47.2. |
-| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → **demo walk + the Design role aligned (`0027`–`0028`)**. See §6 and `WORKLOG.md`. |
+| **Verified** | 15 Oct 2026, on `feat/workshop-checklist-evidence` — **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 169/169** (108 model + 48 widget + 13 PO-document), run locally. **Backend: `0029` + its 31-assertion suite are gated on CI** — the dev machine has no Docker or local Postgres, so `supabase/tests/run.sh` could not be run here; the previous level was 223/223 in 10 suites. Android debug build and `flutter build ios --simulator` last verified 14 Oct on Flutter 3.47.2. |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → demo walk + the Design role aligned (`0027`–`0028`) → **the Workshop role aligned, and a checklist that is evidence (`0029`)**. See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization |
-| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0028` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028`** — it reads `design_artifacts.stage_id` and calls `fn_create_design(p_stage => …)`. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
+| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0029` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028` and `0029`** — it reads `design_artifacts.stage_id`, `checklist_items.done_by` / `photo_required`, and calls `fn_create_design(p_stage => …)` and `fn_tick_check`. Ticking a check will fail outright without `0029`. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
 
@@ -64,7 +64,7 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 | 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. Home's at-risk and today rows open the build. | ✅ A PM hand-over now carries its approvals and unsigned POs across. |
 | 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
 | 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | ✅ Inline "New item" works now. Still open: no incoming-PO / GRN list. |
-| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next, due + overdue flags, rework reason, awaiting approval. **Task detail:** **Start work**, optimistic checklist, **camera photo**, install part, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, in-stock check (`fn_install_component`). **Parts:** parts on my builds. **Week:** all my stages. | Workshop is the **only** role with a stage Start/Submit UI. |
+| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next / *delivered with this stage open*, ordered worst-first across every build, rework reason, awaiting approval. **Task detail:** **Start work**, checklist that **records who ticked each check and when** and can require a photo per check, **Parts this stage needs** (its BOM, with In store / On order), the stage's photos and logged delays, **Report a hold-up**, install part, the truck's full record, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, parts bought for *this* truck first, parts held for another build marked and refused. **Parts:** Fitted vs Waiting in store. **Week:** overdue / today / next 7 days / later / no date, plus what is with the PM. | ✅ Every discipline has a stage screen now (`0026`). Still open: Workshop can read PO rates at the DB level (§3 #16). |
 | 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats, and **What needs you** — one ranked list over stages *and* designs, each row naming its next action (Submit stage / Upload revision / Send for approval / Start a design) and opening the screen that does it; designs sitting with the client are counted beside the list, not in it. **Designs:** searchable library, counted filter chips, lazy list. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, **attach it to the design stage it belongs to**, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | ✅ Fixed: a design stage now **cannot** be submitted until the client has approved a design on that build (`0028`), and Studio no longer says *All caught up* over an overdue stage. |
 | 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | ✅ Fixed: **My build stages** on the Trucks tab. Still open: "Linked component" never shows (nothing sets it). |
 | 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | ✅ Documents open now (PDF → OS preview, image → viewer). Still open: no priority picker on requests. |
@@ -171,12 +171,15 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     have covered them, since the migration chain finishes before the seed runs, so it swept an empty table.
     An **existing** database whose catalogue was filled in after `0019`: `0026` catches it up, and only when
     nothing is essential yet, so it never clobbers a deliberate choice.
-30. ⚠️ **Partly fixed.** App tests are up from 62 to **137**: the needs-attention feed, order-by urgency,
-    warranty state, notification targets, the build schedule, essentials-only low stock, the designer's
-    to-do ranking, and `test/po_document_test.dart` covering the GST rate-wise split, the paise rounding
-    and `rupeesInWords`. The backend gained three suites — `80_hardening_tests.sql` (42),
-    `81_po_routing_tests.sql` (11) and `82_design_stage_tests.sql` (24) — all green in CI, 223/223 across
-    10 suites. Still uncovered: `fn_request_stock`, `0012` checklist copying, `0014`.
+30. ⚠️ **Partly fixed.** App tests are up from 62 to **169**: the needs-attention feed, order-by
+    urgency, warranty state (now pinned to agree with the shared helper), notification targets, the
+    build schedule, essentials-only low stock, the designer's to-do ranking, the stage-urgency
+    ordering, the checklist's tick record and photo rule, reserved-vs-fitted parts, and
+    `test/po_document_test.dart` covering the GST rate-wise split, the paise rounding and
+    `rupeesInWords`. The backend gained four suites — `80_hardening_tests.sql` (42),
+    `81_po_routing_tests.sql` (11), `82_design_stage_tests.sql` (24) and
+    `83_checklist_evidence_tests.sql` (31) — the first three green in CI at 223/223 across 10 suites,
+    `83` pending its first CI run. Still uncovered: `fn_request_stock`, `0012` checklist copying, `0014`.
 31. ⚠️ **Partly fixed.** `unreadCountProvider` is used now (#24). Still dead: the non-embedded navigation in
     `ProjectDetailScreen` / `ProjectDossierScreen`, `poDocProvider`, and `RoleHome._titles` / `_navs`.
 32. Client tickets aren't visible to Admin or PM anywhere.
@@ -252,6 +255,73 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     stage *and* its designs — which is the only honest reading now that #47 makes them one piece of work —
     and names the next action on every row. Designs sitting with the client are counted beside the list,
     not in it: a to-do list you cannot act on stops being a to-do list.
+
+### Found reading the Workshop role end to end, 15 Oct 2026 (new numbers)
+50. ✅ ~~**Every stage due *today* showed a red "Overdue" pill.**~~ `assigned_due` is a Postgres
+    `date`, so it parses to midnight, and `WorkshopTask.isOverdue` compared it against
+    `DateTime.now()` — true from 00:01 onwards. The **third** appearance of this trap
+    (`AssignedBuild.isOverdue` had it too, and `ComponentRow.warrantyActive` was a fourth: a part
+    whose cover ended today read *Expired* in Workshop's Parts tab, Store's Parts list and the
+    component record). `StageTick` and `ScheduleEntry` were already right, so the fitter and their PM
+    could look at one stage and disagree about it. All four now go through `daysUntil` /
+    `warrantyStateFor`, with a test asserting the two definitions agree.
+51. ✅ ~~**A delivered truck still offered "Start work".**~~ `fn_mark_delivered(p_force => true)`
+    leaves open stages open deliberately — closing them would rewrite what happened — but
+    `myTasks()` never read the build's status, so those stages sat in the fitter's list forever with
+    live Start/Submit buttons on a truck the customer already had, and the PM could receive an
+    approval request on a delivered build. They are now a *Delivered with this stage open* group,
+    kept as a record, with the actions withdrawn and the reason stated.
+52. ✅ ~~**"My Week" was not a week.**~~ No date filter, no order, no overdue flag, no due date on
+    the card, and — because `myTasks()` returns every stage ever assigned — it filled with
+    *finished* work. It was the Tasks tab again with worse cards. Now the same five buckets the PM's
+    Schedule uses (overdue / today / next 7 days / later / no date), plus what is with the PM, over
+    open stages only, with a three-tile strip and cards that open the stage (they did nothing before).
+53. ✅ ~~**The task list was ordered by `ord`.**~~ `ord` is a stage's position *inside its own build*,
+    so two trucks interleaved meaninglessly and AZ-205's overdue stage could sort below AZ-101's
+    not-yet-started one. One `WorkshopTask.compare` now orders every list of stages — rework,
+    overdue, due today, soonest, undated last, then with-the-PM, then delivered — and
+    `shared/my_stages.dart` (Design, Service) uses it too.
+54. ✅ ~~**Workshop's three tabs were eager and unbounded.**~~ `ListView(children: …)` with
+    `.map().toList()` over everything, including the in-stock list on the install screen. Now
+    `SliverList.builder` throughout, the pattern the other roles got in the demo-walk pass.
+55. ✅ ~~**A part Store had merely *reserved* was shown as installed.**~~ `0026` made intake an
+    earmark (the part stays `in_stock` while naming its build); `installedForProjects()` filtered on
+    the build alone, so reserved and fitted parts arrived in one undifferentiated list — on a tab
+    whose empty state said "parts you scan-to-install appear here". Split into **Fitted** and
+    **Waiting in store**, the distinction the truck record has had since `0023`.
+56. ✅ ~~**`fn_install_component` let a part into an approved stage, and stole another build's
+    reservation.**~~ `fn_start_stage` and `fn_submit_stage` have refused a `done` stage since `0026`;
+    this did not, and the install screen's task picker offered approved stages, so the evidence of a
+    signed-off stage could change afterwards. It also overwrote `installed_in_project_id` without
+    looking, so a part earmarked for AZ-205 could be fitted to AZ-101 and nobody was told. Both
+    refused in `0029`; the picker now offers only stages a part can actually go into, and the stock
+    list marks what is held for another build.
+57. ✅ ~~**The fitter could not see what the stage needed.**~~ `StageBundle` carried checklist,
+    photos, parts and delays but no materials, and the install screen was a flat alphabetical list of
+    every serialised part in the building with the build each was earmarked for not even shown —
+    which is how the wrong part gets fitted. The stage now shows **Parts this stage needs** (its slice
+    of the template BOM, with *In store / On order / Not ordered*), and the stock list puts the parts
+    bought for this truck first.
+58. ✅ ~~**Uploaded photos and logged delays were fetched and never drawn.**~~ `stageBundle` read
+    both on every stage open and `task_detail.dart` rendered neither, so the person who took the
+    photo could not see it, could not tell what had already gone up, and could not check the right
+    thing was in frame — while the client saw them. Both now render, and the bundle's six sequential
+    round trips run in parallel.
+59. ✅ ~~**The fitter had no way to say why a stage was stuck.**~~ `delay_logs` has granted the
+    workshop role write since `0009` — and they are the one who knows the steel did not arrive — but
+    no screen ever offered it, so the PM had to notice the stage was late and then guess. **Report a
+    hold-up** on the stage screen, with the reason, days lost and a note. `0029` narrowed the grant
+    from "any workshop member, any stage" to the stage's own assignee, which is what made it safe to
+    offer.
+60. ✅ ~~**The in-app Roles & permissions screen said Workshop "cannot see purchase-order rates".**~~
+    `purchase_orders_read` is `is_staff()`, so any workshop member can read every PO's rates and
+    terms. No Workshop screen shows them, but the claim was false, and it was being shown to the
+    user inside the app. Corrected, and the role's new abilities and limits added. (The underlying
+    read scope is #16's family and still open.)
+61. ✅ ~~**A checklist tick was not evidence.**~~ See `0029` in §6 — the headline of this pass.
+62. ✅ ~~**Workshop could not see the record it was writing.**~~ `v_truck_components` has carried
+    every part, serial, stage and fitter since `0023`, and `TruckRecordScreen` lived only inside
+    `BuildScreen`, which Admin and the PM can open and Workshop cannot. The stage screen now opens it.
 
 ---
 
@@ -353,6 +423,60 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 15 Oct 2026: The Workshop role aligned, and a checklist that is evidence (migration `0029`)
+
+The Design role was read end to end last pass; this is the same for Workshop. It began with one
+question — *"does the checklist just tick with no proof, and do the parts that get installed show up
+anywhere?"* The second half had a good answer: `v_truck_components` has been a proper digital twin
+since `0023`, with every part's serial, stage, fitter and warranty. The first half did not.
+
+**The checklist was a to-do list presented as evidence.** The whole table was
+`(id, stage_id, label, done)`, and the only write was a bare `update … set done = …`. So nothing
+recorded **who** ticked a check or **when**, there was nowhere to attach proof, the write never
+reached `fn_audit`, and a check on a stage the PM had already approved could still be un-ticked —
+changing the evidence after sign-off. `fn_install_component`, the other thing a fitter does on a
+stage, *was* audited. Same stage, same person, two standards.
+
+`0029` closes it in three parts, which is what was asked for:
+
+- **The record.** Every tick goes through `fn_tick_check`, which writes `done_by` / `done_at`,
+  audits it, and refuses on a stage that is already approved. A direct write to `done` is refused
+  outright — the same way `trg_guard_stages` (`0026`) forces every stage transition through its RPC
+  — so the trail has no hole to slip through.
+- **The freeze.** An approved stage's checklist is closed: not to the fitter, and not to the PM
+  either, who `0028` had given the wording. An admin can still correct it, because correcting a
+  genuine mistake on a closed build is their job and `fn_audit` records that it was them.
+- **Proof where it matters.** A check can be marked `photo_required` — on the workflow template, so
+  every build inherits it, or by the PM on one stage (a camera toggle beside the label). Ticking it
+  needs a photo **on that stage**, and the row keeps which photo discharged it, so the PM can open
+  the proof from the check. Deliberately per-check: *weld the frame* deserves a photo, *collect the
+  keys* does not, and demanding one everywhere is how a fitter learns to photograph the floor.
+
+Two more in the same family, both reachable from the install screen: `fn_install_component` allowed
+a part into an **approved** stage, and silently **stole another build's reservation** (`0026` made
+Store's intake an earmark — the part stays `in_stock` while naming its build — and this overwrote
+that without looking). Both refused. And `delay_logs` was narrowed from "any workshop member, any
+stage" to the stage's own assignee, which is what made it safe to finally offer the fitter a way to
+say *why* the stage is stuck — a grant the schema has carried since `0009` with no screen behind it.
+
+**On the app side**, the same read turned up nine more defects (§3 #50–#62). The one that would have
+shown in the demo: **every stage due today wore a red "Overdue" pill**, because `assigned_due` is a
+`date` and the comparison was against `DateTime.now()`. That was the **third** copy of the trap —
+`AssignedBuild` had it, and `ComponentRow.warrantyActive` was a fourth, so a part whose cover ended
+today read *Expired* in three screens. `StageTick` and `ScheduleEntry` were already correct, which
+means the fitter and their PM could look at one stage and disagree about it; there is now a test
+asserting the two definitions agree. Alongside: a **delivered** truck still offered *Start work*;
+*My Week* had no dates in it at all and filled with finished stages; the task list was ordered by
+`ord`, which is a stage's position inside its own build; reserved parts were drawn as fitted; the
+stage's own BOM, its photos and its delays were never shown (two of the three were already being
+fetched); and the in-app Roles screen claimed Workshop cannot see PO rates, which is not true.
+
+**Verified:** `flutter analyze` clean, `flutter test` **169/169** (up from 137). `0029` and its
+31-assertion suite (`tests/83_checklist_evidence_tests.sql`) are **gated on CI** — this dev machine
+has no Docker and no local Postgres, so the SQL could not be exercised here. Two existing tests
+changed on purpose: `80` and `82` ticked a check with a direct `update`, which is exactly what is
+now refused, so both go through `fn_tick_check`.
 
 ### 14 Oct 2026: Demo walk + the Design role aligned (migrations `0027`–`0028`)
 

@@ -180,6 +180,9 @@ class _InboxTab extends ConsumerWidget {
               ref.invalidate(stockProvider);
               ref.invalidate(componentsProvider);
               ref.invalidate(inStockProvider);
+              // Workshop picks from a per-build view of the same stock.
+              ref.invalidate(inStockForProvider);
+              ref.invalidate(reservedForProvider);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   backgroundColor: BT.ink,

@@ -83,7 +83,11 @@ with checks(migration, applied) as (values
   ('0028_design_stage_link',
      exists (select 1 from information_schema.columns where table_schema = 'public'
                and table_name = 'design_artifacts' and column_name = 'stage_id')
-     and exists (select 1 from pg_proc where proname = 'trg_guard_checklist'))
+     and exists (select 1 from pg_proc where proname = 'trg_guard_checklist')),
+  ('0029_checklist_is_evidence',
+     exists (select 1 from information_schema.columns where table_schema = 'public'
+               and table_name = 'checklist_items' and column_name = 'done_by')
+     and exists (select 1 from pg_proc where proname = 'fn_tick_check'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

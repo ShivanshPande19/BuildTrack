@@ -75,12 +75,14 @@ class RolesReferenceScreen extends ConsumerWidget {
       can: [
         'Start an assigned stage, tick its checklist, upload site photos',
         'Scan a part and install it into the stage being worked',
+        'Report a hold-up on its own stage, with the reason and days lost',
         'Submit a finished stage for the project manager\'s approval',
       ],
       cannot: [
         'Mark its own stage done — a stage moves only through Start, Submit and the PM\'s approval',
         'Change its own assignment or the schedule',
-        'See purchase-order rates',
+        'Change what a checklist says, or whether a check needs a photo',
+        'Change anything on a stage once the PM has approved it',
       ]),
     _RoleSpec('design', 'Design', Icons.palette_rounded,
       'Gets the truck\'s design approved before it is built.',
