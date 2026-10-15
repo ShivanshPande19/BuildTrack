@@ -56,11 +56,41 @@
 -- check claiming a photo that is gone.
 -- ════════════════════════════════════════════════════════════════════════════
 
+-- `done_by` is ON DELETE SET NULL, like every other nullable FK to profiles.
+-- 0009 made that an invariant so that offboarding a person can never fail on a
+-- foreign key, 0026 re-ran the sweep for the FKs added since, and
+-- `80_hardening_tests.sql` H11 asserts it over the whole catalogue — which is
+-- what caught this column declared without it. Nulling it is also the right
+-- answer in itself: the tick stands, the record of who made it goes with the
+-- person, and the row then reads the same as one ticked before 0029.
 alter table public.checklist_items
-  add column if not exists done_by             uuid references profiles(id),
+  add column if not exists done_by             uuid references profiles(id) on delete set null,
   add column if not exists done_at             timestamptz,
   add column if not exists photo_required      boolean not null default false,
   add column if not exists proof_attachment_id uuid references attachments(id) on delete set null;
+
+-- Belt and braces for a database where an earlier run of this migration added
+-- the column without the rule (this file was corrected after its first CI run,
+-- before it was applied anywhere). Matches 0026's sweep.
+do $$
+declare c text;
+begin
+  select con.conname into c
+    from pg_constraint con
+    join pg_attribute att
+      on att.attrelid = con.conrelid and att.attnum = con.conkey[1]
+   where con.contype = 'f'
+     and con.conrelid  = 'public.checklist_items'::regclass
+     and con.confrelid = 'public.profiles'::regclass
+     and con.confdeltype = 'a'
+     and att.attname = 'done_by';
+  if c is not null then
+    execute format('alter table public.checklist_items drop constraint %I', c);
+    execute 'alter table public.checklist_items
+               add constraint checklist_items_done_by_fkey
+               foreign key (done_by) references profiles(id) on delete set null';
+  end if;
+end $$;
 
 comment on column public.checklist_items.done_by is
   'Who ticked this check. Written only by fn_tick_check.';
@@ -161,7 +191,20 @@ begin
   perform set_config('buildtrack.check_rpc', 'on', true);
 end $$;
 
-revoke all on function public.fn_check_rpc_begin() from public, authenticated;
+-- Revoked from callers for the same reason 0026 revokes fn_stage_rpc_begin: a
+-- client that could set the flag itself could then write `done` directly and
+-- the record would be back to being optional. The role list is read from
+-- pg_roles because `anon` exists on Supabase and not on the plain Postgres the
+-- test suite runs against — and that suite re-grants everything to
+-- `authenticated` afterwards, so this is only observable on a real project.
+do $$
+declare v_roles text := 'public';
+begin
+  select v_roles || coalesce(string_agg(', ' || quote_ident(rolname), ''), '')
+    into v_roles
+    from pg_roles where rolname in ('authenticated', 'anon');
+  execute format('revoke all on function public.fn_check_rpc_begin() from %s', v_roles);
+end $$;
 
 create or replace function public.fn_tick_check(
   p_item  uuid,
