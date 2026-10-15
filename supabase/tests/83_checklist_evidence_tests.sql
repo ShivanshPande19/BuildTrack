@@ -283,6 +283,85 @@ select t_assert((select count(*) from delay_logs
                   where stage_id='7f000000-0000-0000-0000-0000000000b2') = 2,
                 'E10 the build''s PM can log a delay on any of its stages');
 
+
+\echo ''
+\echo '=== 0030 · a stage photo is evidence too ========================='
+
+-- 0029 made the tick evidence and left the photos it points at deletable by
+-- any staff member at all, including after the PM signed off on them.
+reset role; set test.uid = '';
+insert into stages (id, project_id, name, ord, status, discipline, assignee_id)
+values ('7f000000-0000-0000-0000-0000000000b3','7f000000-0000-0000-0000-0000000000a1',
+        'Finishing', 3, 'in_progress', 'workshop', 'd0000000-0000-0000-0000-000000000001');
+
+insert into attachments (id, owner_type, owner_id, file_url, caption, uploaded_by)
+values ('7f000000-0000-0000-0000-0000000000e5','stage',
+        '7f000000-0000-0000-0000-0000000000b3','https://example.test/weld.jpg','Weld',
+        'd0000000-0000-0000-0000-000000000001');
+
+set role authenticated;
+
+-- A workshop member on a different build has no business here.
+set test.uid = 'd0000000-0000-0000-0000-000000000002';
+select t_expect_error($$
+  delete from attachments where id = '7f000000-0000-0000-0000-0000000000e5'$$,
+  'E11 another fitter cannot delete a photo from someone else''s stage');
+
+-- The person who took it can.
+set test.uid = 'd0000000-0000-0000-0000-000000000001';
+delete from attachments where id = '7f000000-0000-0000-0000-0000000000e5';
+select t_assert((select count(*) from attachments
+                  where id='7f000000-0000-0000-0000-0000000000e5') = 0,
+                'E11 whoever took the photo can remove it');
+
+-- …and so can the build's PM, whatever they took.
+reset role; set test.uid = '';
+insert into attachments (id, owner_type, owner_id, file_url, caption, uploaded_by)
+values ('7f000000-0000-0000-0000-0000000000e6','stage',
+        '7f000000-0000-0000-0000-0000000000b3','https://example.test/weld2.jpg','Weld 2',
+        'd0000000-0000-0000-0000-000000000001');
+set role authenticated;
+set test.uid = 'b0000000-0000-0000-0000-000000000002';
+delete from attachments where id = '7f000000-0000-0000-0000-0000000000e6';
+select t_assert((select count(*) from attachments
+                  where id='7f000000-0000-0000-0000-0000000000e6') = 0,
+                'E11 …and so can the build''s project manager');
+
+\echo ''
+\echo '=== 0030 · an approved stage keeps its photos ===================='
+
+-- b1 was approved back in E7. The photo that discharged its gas-line check is
+-- part of what the PM signed off, so it stops being deletable — by the person
+-- who took it and by the PM alike.
+set test.uid = 'd0000000-0000-0000-0000-000000000001';
+select t_expect_error($$
+  delete from attachments where id = '7f000000-0000-0000-0000-0000000000e1'$$,
+  'E12 a photo on an approved stage cannot be deleted');
+
+set test.uid = 'b0000000-0000-0000-0000-000000000002';
+select t_expect_error($$
+  delete from attachments where id = '7f000000-0000-0000-0000-0000000000e1'$$,
+  'E12 …not even by the PM who approved it');
+
+select t_assert((select proof_attachment_id from checklist_items
+                  where id='7f000000-0000-0000-0000-0000000000c3')
+                = '7f000000-0000-0000-0000-0000000000e1',
+                'E12 …so the check it proves still points at it');
+
+-- An admin can, because correcting a closed build is their job.
+set test.uid = 'a0000000-0000-0000-0000-000000000001';
+delete from attachments where id = '7f000000-0000-0000-0000-0000000000e1';
+select t_assert((select count(*) from attachments
+                  where id='7f000000-0000-0000-0000-0000000000e1') = 0,
+                'E12 an admin can still remove one');
+
+-- …and the check it proved is left saying so rather than pointing at nothing:
+-- proof_attachment_id is ON DELETE SET NULL, and the app reads a ticked
+-- photo-required check with no proof as "No photo on record".
+select t_assert((select proof_attachment_id from checklist_items
+                  where id='7f000000-0000-0000-0000-0000000000c3') is null,
+                'E12 …and the check it proved drops the dangling link');
+
 reset role;
 \echo ''
-\echo '=== 0029 CHECKLIST EVIDENCE TESTS PASSED ========================='
+\echo '=== 0029 + 0030 EVIDENCE TESTS PASSED ==========================='

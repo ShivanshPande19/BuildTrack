@@ -86,6 +86,41 @@ Also fixed on the way: a retry button I had just written pointed at the wrong pr
 watches a build-keyed family now), and Store logging a part did not invalidate the fitter's view of
 stock.
 
+### Then the screen was used, not read (15 Oct, migration `0030`)
+
+Three complaints, all fair:
+
+> *"this truck full record ka button bilkul neeche and photos bhi aari h ajeeb jagah pe"*
+
+The screen had no order. The primary action was in the **middle** — after the checklist and the
+materials, before the photos, the delays, the fitted parts and the truck record — so *Submit* was
+something you scrolled past, and the record link was the last thing on a long scroll. Actions lived
+in one block away from what they affected. Now: **what this stage is → what you have recorded → the
+whole truck**, each section carrying its own action in its heading, and the primary action in a
+**pinned bar** that still explains itself when it is unavailable.
+
+> *"ye photos ka kya scene h delete nhi kr skte h kya"*
+
+No — a photo could be added and never taken back, so the wrong shot stayed on the client's build
+timeline forever. Each thumbnail has a remove button now, behind a confirm that names the check it
+proves if it proves one. `0030` puts the rule behind it: `attachments` had carried
+`for all using (is_staff())` since 0002, so *any* staff member could delete *any* photo on *any*
+truck — including after the PM approved the stage and signed off on those photos. A check whose
+proof a passer-by can delete is not proof, which made 0029 half a rule. Now: whoever took it, the
+build's PM, or an admin; and once approved, only an admin.
+
+> *"ye checklist tick krne pe kehta h ticked before it was recorded"*
+
+My bug, from the previous commit. The provenance line read the **optimistic** flag rather than the
+server's `done`. The tick flips instantly so a slow connection does not feel dead, but the name and
+date only exist once the write lands — so the moment you ticked anything, the row claimed it had
+been ticked before the app started recording. Alarming nonsense for a check you just ticked. It
+reads the server now and says *Saving…* in between; the genuinely-old case was reworded to
+*"Ticked earlier — before the app recorded who"*.
+
+Verified on the device: the new order, delete (confirm → *Photo removed* → empty state), and a tick
+showing *Vikas · 15 Oct*.
+
 ### Then it was actually run (15 Oct, same branch)
 
 `0028` and `0029` were applied to the live project and the app was driven on an iPhone 15 Pro

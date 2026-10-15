@@ -1332,6 +1332,21 @@ class WorkshopRepo {
     return row['id'] as String;
   }
 
+  /// Remove a stage photo.
+  ///
+  /// A photo could be added and never taken back, so a fitter who uploaded the
+  /// wrong shot — or one with a face, or a whiteboard — had no way out. 0030
+  /// puts the rule behind it: whoever took it, the build's PM, or an admin,
+  /// and nobody at all once the PM has approved the stage, which is the same
+  /// freeze the checklist has.
+  ///
+  /// `checklist_items.proof_attachment_id` is ON DELETE SET NULL, so deleting a
+  /// photo that discharged a check leaves the check ticked but without proof —
+  /// which the row then says out loud rather than implying it still has one.
+  Future<void> deleteStagePhoto(String attachmentId) async {
+    await sb.from('attachments').delete().eq('id', attachmentId);
+  }
+
   /// Find a part by the serial the camera just read.
   ///
   /// Case-insensitive and whitespace-tolerant, because a scan can pick up

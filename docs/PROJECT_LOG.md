@@ -3,7 +3,7 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simulator — which found the photo-picker freeze (§3 #63) and four more: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
+Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simulator — which found the photo-picker freeze (§3 #63) and seven more, plus a pass over the stage screen's own order (§3 #68–#70) and `0030`, which puts a rule behind deleting a photo: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
 
 ---
 
@@ -12,12 +12,12 @@ Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simul
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0029`: 33 tables, 5 views, 59 functions (about 34 called by the app), 2 Edge Functions |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0030`: 33 tables, 5 views, 60 functions (about 34 called by the app), 2 Edge Functions |
 | **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a live demo walk plus a study of the Design role (§6): `0027` stops a purchase order losing the PM's signature on a PM-less build, `0028` makes a design stage and its designs one piece of work — a design-discipline stage cannot be submitted until the client has approved a design — and lets the PM correct a checklist. On the app side Store stopped calling every project part "running low", and every role's home was re-read for the person carrying **many** builds at once rather than one. The remaining gaps are in §3 and are smaller than they were. |
 | **Verified** | 15 Oct 2026, on `feat/workshop-checklist-evidence` — **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 169/169** (108 model + 48 widget + 13 PO-document), run locally. **Backend: `0029` + its 31-assertion suite are gated on CI** — the dev machine has no Docker or local Postgres, so `supabase/tests/run.sh` could not be run here; the previous level was 223/223 in 10 suites. Android debug build and `flutter build ios --simulator` last verified 14 Oct on Flutter 3.47.2. |
 | **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → demo walk + the Design role aligned (`0027`–`0028`) → **the Workshop role aligned, and a checklist that is evidence (`0029`)**. See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization |
-| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0029` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028` and `0029`** — it reads `design_artifacts.stage_id`, `checklist_items.done_by` / `photo_required`, and calls `fn_create_design(p_stage => …)` and `fn_tick_check`. **Without `0029` the stage screen does not load at all** — `stageBundle` selects `done_at` / `photo_required` and embeds `done_by` and the proof attachment, so the whole query is refused, not just the tick. The app and these two migrations ship together. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
+| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0030` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028`, `0029` and `0030`** — it reads `design_artifacts.stage_id`, `checklist_items.done_by` / `photo_required`, and calls `fn_create_design(p_stage => …)` and `fn_tick_check`. **Without `0029` the stage screen does not load at all** — `stageBundle` selects `done_at` / `photo_required` and embeds `done_by` and the proof attachment, so the whole query is refused, not just the tick. The app and these two migrations ship together. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
 
@@ -354,6 +354,29 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     points at `profiles` **twice** (`assignee_id`, `assigned_by`), so the embed is ambiguous and
     PostgREST refuses the whole query. The same trap that had silently broken PM Approvals since the
     beginning (#not-numbered, see §6 13 Oct). The embed names its relationship now.
+68. ✅ ~~**The stage screen was a pile, not an order.**~~ The primary action sat in the *middle* of
+    the page — after the checklist and the materials, but before the photos, the delays, the
+    installed parts and the truck record — so "Submit" was something you scrolled past on the way to
+    the bottom, and the truck-record link ended up as the last thing on a long scroll. Every action
+    also lived in one block, away from the thing it affected: *Photo* nowhere near the photos,
+    *Install part* nowhere near the parts. Now the body reads **what this stage is → what you have
+    recorded → the whole truck**, each section carrying its own action in its heading, and the one
+    thing you do with the stage is a **pinned bar** that is always in reach (and still states why,
+    when you cannot: delivered, with the PM, or waiting on the client).
+69. ✅ ~~**A photo could be added and never removed.**~~ A fitter who uploaded the wrong shot — or
+    one with a face, or a whiteboard — was stuck with it on the client's build timeline forever.
+    Each thumbnail now carries a remove button, behind a confirm that says what it costs: if the
+    photo is the **proof** that discharged a check, the dialog names that check, because deleting it
+    leaves the check ticked with nothing behind it. Hidden entirely once the stage is approved.
+    `0030` puts the rule behind it — see §6.
+70. ✅ ~~**Ticking a check said "Ticked before this was recorded".**~~ The provenance line was driven
+    by the *optimistic* flag rather than the server's `done`. The tick flips instantly so a slow
+    connection does not feel dead, but the name and date only exist once the write lands — so the
+    moment you ticked anything, the row claimed it had been ticked before the app started recording.
+    Nonsense for a check you just ticked, and alarming nonsense. It reads the server now, and says
+    *Saving…* while the write is in flight. The genuinely-old case was reworded too: *"Ticked
+    earlier — before the app recorded who"*.
+
 
 ---
 
@@ -455,6 +478,36 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 15 Oct 2026 (later): The stage screen read as a pile, and a photo could not be taken back (migration `0030`)
+
+Three things, from using the screen rather than reading it.
+
+**It had no order.** The primary action sat in the *middle* of the page — after the checklist and
+the materials, before the photos, the delays, the installed parts and the truck record — so
+"Submit" was something you scrolled past, and the truck-record link was the last thing on a long
+scroll. Every action also lived in one block away from what it affected: *Photo* nowhere near the
+photos, *Install part* nowhere near the parts. The body now reads **what this stage is → what you
+have recorded → the whole truck**, each section carries its own action in its heading, and the one
+thing you do with the stage is a **pinned bar** — which still states *why* when you cannot act
+(delivered, with the PM, waiting on the client).
+
+**A photo could be added and never removed.** A fitter who uploaded the wrong shot was stuck with it
+on the client's build timeline. Each thumbnail now has a remove button behind a confirm that says
+what it costs — naming the check it proves, if it proves one. And `0030` puts a rule behind it,
+because `attachments` had carried one policy since 0002: `for all using (is_staff())`. **Any** staff
+member could delete any photo on any stage of any truck, including after the PM had approved the
+stage and signed off on those very photos. Deleting a stage photo is now for whoever took it, the
+build's PM, or an admin — and once the stage is approved, only an admin, the same freeze `0029` gave
+the checklist. A check whose proof a passer-by can delete is not proof.
+
+**Ticking a check said "Ticked before this was recorded".** The provenance line read the *optimistic*
+flag instead of the server's `done`, and the name and date only exist once the write lands — so the
+instant you ticked anything it claimed it had been ticked before the app started recording. It reads
+the server now and says *Saving…* while the write is in flight.
+
+Verified on the device: the new order, delete (confirm → *Photo removed* → empty state), and a tick
+showing the right name and date.
 
 ### 15 Oct 2026: The Workshop role aligned, and a checklist that is evidence (migration `0029`)
 
