@@ -87,6 +87,11 @@ A command exiting 0 is not proof; check the actual result.
   no join), which took the whole seed down. Read the current definition, paste
   it, change only the part that is the point of the migration — comments
   included, so the diff shows what actually moved.
+- **A fixture id must be valid hex.** Postgres uuids allow only 0-9 and a-f, so
+  `…-0000000000t1` fails at run time — and grepping for uuids the usual way
+  (`[0-9a-f]{12}`) cannot find it, because the typo is exactly what stops it
+  matching. Run `python3 supabase/check_uuid_literals.py` before pushing SQL;
+  it matches the shape first and then checks the hex.
 - Something approved is frozen. `fn_submit_stage` / `fn_start_stage` / `fn_install_component` /
   `fn_tick_check` all refuse a `done` stage; a new RPC that touches a stage's evidence should too.
 - `supabase/full_setup.sql` is **generated** — regenerate with `cd supabase && sh build_full_setup.sh`,
