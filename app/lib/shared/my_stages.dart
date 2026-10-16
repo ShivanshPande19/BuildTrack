@@ -93,11 +93,14 @@ class _StageCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final tone = task.awaitingApproval
         ? (label: 'Awaiting approval', color: BT.amber)
-        : task.status == 'rework'
-            ? (label: 'Rework', color: BT.coral)
-            : task.status == 'in_progress'
-                ? (label: 'In progress', color: BT.lime)
-                : (label: 'Not started', color: BT.mut2);
+        // A build runs in steps (0031): this one's turn has not come.
+        : task.isWaitingOnEarlierWork
+            ? (label: 'Locked', color: BT.card2)
+            : task.status == 'rework'
+                ? (label: 'Rework', color: BT.coral)
+                : task.status == 'in_progress'
+                    ? (label: 'In progress', color: BT.lime)
+                    : (label: 'Not started', color: BT.mut2);
 
     return AppCard(
       onTap: () async {
@@ -120,14 +123,15 @@ class _StageCard extends ConsumerWidget {
         const SizedBox(height: 4),
         Text([
           '${task.projectCode} · ${task.projectName}',
-          if (task.assignedDue != null)
+          if (task.isWaitingOnEarlierWork) task.waitingLabel.toLowerCase()
+          else if (task.assignedDue != null)
             task.isOverdue
               ? 'overdue — was due ${fmt.format(task.assignedDue!)}'
               : 'due ${fmt.format(task.assignedDue!)}',
         ].join(' · '),
           maxLines: 2, overflow: TextOverflow.ellipsis,
           style: TextStyle(fontSize: 12.5, height: 1.3,
-            color: task.isOverdue ? BT.coral : BT.mut)),
+            color: task.isOverdue && !task.isWaitingOnEarlierWork ? BT.coral : BT.mut)),
         if (task.status == 'rework' && task.reworkNote != null) ...[
           const SizedBox(height: 8),
           Container(

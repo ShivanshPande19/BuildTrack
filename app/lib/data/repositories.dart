@@ -217,7 +217,7 @@ class ProjectsRepo {
         .select('$_projectSelect,target_delivery_date')
         .eq('id', id).single();
     final st = await sb.from('stages')
-        .select('id,name,ord,status,assignee_id,discipline,planned_start,planned_end,'
+        .select('id,name,ord,step,status,assignee_id,discipline,planned_start,planned_end,'
                 'actual_start,actual_end,assigned_start,assigned_due')
         .eq('project_id', id).order('ord', ascending: true);
     return ProjectDetailData(
@@ -1165,6 +1165,25 @@ class WorkshopRepo {
         if (n != null && n.trim().isNotEmpty) notes[sid] = n.trim();
       }
     }
+    // Which of these cannot start yet, and what they are waiting for (0031).
+    //
+    // Read from `v_stage_gate` — the same rule fn_start_stage enforces — rather
+    // than worked out here, because this list only holds *my* stages: the
+    // stage blocking me usually belongs to somebody else and is not in it.
+    // One round trip, like the approvals lookup above.
+    final gates = await sb.from('v_stage_gate')
+        .select('stage_id,is_locked,blocked_by,blocked_by_count')
+        .inFilter('stage_id', tasks.map((t) => t.stageId).toList());
+    final locked = <String, ({String? by, int count})>{};
+    for (final g in (gates as List)) {
+      if (g['is_locked'] == true) {
+        locked[g['stage_id'] as String] = (
+          by: g['blocked_by'] as String?,
+          count: (g['blocked_by_count'] as num?)?.toInt() ?? 1,
+        );
+      }
+    }
+
     // Sorted worst-first across every build, not by `ord`.
     //
     // `ord` is a stage's position *inside its own build*, so ordering a mixed
@@ -1176,6 +1195,9 @@ class WorkshopRepo {
         t.copyWith(
           awaitingApproval: pending.contains(t.stageId),
           reworkNote: t.status == 'rework' ? notes[t.stageId] : null,
+          isLocked: locked.containsKey(t.stageId),
+          blockedBy: locked[t.stageId]?.by,
+          blockedByCount: locked[t.stageId]?.count ?? 0,
         ),
     ]..sort(WorkshopTask.compare);
   }
@@ -1856,7 +1878,7 @@ class PmRepo {
     final ids = [for (final p in projects) p['id'] as String];
 
     final st = await sb.from('stages')
-        .select('id,name,status,ord,project_id,assignee_id,discipline,assigned_due,planned_end')
+        .select('id,name,status,ord,step,project_id,assignee_id,discipline,assigned_due,planned_end')
         .inFilter('project_id', ids).order('ord', ascending: true);
     final rows = (st as List).cast<Map<String, dynamic>>();
 
@@ -1895,6 +1917,7 @@ class PmRepo {
         name: r['name'] as String? ?? '',
         status: r['status'] as String? ?? 'todo',
         ord: (r['ord'] as num?)?.toInt() ?? 0,
+        step: (r['step'] as num?)?.toInt() ?? (r['ord'] as num?)?.toInt() ?? 0,
         assigneeName: (nm == null || nm.isEmpty) ? null : nm,
         discipline: r['discipline'] as String?,
         // The PM's own commitment if there is one, else the backward-scheduled plan.

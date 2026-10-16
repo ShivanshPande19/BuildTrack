@@ -310,6 +310,11 @@ String warrantyStateFor(DateTime? end, {int? daysLeft}) {
 class Stage {
   final String id, name, status; // status: todo | in_progress | done | rework
   final int ord;
+  /// Which parallel group this stage belongs to (0031). Stages sharing a step
+  /// run alongside each other; a step opens only when every earlier step is
+  /// approved. Falls back to [ord], which is what every build created before
+  /// 0031 was backfilled to.
+  final int step;
   final String? assigneeId;
   /// Which role is meant to do this stage (workshop | design | store | service).
   /// Set from the workflow template, so the PM's assign sheet can recommend the
@@ -319,7 +324,7 @@ class Stage {
   /// Dates the PM set when assigning this stage (separate from the backward-
   /// scheduled planned_* dates).
   final DateTime? assignedStart, assignedDue;
-  Stage({required this.id, required this.name, required this.status, required this.ord,
+  Stage({required this.id, required this.name, required this.status, required this.ord, this.step = 1,
     this.assigneeId, this.discipline, this.plannedStart, this.plannedEnd,
     this.actualStart, this.actualEnd, this.assignedStart, this.assignedDue});
   factory Stage.fromMap(Map<String, dynamic> m) => Stage(
@@ -327,6 +332,7 @@ class Stage {
     name: m['name'] as String? ?? '',
     status: m['status'] as String? ?? 'todo',
     ord: (m['ord'] as num?)?.toInt() ?? 0,
+    step: (m['step'] as num?)?.toInt() ?? (m['ord'] as num?)?.toInt() ?? 0,
     assigneeId: m['assignee_id'] as String?,
     discipline: m['discipline'] as String?,
     plannedStart: parseDate(m['planned_start']),
@@ -1015,10 +1021,21 @@ class WorkshopTask {
   /// assignee's list forever, offering Start work on a truck the customer
   /// already has, so the list needs to know.
   final String projectStatus;
+  /// Something in an earlier **step** of this build is still open, so this
+  /// stage cannot be started yet (0031). Read from `v_stage_gate`, the same
+  /// definition `fn_start_stage` enforces, so a screen can never offer a
+  /// Start that the server would refuse.
+  final bool isLocked;
+  /// The stage it is waiting for — named, because "locked" on its own tells
+  /// the person nothing they can act on.
+  final String? blockedBy;
+  /// How many earlier stages are still open, when it is more than one.
+  final int blockedByCount;
   WorkshopTask({required this.stageId, required this.stageName, required this.status,
     required this.projectId, required this.projectCode, required this.projectName,
     this.assignedDue, this.awaitingApproval = false, this.reworkNote,
-    this.projectStatus = 'on_track'});
+    this.projectStatus = 'on_track',
+    this.isLocked = false, this.blockedBy, this.blockedByCount = 0});
   factory WorkshopTask.fromMap(Map<String, dynamic> m) {
     final pr = m['projects'] as Map<String, dynamic>?;
     return WorkshopTask(
@@ -1033,16 +1050,28 @@ class WorkshopTask {
     );
   }
 
-  WorkshopTask copyWith({bool? awaitingApproval, String? reworkNote}) => WorkshopTask(
+  WorkshopTask copyWith({bool? awaitingApproval, String? reworkNote,
+    bool? isLocked, String? blockedBy, int? blockedByCount}) => WorkshopTask(
     stageId: stageId, stageName: stageName, status: status, projectId: projectId,
     projectCode: projectCode, projectName: projectName, assignedDue: assignedDue,
     projectStatus: projectStatus,
     awaitingApproval: awaitingApproval ?? this.awaitingApproval,
     reworkNote: reworkNote ?? this.reworkNote,
+    isLocked: isLocked ?? this.isLocked,
+    blockedBy: blockedBy ?? this.blockedBy,
+    blockedByCount: blockedByCount ?? this.blockedByCount,
   );
 
-  /// Nothing has started yet and it is not waiting on the PM.
-  bool get canStart => status == 'todo' || status == 'rework';
+  /// Nothing has started yet and it is not waiting on the PM — **and** its
+  /// turn has come. Offering Start on a locked stage would be offering
+  /// something `fn_start_stage` refuses.
+  bool get canStart => !isLocked && (status == 'todo' || status == 'rework');
+  /// Not started, and cannot be: it is waiting on an earlier step.
+  bool get isWaitingOnEarlierWork => isLocked && status != 'done' && !isDelivered;
+  /// "Waiting on Chassis" / "Waiting on 3 earlier stages".
+  String get waitingLabel => blockedByCount > 1
+      ? 'Waiting on $blockedByCount earlier stages'
+      : 'Waiting on ${blockedBy ?? 'earlier work'}';
   /// The stage is finished, or the truck has gone out with it still open.
   bool get isClosed => status == 'done' || isDelivered;
   /// The truck has been handed over. Nothing on it is work any more.
@@ -1063,7 +1092,11 @@ class WorkshopTask {
   /// on rework, then a missed date, then the soonest due. Undated sorts last —
   /// nobody committed to a date, so it cannot be the most urgent thing.
   int get urgencyRank {
-    if (isDelivered) return 5;
+    if (isDelivered) return 6;
+    // Locked work is real but not actionable today, so it sorts below
+    // everything the person can actually pick up — above only a delivered
+    // truck, which is not work at all.
+    if (isWaitingOnEarlierWork) return 5;
     if (awaitingApproval) return 4;      // with the PM; not yours to move
     if (status == 'rework') return 0;
     if (isOverdue) return 1;
@@ -1095,6 +1128,8 @@ class WorkshopTask {
 class StageTick {
   final String id, name, status;   // todo | in_progress | done | rework
   final int ord;
+  /// Parallel group (0031). See [Stage.step].
+  final int step;
   final String? assigneeName, discipline;
   final DateTime? due;
   /// A submission of this stage is sitting with the PM. Worth its own flag:
@@ -1102,6 +1137,7 @@ class StageTick {
   final bool awaitingApproval;
 
   StageTick({required this.id, required this.name, required this.status, required this.ord,
+    this.step = 1,
     this.assigneeName, this.discipline, this.due, this.awaitingApproval = false});
 
   bool get isDone => status == 'done';
@@ -1110,6 +1146,39 @@ class StageTick {
   bool get isUnassigned => !isDone && assigneeName == null;
   bool get isOverdue => !isDone && due != null && daysUntil(due!) < 0;
   int? get daysLeft => due == null ? null : daysUntil(due!);
+}
+
+/// Which stages of a build cannot start yet, worked out from the whole list.
+///
+/// The same rule `fn_start_stage` enforces and `v_stage_gate` reports: a stage
+/// is locked while any stage in an **earlier step** is not approved. Computed
+/// here rather than fetched, because the screens that show a whole build (the
+/// PM's pipeline, the build screen) already hold every stage — asking the
+/// server again for something they can already see would be a round trip to
+/// learn what they know.
+Set<String> lockedStageIds(List<StageTick> stages) {
+  // The earliest step that still has unfinished work in it. Everything in a
+  // later step is waiting; everything in this step or before is open.
+  int? openFrom;
+  for (final s in stages) {
+    if (s.isDone) continue;
+    if (openFrom == null || s.step < openFrom) openFrom = s.step;
+  }
+  if (openFrom == null) return const {};
+  return {for (final s in stages) if (!s.isDone && s.step > openFrom) s.id};
+}
+
+/// What a locked stage is waiting for: the first unfinished stage in an
+/// earlier step, which is the one that has to move before anything else can.
+StageTick? blockerFor(StageTick stage, List<StageTick> all) {
+  StageTick? best;
+  for (final s in all) {
+    if (s.isDone || s.step >= stage.step) continue;
+    if (best == null || s.step < best.step || (s.step == best.step && s.ord < best.ord)) {
+      best = s;
+    }
+  }
+  return best;
 }
 
 /// A build as the PM's schedule sees it: the whole pipeline, and what is
@@ -1217,6 +1286,8 @@ enum DesignTodoKind {
   unsentDraft,
   /// Assigned, not late, nothing started yet.
   notStarted,
+  /// The build has not reached this stage yet (0031). Nothing to do but know.
+  waitingOnEarlierWork,
 }
 
 class DesignTodo {
@@ -1240,6 +1311,7 @@ class DesignTodo {
     DesignTodoKind.overdueNoDesign   => 3,
     DesignTodoKind.unsentDraft       => 4,
     DesignTodoKind.notStarted        => 5,
+    DesignTodoKind.waitingOnEarlierWork => 6,
   };
 }
 
@@ -1279,6 +1351,19 @@ class DesignTodo {
 
     // Already with the PM: nothing for the designer to do until they decide.
     if (t.awaitingApproval) continue;
+
+    // The build has not reached this stage. Still listed — it is theirs and
+    // they should know it is coming — but last, and saying what it waits for
+    // rather than pretending there is something to start.
+    if (t.isWaitingOnEarlierWork) {
+      out.add(DesignTodo(DesignTodoKind.waitingOnEarlierWork, task: t,
+        title: where,
+        detail: t.blockedByCount > 1
+            ? 'Opens once the earlier stages on this build are approved.'
+            : 'Opens once "${t.blockedBy}" is approved.',
+        action: 'Open stage'));
+      continue;
+    }
 
     if (t.status == 'rework') {
       out.add(DesignTodo(DesignTodoKind.rework, task: t,
