@@ -339,6 +339,9 @@ begin
     v_cursor := (v_cursor - v_dur);
   end loop;
 
+  -- Full re-plan (delivery date changed): snap the PM's committed dates to the
+  -- new plan so a stage is never "Due" after delivery. Completed stages keep
+  -- their historical dates.
   if p_rebaseline_assigned then
     update stages
        set assigned_start = planned_start,
@@ -346,6 +349,10 @@ begin
      where project_id = p_project
        and status <> 'done';
 
+    -- …and move each still-pending material's needed-by onto the new plan, so
+    -- the order-by engine alerts against the schedule that is actually live.
+    -- Anchored on the stage the requirement's item belongs to in the template
+    -- BOM; a requirement with no such anchor keeps the PM's own needed-by.
     update procurement_requirements pr
        set needed_by_date = anchor.planned_start
       from (
@@ -357,18 +364,20 @@ begin
          group by tsi.item_catalog_id
       ) anchor
      where pr.project_id      = p_project
+       and pr.status          = 'pending'
        and pr.item_catalog_id = anchor.item_catalog_id
-       and pr.status = 'pending';
+       and pr.needed_by_date is distinct from anchor.planned_start;
   end if;
 
+  -- order-by date for each requirement = needed_by - lead - buffer
   update procurement_requirements pr
-     set order_by_date = pr.needed_by_date - coalesce(v.lead_days, 7)
+     set order_by_date = pr.needed_by_date - ic.lead_time_days - ic.buffer_days
     from item_catalog ic
-    left join vendors v on v.id = ic.preferred_vendor_id
    where pr.item_catalog_id = ic.id
      and pr.project_id = p_project
      and pr.needed_by_date is not null;
 
+  -- The plan moved, so on-track / at-risk / delayed may have moved with it.
   perform public.fn_recompute_status(p_project);
 end $$;
 
