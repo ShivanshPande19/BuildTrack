@@ -65,7 +65,8 @@ final myProfileProvider = FutureProvider<MyProfile?>((ref) async {
   final uid = sb.auth.currentUser?.id;
   if (uid == null) return null;
   final d = await sb.from('profiles')
-      .select('id,full_name,email,role,status,phone,created_at,sub_team_id,sub_teams(name)')
+      .select('id,full_name,email,role,status,phone,created_at,designation,is_supervisor,'
+              'sub_team_id,sub_teams(name)')
       .eq('id', uid).maybeSingle();
   return d == null ? null : MyProfile.fromMap(d);
 });
@@ -181,7 +182,12 @@ Future<String> uploadToBuilds(Uint8List bytes, {
 class ProjectsRepo {
   /// pm_id comes along so Admin can spot builds with no project manager —
   /// those are stranded: no PM sees them and their stages cannot be assigned.
-  static const _projectSelect = 'id,code,name,status,progress_pct,pm_id';
+  // `created_by` names its foreign key: `projects` points at `profiles` twice
+  // (pm_id and created_by), so a bare embed is ambiguous and PostgREST refuses
+  // the whole query with PGRST201 — the trap that silently broke PM Approvals.
+  static const _projectSelect =
+      'id,code,name,status,progress_pct,pm_id,created_by,'
+      'created_by_profile:profiles!projects_created_by_fkey(full_name)';
 
   Future<List<Project>> all() async {
     final data = await sb
@@ -1354,6 +1360,113 @@ class WorkshopRepo {
     return row['id'] as String;
   }
 
+  // ── Sub-stages: the supervisor's breakdown of a workshop stage (0033) ──
+
+  // `assignee` and `done_by_profile` name their foreign keys: stage_tasks
+  // points at profiles twice, so a bare embed is ambiguous and PostgREST
+  // refuses the whole query (PGRST201).
+  static const _taskSelect =
+      'id,stage_id,title,ord,step,status,note,done_at,assignee_id,'
+      'assignee:profiles!stage_tasks_assignee_id_fkey(full_name),'
+      'done_by_profile:profiles!stage_tasks_done_by_fkey(full_name)';
+
+  Future<List<StageTask>> stageTasks(String stageId) async {
+    final d = await sb.from('stage_tasks').select(_taskSelect)
+        .eq('stage_id', stageId).order('ord', ascending: true);
+    return [for (final e in (d as List)) StageTask.fromMap(e as Map<String, dynamic>)];
+  }
+
+  /// Add a piece of work to a stage. The supervisor the stage was assigned to,
+  /// its PM, or an admin — `trg_guard_stage_tasks` holds that line.
+  Future<void> addStageTask(String stageId, String title, {
+    int? ord, int? step, String? assigneeId,
+  }) async {
+    final v = title.trim();
+    if (v.isEmpty) throw Exception('A work item needs a title.');
+    await sb.from('stage_tasks').insert({
+      'stage_id': stageId, 'title': v,
+      if (ord != null) 'ord': ord,
+      if (step != null) 'step': step,
+      if (assigneeId != null) 'assignee_id': assigneeId,
+    });
+  }
+
+  /// Who is doing it. Null hands it back to nobody in particular.
+  Future<void> assignStageTask(String taskId, String? assigneeId) async {
+    await sb.from('stage_tasks').update({'assignee_id': assigneeId}).eq('id', taskId);
+  }
+
+  /// What it runs alongside. Two items sharing a step run together — the
+  /// supervisor's call on *this* truck, not the template's for every truck.
+  Future<void> setStageTaskStep(String taskId, int step) async {
+    await sb.from('stage_tasks').update({'step': step}).eq('id', taskId);
+  }
+
+  Future<void> renameStageTask(String taskId, String title) async {
+    final v = title.trim();
+    if (v.isEmpty) throw Exception('A work item needs a title.');
+    await sb.from('stage_tasks').update({'title': v}).eq('id', taskId);
+  }
+
+  Future<void> removeStageTask(String taskId) async {
+    await sb.from('stage_tasks').delete().eq('id', taskId);
+  }
+
+  /// Move one. Through the RPC, which records who finished it and refuses one
+  /// whose sub-step has not opened yet.
+  Future<void> setStageTaskStatus(String taskId, String status) async {
+    await sb.rpc('fn_set_task_status', params: {'p_task': taskId, 'p_status': status});
+  }
+
+  /// The work items assigned to me, across every build.
+  ///
+  /// A worker is not the assignee of the *stage* — their supervisor is — so
+  /// none of this shows up in myTasks(). This is the list they open the app
+  /// for.
+  Future<List<MyStageTask>> myStageTasks() async {
+    final uid = _uid;
+    if (uid == null) return [];
+    final d = await sb.from('stage_tasks')
+        .select('$_taskSelect,'
+                'stages!stage_tasks_stage_id_fkey(name,project_id,status,'
+                'projects!stages_project_id_fkey(code,name,status))')
+        .eq('assignee_id', uid);
+    final rows = (d as List).cast<Map<String, dynamic>>();
+    if (rows.isEmpty) return [];
+
+    // The sibling items of each stage, so "what is this waiting for" can be
+    // answered without a round trip per item.
+    final stageIds = {for (final r in rows) r['stage_id'] as String}.toList();
+    final sib = await sb.from('stage_tasks')
+        .select('id,stage_id,title,ord,step,status')
+        .inFilter('stage_id', stageIds);
+    final byStage = <String, List<StageTask>>{};
+    for (final e in (sib as List)) {
+      final t = StageTask.fromMap(e as Map<String, dynamic>);
+      (byStage[t.stageId] ??= []).add(t);
+    }
+
+    final out = <MyStageTask>[];
+    for (final r in rows) {
+      final st = r['stages'] as Map<String, dynamic>?;
+      final pr = st?['projects'] as Map<String, dynamic>?;
+      // A delivered truck is a record, not work.
+      if ((pr?['status'] as String?) == 'delivered') continue;
+      final task = StageTask.fromMap(r);
+      final siblings = byStage[task.stageId] ?? const <StageTask>[];
+      final locked = lockedTaskIds(siblings).contains(task.id);
+      out.add(MyStageTask(
+        task: task,
+        projectCode: pr?['code'] as String? ?? '',
+        projectName: pr?['name'] as String? ?? '',
+        stageName: st?['name'] as String? ?? '',
+        isLocked: locked,
+        blockedBy: locked ? taskBlockerFor(task, siblings)?.title : null,
+      ));
+    }
+    return out..sort(MyStageTask.compare);
+  }
+
   /// Remove a stage photo.
   ///
   /// A photo could be added and never taken back, so a fitter who uploaded the
@@ -1400,6 +1513,19 @@ class WorkshopRepo {
 }
 
 final workshopRepoProvider = Provider<WorkshopRepo>((ref) => WorkshopRepo());
+
+/// The sub-stages of one stage — the supervisor's breakdown (0033).
+final stageTasksProvider = FutureProvider.family<List<StageTask>, String>((ref, stageId) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(workshopRepoProvider).stageTasks(stageId);
+});
+
+/// The work items assigned to me, across every build. A worker's own list:
+/// their supervisor holds the stage, so none of this is in myTasksProvider.
+final myStageTasksProvider = FutureProvider<List<MyStageTask>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(workshopRepoProvider).myStageTasks();
+});
 final myTasksProvider = FutureProvider<List<WorkshopTask>>((ref) {
   ref.watch(currentUserIdProvider);
   return ref.read(workshopRepoProvider).myTasks();
@@ -1663,10 +1789,24 @@ class AdminRepo {
     return OptRef(tid, name);
   }
 
+  /// What a person does, and whether they supervise workshop work (0032).
+  ///
+  /// Admin only — `trg_profiles_self_update` refuses both from the person
+  /// themselves, because `is_supervisor` decides who a PM can hand workshop
+  /// work to and who may then assign it on.
+  Future<void> setDesignation(String uid, {String? designation, bool? isSupervisor}) async {
+    final d = designation?.trim();
+    await sb.from('profiles').update({
+      if (designation != null) 'designation': (d == null || d.isEmpty) ? null : d,
+      if (isSupervisor != null) 'is_supervisor': isSupervisor,
+    }).eq('id', uid);
+  }
+
   /// List all team members (with their sub-team, if any).
   Future<List<Member>> members() async {
     final d = await sb.from('profiles')
-        .select('id,full_name,email,role,status,sub_team_id,sub_teams(name)')
+        .select('id,full_name,email,role,status,designation,is_supervisor,'
+                'sub_team_id,sub_teams(name)')
         .order('full_name', ascending: true);
     return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
   }

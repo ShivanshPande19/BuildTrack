@@ -122,6 +122,10 @@ class _TasksTab extends ConsumerWidget {
               sliver: SliverList.builder(
                 itemCount: next.length,
                 itemBuilder: (ctx, i) => _row(ctx, next[i]))),
+            // A worker is not the assignee of a stage — their supervisor is —
+            // so none of their actual jobs are in the list above. This is what
+            // they open the app for.
+            SliverToBoxAdapter(child: _MyWorkItems(ref: ref)),
             if (waiting.isNotEmpty) ...[
               SliverToBoxAdapter(child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -491,5 +495,80 @@ class _WeekTab extends ConsumerWidget {
             StatusPill(t.awaitingApproval ? 'Awaiting approval' : p.label,
               color: t.awaitingApproval ? BT.amber : p.color),
           ]))));
+  }
+}
+
+/// The work items assigned to me, across every build (0033).
+///
+/// A workshop stage belongs to the supervisor the PM handed it to; the people
+/// actually doing the jobs hold *items* inside it. Without this they would open
+/// the app to an empty Tasks tab while having a fortnight of work in front of
+/// them.
+class _MyWorkItems extends ConsumerWidget {
+  final WidgetRef ref;
+  const _MyWorkItems({required this.ref});
+
+  @override
+  Widget build(BuildContext context, WidgetRef _) {
+    final async = ref.watch(myStageTasksProvider);
+    return async.when(
+      // Quiet while loading: the stage list above already shows a skeleton,
+      // and two shimmer blocks stacked read as a broken screen.
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+        child: ErrorCard('Could not load your work items.\n${friendlyError(e)}',
+          onRetry: () => ref.invalidate(myStageTasksProvider)),
+      ),
+      data: (items) {
+        if (items.isEmpty) return const SizedBox.shrink();
+        final open = items.where((i) => !i.task.isDone).toList();
+        if (open.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SectionLabel('My work items · ${open.length}'),
+            for (final i in open) _card(context, i),
+          ]),
+        );
+      },
+    );
+  }
+
+  Widget _card(BuildContext context, MyStageTask i) {
+    final t = i.task;
+    final tone = i.isLocked
+        ? (label: 'Waiting', color: BT.card2)
+        : t.isActive
+            ? (label: 'In progress', color: BT.amber)
+            : (label: 'To do', color: BT.sky);
+
+    return Padding(padding: const EdgeInsets.only(bottom: 11),
+      child: AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+            const SizedBox(height: 3),
+            Text('${i.projectCode} · ${i.stageName}',
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: BT.mut)),
+            if (i.isLocked) ...[
+              const SizedBox(height: 4),
+              Text('Waiting on ${i.blockedBy ?? 'earlier work'}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11.5, color: BT.mut2)),
+            ],
+          ])),
+          const SizedBox(width: 10),
+          // Start / Finish right here: this is the whole screen for somebody
+          // whose day is four of these.
+          if (!i.isLocked)
+            StageTaskMoveButton(task: t, stageId: t.stageId)
+          else
+            StatusPill(tone.label, color: tone.color),
+        ])),
+    );
   }
 }
