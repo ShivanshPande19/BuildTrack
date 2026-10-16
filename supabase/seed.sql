@@ -6,14 +6,19 @@
 insert into workflow_templates (id, name, truck_type) values
   ('11111111-0000-0000-0000-000000000001','Standard Food Truck','food_truck');
 
-insert into template_stages (template_id, name, ord, default_duration_days) values
-  ('11111111-0000-0000-0000-000000000001','Design & Layout',1,4),
-  ('11111111-0000-0000-0000-000000000001','Chassis & Structure',2,7),
-  ('11111111-0000-0000-0000-000000000001','Exterior cladding',3,3),
-  ('11111111-0000-0000-0000-000000000001','Electrical work',4,4),
-  ('11111111-0000-0000-0000-000000000001','Interior & Equipment',5,3),
-  ('11111111-0000-0000-0000-000000000001','Paint & Branding',6,2),
-  ('11111111-0000-0000-0000-000000000001','Testing & Delivery',7,2);
+-- `step` says what waits for what (0031); `ord` is only the order they are
+-- listed in. This workflow is strictly sequential — one stage per step — which
+-- is how every build behaved before steps existed. A template that wanted the
+-- cladding and the electricals to run alongside each other would give them the
+-- same step.
+insert into template_stages (template_id, name, ord, step, default_duration_days) values
+  ('11111111-0000-0000-0000-000000000001','Design & Layout',1,1,4),
+  ('11111111-0000-0000-0000-000000000001','Chassis & Structure',2,2,7),
+  ('11111111-0000-0000-0000-000000000001','Exterior cladding',3,3,3),
+  ('11111111-0000-0000-0000-000000000001','Electrical work',4,4,4),
+  ('11111111-0000-0000-0000-000000000001','Interior & Equipment',5,5,3),
+  ('11111111-0000-0000-0000-000000000001','Paint & Branding',6,6,2),
+  ('11111111-0000-0000-0000-000000000001','Testing & Delivery',7,7,2);
 
 -- ===== vendors =====
 insert into vendors (id, name, category, avg_lead_time_days, reliability_score) values

@@ -131,6 +131,28 @@ class TaskDetailScreen extends ConsumerWidget {
           ]),
         ),
         const SizedBox(height: 12),
+      ] else if (task.isWaitingOnEarlierWork) ...[
+        Container(
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: BT.card2,
+            borderRadius: BorderRadius.circular(BT.radiusCard),
+            border: Border.all(color: BT.line)),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.lock_outline_rounded, size: 19, color: BT.mut),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(task.waitingLabel,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+              const SizedBox(height: 3),
+              Text(task.assignedDue == null
+                  ? 'You can look at what it needs, but it cannot be started yet.'
+                  : 'Due ${_shortDate(task.assignedDue!)}. You can look at what it '
+                    'needs, but it cannot be started yet.',
+                style: const TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+            ])),
+          ]),
+        ),
+        const SizedBox(height: 12),
       ] else if (task.assignedDue != null) ...[
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
@@ -382,6 +404,18 @@ class TaskDetailScreen extends ConsumerWidget {
       return notice(Icons.hourglass_top_rounded, 'With your project manager',
         'They have your submission. Nothing to do here until they decide.',
         tint: BT.amber.withValues(alpha: 0.35));
+    }
+    if (task.isWaitingOnEarlierWork) {
+      // Not a disabled Start button: a button that does nothing explains
+      // nothing. A build runs in steps (0031) and this one's turn has not come,
+      // so the bar says whose has — the stage that has to be approved before
+      // this one opens. fn_start_stage would refuse it anyway.
+      return notice(Icons.lock_outline_rounded, task.waitingLabel,
+        task.blockedByCount > 1
+          ? 'This stage opens once the earlier stages on this build are approved. '
+            'Your project manager can regroup them if they really do run together.'
+          : 'This stage opens once "${task.blockedBy}" is approved. Your project '
+            'manager can group the two if they really do run at the same time.');
     }
     if (task.canStart) {
       // The transition nothing used to make: until a stage is started it stays

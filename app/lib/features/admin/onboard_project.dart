@@ -41,7 +41,6 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
     final missing = <String>[
       if (_code.text.trim().isEmpty) 'project code',
       if (_name.text.trim().isEmpty) 'truck name',
-      if (_template == null) 'workflow template',
       if (_pm == null) 'project manager',
       if (_target == null) 'delivery date',
     ];
@@ -53,7 +52,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
     try {
       await ref.read(adminRepoProvider).onboard(
         code: _code.text.trim(), name: _name.text.trim(),
-        templateId: _template!.id, clientId: _client?.id, pmId: _pm!.id, target: _target!);
+        templateId: _template?.id, clientId: _client?.id, pmId: _pm!.id, target: _target!);
       // A new build has to show up everywhere it belongs: the fleet, the owner's
       // Command Center, and the PM's own lists — they were just told it is
       // theirs, so it had better be there when they look.
@@ -68,7 +67,9 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.ink,
-          content: Text('${_code.text.trim()} onboarded and assigned to ${_pm!.label}')));
+          content: Text(_template == null
+            ? '${_code.text.trim()} created — ${_pm!.label} will set up its plan'
+            : '${_code.text.trim()} onboarded and assigned to ${_pm!.label}')));
       }
     } catch (e) {
       setState(() => _error = friendlyError(e));
@@ -137,10 +138,30 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
           _text('Project code', _code, hint: 'AZ-142'),
           _text('Truck name', _name, hint: 'Juice Express'),
           Row(children: [
-            Expanded(child: _dropdown('Workflow template', templates, _template, (v) => setState(() => _template = v))),
+            Expanded(child: _dropdown('Workflow template (optional)', templates, _template, (v) => setState(() => _template = v))),
             const SizedBox(width: 8),
             _newBtn(_newTemplate),
           ]),
+          // The admin knows the client, the code and who is managing it. What
+          // this particular truck actually involves is the PM's knowledge, and
+          // the moment of creating the build is the wrong one to demand it —
+          // so leaving this empty hands the plan over with the build (0031).
+          Padding(
+            padding: const EdgeInsets.only(top: 6, left: 4, bottom: 4),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(_template == null
+                  ? Icons.person_outline_rounded : Icons.checklist_rounded,
+                size: 14, color: BT.mut2),
+              const SizedBox(width: 7),
+              Expanded(child: Text(
+                _template == null
+                  ? 'Leave this empty and the project manager sets up the stages '
+                    'themselves. They will be told the build is theirs.'
+                  : 'The stages, checklists and materials come from this template '
+                    'as soon as the build is created.',
+                style: const TextStyle(fontSize: 11.5, color: BT.mut2, height: 1.35))),
+            ]),
+          ),
 
           // ── client (+ create its login inline) ──
           Row(children: [

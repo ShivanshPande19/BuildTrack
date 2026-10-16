@@ -165,6 +165,8 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
     DesignTodoKind.overdueNoDesign  => (tint: BT.coral, icon: Icons.priority_high_rounded),
     DesignTodoKind.unsentDraft      => (tint: BT.amber, icon: Icons.edit_note_rounded),
     DesignTodoKind.notStarted       => (tint: BT.card2, icon: Icons.palette_outlined),
+    DesignTodoKind.waitingOnEarlierWork
+                                    => (tint: BT.card2, icon: Icons.lock_outline_rounded),
   };
 
   Widget _todoCard(DesignTodo t) {
@@ -215,6 +217,13 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
         if (t.design != null) {
           await Navigator.of(context).push(MaterialPageRoute(
             builder: (_) => DesignDetailScreen(artifactId: t.design!.id)));
+        }
+      // Nothing to start — open the stage so they can see what it waits for.
+      case DesignTodoKind.waitingOnEarlierWork:
+        if (t.task != null) {
+          await Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TaskDetailScreen(task: t.task!,
+              showInstallPart: false, designGate: true)));
         }
       case DesignTodoKind.overdueNoDesign:
       case DesignTodoKind.notStarted:

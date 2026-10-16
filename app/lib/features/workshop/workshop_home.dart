@@ -78,8 +78,15 @@ class _TasksTab extends ConsumerWidget {
           // they used to sit at the top of this list forever with a live
           // "Start work" button on a customer's truck.
           final live = list.where((t) => !t.isDelivered).toList();
-          final active = live.where((t) => t.status == 'in_progress' || t.status == 'rework').toList();
-          final next   = live.where((t) => t.status == 'todo').toList();
+          final active = live.where((t) =>
+              !t.isWaitingOnEarlierWork &&
+              (t.status == 'in_progress' || t.status == 'rework')).toList();
+          final next   = live.where((t) =>
+              !t.isWaitingOnEarlierWork && t.status == 'todo').toList();
+          // A build runs in steps (0031), so some of what is assigned to this
+          // person genuinely cannot be picked up yet. Showing it in "Up next"
+          // read as work they were ignoring.
+          final waiting = live.where((t) => t.isWaitingOnEarlierWork).toList();
           final closed = list.where((t) => t.isDelivered && t.status != 'done').toList();
 
           // SliverList, not Column: a fitter on eight builds had every card
@@ -115,6 +122,21 @@ class _TasksTab extends ConsumerWidget {
               sliver: SliverList.builder(
                 itemCount: next.length,
                 itemBuilder: (ctx, i) => _row(ctx, next[i]))),
+            if (waiting.isNotEmpty) ...[
+              SliverToBoxAdapter(child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  const SectionLabel('Waiting on earlier work'),
+                  const Padding(padding: EdgeInsets.only(bottom: 10, left: 2),
+                    child: Text('Yours, but the build has not reached them yet.',
+                      style: TextStyle(fontSize: 12, color: BT.mut))),
+                ]))),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                sliver: SliverList.builder(
+                  itemCount: waiting.length,
+                  itemBuilder: (ctx, i) => _row(ctx, waiting[i]))),
+            ],
             if (closed.isNotEmpty) ...[
               SliverToBoxAdapter(child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -197,13 +219,20 @@ class _TasksTab extends ConsumerWidget {
           const SizedBox(height: 2),
           Text([
             t.projectCode,
-            if (t.assignedDue != null) 'due ${DateFormat('d MMM').format(t.assignedDue!)}',
+            if (t.isWaitingOnEarlierWork) t.waitingLabel.toLowerCase()
+            else if (t.assignedDue != null) 'due ${DateFormat('d MMM').format(t.assignedDue!)}',
           ].join(' · '), style: TextStyle(
-            color: t.isOverdue ? BT.coral : BT.mut, fontSize: 12,
-            fontWeight: t.isOverdue ? FontWeight.w600 : FontWeight.normal)),
+            color: t.isOverdue && !t.isWaitingOnEarlierWork ? BT.coral : BT.mut, fontSize: 12,
+            fontWeight: t.isOverdue && !t.isWaitingOnEarlierWork
+              ? FontWeight.w600 : FontWeight.normal)),
         ])),
-        StatusPill(t.awaitingApproval ? 'Awaiting approval' : 'Queued',
-          color: t.awaitingApproval ? BT.amber : BT.sky),
+        StatusPill(
+          t.awaitingApproval ? 'Awaiting approval'
+            : t.isWaitingOnEarlierWork ? 'Locked'
+            : 'Queued',
+          color: t.awaitingApproval ? BT.amber
+            : t.isWaitingOnEarlierWork ? BT.card2
+            : BT.sky),
       ])),
     ));
 }
@@ -347,7 +376,13 @@ class _WeekTab extends ConsumerWidget {
             onRetry: () => ref.invalidate(myTasksProvider)),
         ]),
         data: (all) {
-          final open = all.where((t) => !t.isClosed && !t.awaitingApproval).toList();
+          // Locked stages are kept out of the date buckets on purpose. A stage
+          // whose turn has not come can be "overdue" on the plan, but putting
+          // it in Overdue reads as the fitter being behind on something they
+          // are not allowed to touch.
+          final open = all.where((t) =>
+              !t.isClosed && !t.awaitingApproval && !t.isWaitingOnEarlierWork).toList();
+          final blocked = all.where((t) => t.isWaitingOnEarlierWork).toList();
           final overdue = open.where((t) => t.isOverdue).toList();
           final today   = open.where((t) => t.isDueToday).toList();
           final soon    = open.where((t) {
@@ -366,6 +401,7 @@ class _WeekTab extends ConsumerWidget {
             (label: 'Later', tint: BT.sky, items: later),
             (label: 'No date set', tint: BT.card2, items: undated),
             (label: 'With your PM', tint: BT.lav, items: waiting),
+            (label: 'Waiting on earlier work', tint: BT.card2, items: blocked),
           ].where((g) => g.items.isNotEmpty).toList();
 
           return CustomScrollView(slivers: [

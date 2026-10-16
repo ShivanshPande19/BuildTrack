@@ -217,7 +217,7 @@ class ProjectsRepo {
         .select('$_projectSelect,target_delivery_date')
         .eq('id', id).single();
     final st = await sb.from('stages')
-        .select('id,name,ord,status,assignee_id,discipline,planned_start,planned_end,'
+        .select('id,name,ord,step,status,assignee_id,discipline,planned_start,planned_end,'
                 'actual_start,actual_end,assigned_start,assigned_due')
         .eq('project_id', id).order('ord', ascending: true);
     return ProjectDetailData(
@@ -1165,6 +1165,25 @@ class WorkshopRepo {
         if (n != null && n.trim().isNotEmpty) notes[sid] = n.trim();
       }
     }
+    // Which of these cannot start yet, and what they are waiting for (0031).
+    //
+    // Read from `v_stage_gate` — the same rule fn_start_stage enforces — rather
+    // than worked out here, because this list only holds *my* stages: the
+    // stage blocking me usually belongs to somebody else and is not in it.
+    // One round trip, like the approvals lookup above.
+    final gates = await sb.from('v_stage_gate')
+        .select('stage_id,is_locked,blocked_by,blocked_by_count')
+        .inFilter('stage_id', tasks.map((t) => t.stageId).toList());
+    final locked = <String, ({String? by, int count})>{};
+    for (final g in (gates as List)) {
+      if (g['is_locked'] == true) {
+        locked[g['stage_id'] as String] = (
+          by: g['blocked_by'] as String?,
+          count: (g['blocked_by_count'] as num?)?.toInt() ?? 1,
+        );
+      }
+    }
+
     // Sorted worst-first across every build, not by `ord`.
     //
     // `ord` is a stage's position *inside its own build*, so ordering a mixed
@@ -1176,6 +1195,9 @@ class WorkshopRepo {
         t.copyWith(
           awaitingApproval: pending.contains(t.stageId),
           reworkNote: t.status == 'rework' ? notes[t.stageId] : null,
+          isLocked: locked.containsKey(t.stageId),
+          blockedBy: locked[t.stageId]?.by,
+          blockedByCount: locked[t.stageId]?.count ?? 0,
         ),
     ]..sort(WorkshopTask.compare);
   }
@@ -1614,9 +1636,13 @@ class AdminRepo {
     final t = await sb.from('workflow_templates')
         .insert({'name': name, 'truck_type': truckType}).select('id,name').single();
     final tid = t['id'] as String;
+    // `step` is what waits for what; `ord` is only the order they are listed
+    // in (0031). A stage marked "runs alongside the one above" shares its step.
+    final steps = stepsFor(stages);
     for (var i = 0; i < stages.length; i++) {
       final st = await sb.from('template_stages').insert({
-        'template_id': tid, 'name': stages[i].name, 'ord': i + 1, 'default_duration_days': stages[i].days,
+        'template_id': tid, 'name': stages[i].name, 'ord': i + 1,
+        'step': steps[i], 'default_duration_days': stages[i].days,
       }).select('id').single();
       final sid = st['id'] as String;
       if (stages[i].items.isNotEmpty) {
@@ -1735,17 +1761,50 @@ class AdminRepo {
   /// [pmId] is required: fn_onboard_project refuses a build with no project
   /// manager, because such a build is invisible to every PM and none of its
   /// stages can ever be assigned or approved.
+  /// Create a build and, when a template is chosen, generate its plan.
+  ///
+  /// [templateId] is optional since 0031. An admin knows the client, the code
+  /// and who is managing it; the **PM** is the one who knows what this
+  /// particular truck involves, so the admin can hand the build over with no
+  /// plan at all and the PM builds it from their own screen. The project row
+  /// is identical either way — `projects.template_id` has always been nullable
+  /// — it simply has no stages until somebody chooses one.
   Future<void> onboard({
-    required String code, required String name, required String templateId,
+    required String code, required String name, String? templateId,
     required String pmId, String? clientId, required DateTime target,
   }) async {
     final proj = await sb.from('projects').insert({
       'code': code.trim(), 'name': name.trim(), 'template_id': templateId,
-      'client_account_id': clientId, 'pm_id': pmId,
-      'pm_assigned_at': DateTime.now().toIso8601String(),
+      'client_account_id': clientId,
+      // With a template, the PM is set here and fn_onboard_project tells them.
+      // Without one, the row goes in PM-less and fn_assign_pm does both, so the
+      // hand-over is a real assignment rather than a column write nobody hears.
+      if (templateId != null) ...{
+        'pm_id': pmId,
+        'pm_assigned_at': DateTime.now().toIso8601String(),
+      },
       'target_delivery_date': target.toIso8601String().split('T').first,
     }).select('id').single();
-    await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+    if (templateId != null) {
+      await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+    } else {
+      // No plan yet, so fn_onboard_project — which is what normally tells the
+      // PM the build is theirs — is not being called. fn_assign_pm does the
+      // same job and is the sanctioned path for it: fn_notify itself is
+      // revoked from `authenticated` (0026) precisely so notifications cannot
+      // be written by a client.
+      await sb.rpc('fn_assign_pm', params: {
+        'p_project': proj['id'], 'p_pm': pmId,
+      });
+    }
+  }
+
+  /// Choose the workflow template for a build that was handed over without one,
+  /// and generate its stages. The build's own PM may do this, or an admin
+  /// (0031).
+  Future<void> setUpPlan(String projectId, String templateId) async {
+    await sb.from('projects').update({'template_id': templateId}).eq('id', projectId);
+    await sb.rpc('fn_onboard_project', params: {'p_project': projectId});
   }
 
   /// Assign or change a build's project manager (admin only).
@@ -1856,7 +1915,7 @@ class PmRepo {
     final ids = [for (final p in projects) p['id'] as String];
 
     final st = await sb.from('stages')
-        .select('id,name,status,ord,project_id,assignee_id,discipline,assigned_due,planned_end')
+        .select('id,name,status,ord,step,project_id,assignee_id,discipline,assigned_due,planned_end')
         .inFilter('project_id', ids).order('ord', ascending: true);
     final rows = (st as List).cast<Map<String, dynamic>>();
 
@@ -1895,6 +1954,7 @@ class PmRepo {
         name: r['name'] as String? ?? '',
         status: r['status'] as String? ?? 'todo',
         ord: (r['ord'] as num?)?.toInt() ?? 0,
+        step: (r['step'] as num?)?.toInt() ?? (r['ord'] as num?)?.toInt() ?? 0,
         assigneeName: (nm == null || nm.isEmpty) ? null : nm,
         discipline: r['discipline'] as String?,
         // The PM's own commitment if there is one, else the backward-scheduled plan.

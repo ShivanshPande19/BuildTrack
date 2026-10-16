@@ -42,6 +42,8 @@ void main() {
   stockTests();
   designTodoTests();
   workshopTests();
+  stageStepTests();
+  pmSetupTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -419,8 +421,11 @@ void mainExtra() {
 // ordering and the one-line verdict that make the new lens worth having.
 // ───────────────────────────────────────────────────────────────────────────
 
-StageTick tick(String name, {
+StageTick stageTick(String name, {
   int ord = 1,
+  /// Parallel group (0031). Defaults to `ord`, which is what every build
+  /// created before 0031 was backfilled to.
+  int? step,
   String status = 'todo',
   String? who = 'Vikas',
   int? dueInDays,
@@ -428,7 +433,7 @@ StageTick tick(String name, {
 }) {
   final t = DateTime.now();
   return StageTick(
-    id: 'st-$name-$ord', name: name, status: status, ord: ord,
+    id: 'st-$name-$ord', name: name, status: status, ord: ord, step: step ?? ord,
     assigneeName: who,
     due: dueInDays == null ? null : DateTime(t.year, t.month, t.day + dueInDays),
     awaitingApproval: awaiting,
@@ -450,8 +455,8 @@ void scheduleTests() {
   group('BuildSchedule · what is blocking it', () {
     test('a stage sitting with the PM is named first — it is theirs to clear', () {
       final b = build('AZ-1', [
-        tick('Design', ord: 1, status: 'done'),
-        tick('Fabrication', ord: 2, status: 'in_progress', awaiting: true, dueInDays: -3),
+        stageTick('Design', ord: 1, status: 'done'),
+        stageTick('Fabrication', ord: 2, status: 'in_progress', awaiting: true, dueInDays: -3),
       ]);
       expect(b.awaitingCount, 1);
       // Overdue too, but the PM's own queue leads.
@@ -460,13 +465,13 @@ void scheduleTests() {
     });
 
     test('an unassigned stage is the PM\'s problem and says so', () {
-      final b = build('AZ-2', [tick('Paint', who: null)]);
+      final b = build('AZ-2', [stageTick('Paint', who: null)]);
       expect(b.unassignedCount, 1);
       expect(b.blockedLabel, '1 unassigned');
     });
 
     test('a finished stage is never overdue or unassigned', () {
-      final b = build('AZ-3', [tick('Design', status: 'done', who: null, dueInDays: -40)]);
+      final b = build('AZ-3', [stageTick('Design', status: 'done', who: null, dueInDays: -40)]);
       expect(b.overdueCount, 0);
       expect(b.unassignedCount, 0);
       expect(b.blockedLabel, 'All stages done');
@@ -474,15 +479,15 @@ void scheduleTests() {
 
     test('nothing wrong reads as on track, not as an empty problem list', () {
       final b = build('AZ-4', [
-        tick('Design', status: 'done'),
-        tick('Fabrication', status: 'in_progress', dueInDays: 5),
+        stageTick('Design', status: 'done'),
+        stageTick('Fabrication', status: 'in_progress', dueInDays: 5),
       ]);
       expect(b.isClear, isTrue);
       expect(b.blockedLabel, 'On track');
     });
 
     test('rework counts as a blockage of its own', () {
-      final b = build('AZ-5', [tick('Paint', status: 'rework', dueInDays: 2)]);
+      final b = build('AZ-5', [stageTick('Paint', status: 'rework', dueInDays: 2)]);
       expect(b.blockedLabel, '1 in rework');
     });
   });
@@ -490,9 +495,9 @@ void scheduleTests() {
   group('BuildSchedule · where the build is', () {
     test('current is what is being worked', () {
       final b = build('AZ-6', [
-        tick('Design', ord: 1, status: 'done'),
-        tick('Fabrication', ord: 2, status: 'in_progress'),
-        tick('Paint', ord: 3),
+        stageTick('Design', ord: 1, status: 'done'),
+        stageTick('Fabrication', ord: 2, status: 'in_progress'),
+        stageTick('Paint', ord: 3),
       ]);
       expect(b.current!.name, 'Fabrication');
       expect(b.currentIndex, 2);
@@ -501,7 +506,7 @@ void scheduleTests() {
     });
 
     test('with nothing started, current is the next thing up', () {
-      final b = build('AZ-7', [tick('Design', ord: 1), tick('Fabrication', ord: 2)]);
+      final b = build('AZ-7', [stageTick('Design', ord: 1), stageTick('Fabrication', ord: 2)]);
       expect(b.current!.name, 'Design');
       expect(b.currentIndex, 1);
     });
@@ -517,33 +522,33 @@ void scheduleTests() {
   group('BuildSchedule · worst first', () {
     test('waiting on the PM outranks merely being late', () {
       // The one the PM can unblock right now comes first.
-      final waiting = build('AZ-W', [tick('A', status: 'in_progress', awaiting: true)], deliveryInDays: 60);
-      final late = build('AZ-L', [tick('A', status: 'in_progress', dueInDays: -20)], deliveryInDays: 60);
+      final waiting = build('AZ-W', [stageTick('A', status: 'in_progress', awaiting: true)], deliveryInDays: 60);
+      final late = build('AZ-L', [stageTick('A', status: 'in_progress', dueInDays: -20)], deliveryInDays: 60);
       final sorted = [late, waiting]..sort(BuildSchedule.compare);
       expect(sorted.first.project.code, 'AZ-W');
     });
 
     test('more overdue stages outrank fewer', () {
       final two = build('AZ-2X', [
-        tick('A', ord: 1, status: 'in_progress', dueInDays: -5),
-        tick('B', ord: 2, dueInDays: -2),
+        stageTick('A', ord: 1, status: 'in_progress', dueInDays: -5),
+        stageTick('B', ord: 2, dueInDays: -2),
       ]);
-      final one = build('AZ-1X', [tick('A', status: 'in_progress', dueInDays: -5)]);
+      final one = build('AZ-1X', [stageTick('A', status: 'in_progress', dueInDays: -5)]);
       final sorted = [one, two]..sort(BuildSchedule.compare);
       expect(sorted.first.project.code, 'AZ-2X');
     });
 
     test('all else equal, the nearest delivery comes first', () {
-      final soon = build('AZ-SOON', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 7);
-      final far = build('AZ-FAR', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 90);
+      final soon = build('AZ-SOON', [stageTick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 7);
+      final far = build('AZ-FAR', [stageTick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 90);
       final sorted = [far, soon]..sort(BuildSchedule.compare);
       expect(sorted.first.project.code, 'AZ-SOON');
     });
 
     test('a delivered build sinks below every live one', () {
-      final done = build('AZ-DONE', [tick('A', status: 'done')],
+      final done = build('AZ-DONE', [stageTick('A', status: 'done')],
           deliveryInDays: -2, status: 'delivered');
-      final healthy = build('AZ-OK', [tick('A', status: 'in_progress', dueInDays: 30)],
+      final healthy = build('AZ-OK', [stageTick('A', status: 'in_progress', dueInDays: 30)],
           deliveryInDays: 60);
       final sorted = [done, healthy]..sort(BuildSchedule.compare);
       expect(sorted.first.project.code, 'AZ-OK');
@@ -551,8 +556,8 @@ void scheduleTests() {
     });
 
     test('a build with no delivery date does not jump the queue', () {
-      final undated = build('AZ-NODATE', [tick('A', status: 'in_progress', dueInDays: 5)]);
-      final dated = build('AZ-DATED', [tick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 30);
+      final undated = build('AZ-NODATE', [stageTick('A', status: 'in_progress', dueInDays: 5)]);
+      final dated = build('AZ-DATED', [stageTick('A', status: 'in_progress', dueInDays: 5)], deliveryInDays: 30);
       final sorted = [undated, dated]..sort(BuildSchedule.compare);
       expect(sorted.first.project.code, 'AZ-DATED');
     });
@@ -804,6 +809,9 @@ WorkshopTask wtask({
   int? dueInDays,
   bool awaiting = false,
   String projectStatus = 'on_track',
+  bool locked = false,
+  String? blockedBy,
+  int blockedByCount = 0,
 }) {
   final n = DateTime.now();
   return WorkshopTask(
@@ -811,6 +819,9 @@ WorkshopTask wtask({
     projectId: 'p-$code', projectCode: code, projectName: '$code Truck',
     assignedDue: dueInDays == null ? null : DateTime(n.year, n.month, n.day + dueInDays),
     awaitingApproval: awaiting, projectStatus: projectStatus,
+    isLocked: locked,
+    blockedBy: blockedBy ?? (locked ? 'Design & Layout' : null),
+    blockedByCount: blockedByCount != 0 ? blockedByCount : (locked ? 1 : 0),
   );
 }
 
@@ -1086,6 +1097,245 @@ void workshopTests() {
 
     test('an unordered item is not on the shelf', () {
       expect(StageMaterial.fromMap({'qty': 1, 'status': 'pending'}).isReceived, isFalse);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Stages run in steps (0031). A build is a sequence and the app always half
+// knew it — fn_decide_stage pulled the next stage in on approval, the
+// scheduler laid the plan out backwards — but nothing stopped a person
+// starting Fabrication while the design was still with the client. These pin
+// down the reading the screens do, which has to match what fn_start_stage
+// enforces or a screen will offer a Start the server refuses.
+// ───────────────────────────────────────────────────────────────────────────
+
+void stageStepTests() {
+  group('WorkshopTask · a locked stage is not startable', () {
+    test('canStart is false while an earlier step is open', () {
+      // The whole point: the screen must not offer what the server refuses.
+      expect(wtask(status: 'todo', locked: true).canStart, isFalse);
+      expect(wtask(status: 'todo').canStart, isTrue);
+    });
+
+    test('rework is still not startable while locked', () {
+      expect(wtask(status: 'rework', locked: true).canStart, isFalse);
+    });
+
+    test('it names what it is waiting for', () {
+      expect(wtask(locked: true, blockedBy: 'Chassis').waitingLabel,
+        'Waiting on Chassis');
+    });
+
+    test('…and counts them when there is more than one', () {
+      expect(wtask(locked: true, blockedByCount: 3).waitingLabel,
+        'Waiting on 3 earlier stages');
+    });
+
+    test('a delivered truck is not "waiting" — it is finished with', () {
+      final t = wtask(locked: true, projectStatus: 'delivered');
+      expect(t.isWaitingOnEarlierWork, isFalse);
+    });
+
+    test('a locked stage sorts below everything actionable', () {
+      final list = [
+        wtask(code: 'AZ-LOCK', stageId: 'l', locked: true, dueInDays: -40),
+        wtask(code: 'AZ-LATE', stageId: 'd', dueInDays: -1),
+        wtask(code: 'AZ-SOON', stageId: 's', dueInDays: 30),
+      ]..sort(WorkshopTask.compare);
+      // Even forty days "late", locked work is not what this person does today.
+      expect(list.map((t) => t.projectCode).toList(),
+        ['AZ-LATE', 'AZ-SOON', 'AZ-LOCK']);
+    });
+
+    test('copyWith carries the gate', () {
+      final t = wtask(locked: true, blockedBy: 'Chassis')
+          .copyWith(awaitingApproval: false);
+      expect(t.isLocked, isTrue);
+      expect(t.blockedBy, 'Chassis');
+    });
+  });
+
+  group('lockedStageIds · the same rule, read off a whole build', () {
+    test('everything after the first open step is locked', () {
+      final stages = [
+        stageTick('Design', ord: 1, status: 'in_progress'),
+        stageTick('Chassis', ord: 2),
+        stageTick('Paint', ord: 3),
+      ];
+      expect(lockedStageIds(stages), {'st-Chassis-2', 'st-Paint-3'});
+    });
+
+    test('stages sharing a step are open together', () {
+      // The case strict ordering got wrong: the countertop and the electricals
+      // both wait for the chassis, then run alongside each other.
+      final stages = [
+        stageTick('Chassis', ord: 1, step: 1, status: 'done'),
+        stageTick('Countertop', ord: 2, step: 2),
+        stageTick('Electricals', ord: 3, step: 2),
+        stageTick('Paint', ord: 4, step: 3),
+      ];
+      expect(lockedStageIds(stages), {'st-Paint-4'});
+    });
+
+    test('half a step does not open the next one', () {
+      final stages = [
+        stageTick('Countertop', ord: 1, step: 1, status: 'done'),
+        stageTick('Electricals', ord: 2, step: 1, status: 'in_progress'),
+        stageTick('Paint', ord: 3, step: 2),
+      ];
+      expect(lockedStageIds(stages), {'st-Paint-3'});
+    });
+
+    test('a finished build locks nothing', () {
+      final stages = [
+        stageTick('Design', ord: 1, status: 'done'),
+        stageTick('Chassis', ord: 2, status: 'done'),
+      ];
+      expect(lockedStageIds(stages), isEmpty);
+    });
+
+    test('a done stage in a later step is not reported as locked', () {
+      // It cannot be "waiting" — it is finished, however it got there.
+      final stages = [
+        stageTick('Design', ord: 1, status: 'in_progress'),
+        stageTick('Chassis', ord: 2, status: 'done'),
+      ];
+      expect(lockedStageIds(stages), isEmpty);
+    });
+
+    test('a build with no steps set behaves as one stage per step', () {
+      // Everything created before 0031 was backfilled step = ord, and
+      // StageTick falls back to ord, so old builds run exactly as they did.
+      final stages = [
+        StageTick(id: 'a', name: 'A', status: 'in_progress', ord: 1, step: 1),
+        StageTick(id: 'b', name: 'B', status: 'todo', ord: 2, step: 2),
+      ];
+      expect(lockedStageIds(stages), {'b'});
+    });
+  });
+
+  group('blockerFor · what to put in front of the person', () {
+    final stages = [
+      stageTick('Design', ord: 1, step: 1, status: 'done'),
+      stageTick('Chassis', ord: 2, step: 2, status: 'in_progress'),
+      stageTick('Wiring', ord: 3, step: 2),
+      stageTick('Paint', ord: 4, step: 3),
+    ];
+
+    test('names the earliest unfinished stage before it', () {
+      expect(blockerFor(stages[3], stages)?.name, 'Chassis');
+    });
+
+    test('a stage in the open step has no blocker', () {
+      expect(blockerFor(stages[2], stages), isNull);
+    });
+
+    test('the first step never has one', () {
+      expect(blockerFor(stages[0], stages), isNull);
+    });
+  });
+
+  group('designTodos · a locked design stage', () {
+    test('is listed, last, saying what it waits for', () {
+      final r = designTodos(
+        tasks: [wtask(code: 'AZ-D', locked: true, blockedBy: 'Teardown')],
+        designs: const []);
+      expect(r.todos.single.kind, DesignTodoKind.waitingOnEarlierWork);
+      expect(r.todos.single.detail, contains('Teardown'));
+      expect(r.todos.single.action, 'Open stage');
+    });
+
+    test('it sorts below work that can actually be done', () {
+      final r = designTodos(tasks: [
+        wtask(code: 'AZ-L', stageId: 'l', locked: true),
+        wtask(code: 'AZ-R', stageId: 'r', status: 'rework'),
+      ], designs: const []);
+      expect(r.todos.first.kind, DesignTodoKind.rework);
+      expect(r.todos.last.kind, DesignTodoKind.waitingOnEarlierWork);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Part 1: an admin can hand a build over with no plan, and the PM builds it.
+// ───────────────────────────────────────────────────────────────────────────
+
+void pmSetupTests() {
+  group('stepsFor · "runs alongside the one above"', () {
+    StageDraft d(String n, {bool with_ = false}) =>
+        StageDraft(n, 1, runsWithPrevious: with_);
+
+    test('plain stages each get their own step', () {
+      expect(stepsFor([d('Design'), d('Chassis'), d('Paint')]), [1, 2, 3]);
+    });
+
+    test('a stage marked "alongside" shares the step above it', () {
+      // The case the owner described: the countertop and the electricals both
+      // wait for the chassis, then run together.
+      expect(stepsFor([
+        d('Chassis'), d('Countertop'), d('Electricals', with_: true), d('Paint'),
+      ]), [1, 2, 2, 3]);
+    });
+
+    test('three in a row all share one step', () {
+      expect(stepsFor([
+        d('Chassis'), d('A'), d('B', with_: true), d('C', with_: true), d('Paint'),
+      ]), [1, 2, 2, 2, 3]);
+    });
+
+    test('the first stage always starts step 1, whatever its flag says', () {
+      // Nothing precedes it to run alongside, so the flag is meaningless there
+      // — and the UI does not offer it. This is the belt to that braces.
+      expect(stepsFor([d('Design', with_: true), d('Chassis')]), [1, 2]);
+    });
+
+    test('an empty template produces no steps', () {
+      expect(stepsFor([]), isEmpty);
+    });
+  });
+
+  group('BuildSchedule.needsPlan', () {
+    BuildSchedule sched(List<StageTick> stages, {String status = 'on_track'}) =>
+        BuildSchedule(
+          project: Project(id: 'p', code: 'AZ-1', name: 'T', status: status, progressPct: 0),
+          stages: stages);
+
+    test('a build with no stages needs a plan', () {
+      expect(sched(const []).needsPlan, isTrue);
+      expect(sched(const []).blockedLabel, 'Needs a plan');
+    });
+
+    test('…and is never reported as clear', () {
+      // It has no overdue, no rework, nothing unassigned — every count is zero,
+      // which is exactly why it used to read as "all clear".
+      expect(sched(const []).isClear, isFalse);
+    });
+
+    test('a build with stages does not', () {
+      expect(sched([stageTick('Design', ord: 1)]).needsPlan, isFalse);
+    });
+
+    test('a delivered build with no stages is history, not a gap', () {
+      expect(sched(const [], status: 'delivered').needsPlan, isFalse);
+      expect(sched(const [], status: 'delivered').blockedLabel, 'Delivered');
+    });
+
+    test('it outranks every live build in the PM\'s list', () {
+      final noPlan = sched(const []);
+      final waitingOnPm = BuildSchedule(
+        project: Project(id: 'q', code: 'AZ-2', name: 'U', status: 'on_track', progressPct: 0),
+        stages: [stageTick('Design', ord: 1, status: 'in_progress', awaiting: true)]);
+      final list = [waitingOnPm, noPlan]..sort(BuildSchedule.compare);
+      expect(list.first.project.code, 'AZ-1');
+    });
+
+    test('lockedIds reads the build it already holds', () {
+      final b = sched([
+        stageTick('Design', ord: 1, status: 'in_progress'),
+        stageTick('Chassis', ord: 2),
+      ]);
+      expect(b.lockedIds, {'st-Chassis-2'});
     });
   });
 }

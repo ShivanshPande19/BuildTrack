@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
+import 'create_template.dart';
 import '../../shared/animations.dart';
 import 'stage_detail.dart';
 import 'project_requirements.dart';
@@ -283,7 +284,34 @@ class ProjectDetailScreen extends ConsumerWidget {
       _documentsCard(context, ref),
 
       const SectionLabel('Build stages'),
-      if (d.stages.isEmpty)
+      if (d.stages.isEmpty && canAssign)
+        // An admin can hand a build over with no plan at all (0031), because
+        // what this truck involves is the PM's knowledge, not theirs. This is
+        // where the PM picks that up — on the build itself, where they already
+        // come to assign the work, rather than on a screen of its own they
+        // would have to know about.
+        AppCard(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Container(width: 38, height: 38, alignment: Alignment.center,
+                decoration: BoxDecoration(color: BT.amber, borderRadius: BorderRadius.circular(12)),
+                child: const Icon(Icons.timeline_rounded, size: 19, color: BT.ink)),
+              const SizedBox(width: 13),
+              const Expanded(child: Text('This build has no plan yet',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15))),
+            ]),
+            const SizedBox(height: 10),
+            const Text(
+              'Choose the workflow it follows and its stages, checklists and '
+              'materials are created from it. You can change what each stage '
+              'says afterwards — the template is only the starting point.',
+              style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.4)),
+            const SizedBox(height: 14),
+            PrimaryButton('Set up the plan', icon: Icons.playlist_add_rounded,
+              onTap: () => _setUpPlan(context, ref, d)),
+          ]))
+      else if (d.stages.isEmpty)
         const EmptyState(
           icon: Icons.timeline_rounded, tint: BT.amber,
           title: 'No stages yet',
@@ -655,6 +683,70 @@ class ProjectDetailScreen extends ConsumerWidget {
             ])))),
       ])),
     );
+  }
+
+  /// Choose the workflow for a build that was handed over without one, and
+  /// generate its stages. Same picker the admin's onboard screen uses, and the
+  /// same inline "New template" — a PM who finds nothing that fits should not
+  /// have to go and ask for one.
+  Future<void> _setUpPlan(BuildContext context, WidgetRef ref, ProjectDetailData d) async {
+    final picked = await showAppSheet<OptRef>(context: context, builder: (sctx) =>
+      Consumer(builder: (sctx, cref, _) {
+        final templates = cref.watch(templatesProvider);
+        return Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Set up ${d.project.code}', style: display(21, w: FontWeight.w600)),
+            const SizedBox(height: 4),
+            const Text('Its stages, checklists and materials come from the workflow '
+                       'you choose. Nothing is created until you pick one.',
+              style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+            const SizedBox(height: 16),
+            templates.when(
+              loading: () => const SkeletonList(count: 3),
+              error: (e, _) => ErrorCard('Could not load templates.\n${friendlyError(e)}',
+                onRetry: () => cref.invalidate(templatesProvider)),
+              data: (list) => Column(children: [
+                for (final t in list)
+                  Padding(padding: const EdgeInsets.only(bottom: 9),
+                    child: AppCard(
+                      onTap: () => Navigator.pop(sctx, t),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+                      child: Row(children: [
+                        const Icon(Icons.checklist_rounded, size: 19, color: BT.ink),
+                        const SizedBox(width: 13),
+                        Expanded(child: Text(t.label,
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+                        const Icon(Icons.chevron_right_rounded, color: BT.mut),
+                      ]))),
+                if (list.isEmpty)
+                  const EmptyState(icon: Icons.checklist_rounded, tint: BT.amber,
+                    title: 'No workflows yet',
+                    subtitle: 'Create one below — it becomes this build\'s plan, '
+                              'and you can reuse it on the next truck.'),
+              ])),
+            const SizedBox(height: 8),
+            SecondaryButton('Create a new workflow', icon: Icons.add_rounded,
+              onTap: () async {
+                final created = await Navigator.of(sctx).push<OptRef>(
+                  MaterialPageRoute(builder: (_) => const CreateTemplate()));
+                cref.invalidate(templatesProvider);
+                if (created != null && sctx.mounted) Navigator.pop(sctx, created);
+              }),
+            const SizedBox(height: 6),
+          ]);
+      }));
+    if (picked == null || !context.mounted) return;
+
+    final bar = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(adminRepoProvider).setUpPlan(d.project.id, picked.id);
+      invalidateBuild(ref, d.project.id);
+      bar.showSnackBar(SnackBar(backgroundColor: BT.ink,
+        content: Text('${d.project.code} set up from ${picked.label}')));
+    } catch (e) {
+      bar.showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    }
   }
 
   Widget _timelineTile(BuildContext context, WidgetRef ref, Stage s, bool isLast,

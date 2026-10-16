@@ -89,7 +89,11 @@ with checks(migration, applied) as (values
                and table_name = 'checklist_items' and column_name = 'done_by')
      and exists (select 1 from pg_proc where proname = 'fn_tick_check')),
   ('0030_a_photo_is_evidence_too',
-     exists (select 1 from pg_proc where proname = 'trg_guard_attachments'))
+     exists (select 1 from pg_proc where proname = 'trg_guard_attachments')),
+  ('0031_stages_run_in_steps',
+     exists (select 1 from information_schema.columns where table_schema = 'public'
+               and table_name = 'stages' and column_name = 'step')
+     and to_regclass('public.v_stage_gate') is not null)
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status
