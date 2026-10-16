@@ -12,8 +12,21 @@ set client_min_messages = notice;
 
 reset role; set test.uid = '';
 
+-- A second admin, created here rather than assumed: this migration exists
+-- *because* there can be more than one, so a suite about it should have two.
+insert into auth.users (id, email) values
+  ('a0000000-0000-0000-0000-000000000002','finance@az.co') on conflict do nothing;
+insert into profiles (id, full_name, email, role, status) values
+  ('a0000000-0000-0000-0000-000000000002','Priya Nair','finance@az.co','admin','active')
+  on conflict do nothing;
+
 update profiles set designation = 'Operations'
  where id = 'a0000000-0000-0000-0000-000000000001';
+update profiles set designation = 'Finance'
+ where id = 'a0000000-0000-0000-0000-000000000002';
+select t_assert((select count(distinct designation) from profiles
+                  where role = 'admin' and designation is not null) = 2,
+                'G1 two admins are told apart by what they do, not their role');
 select t_assert((select designation from profiles
                   where id='a0000000-0000-0000-0000-000000000001') = 'Operations',
                 'G1 an admin can carry a designation beside their role');
