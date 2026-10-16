@@ -199,6 +199,23 @@ select t_expect_error(format($$select public.fn_start_stage(%L)$$,
       and name='Chassis & Structure')),
   'E2 only the assigned member can start a stage');
 
+-- …and not even the right welder can start it out of turn (0031). Design &
+-- Layout is step 1 on this build and is not approved yet, so the chassis is
+-- not open. This suite used to start it anyway, which is exactly the thing
+-- 0031 exists to stop.
+set test.uid = 'd0000000-0000-0000-0000-000000000001';        -- the assignee
+select t_expect_error(format($$select public.fn_start_stage(%L)$$,
+    (select id from stages where project_id='77777777-0000-0000-0000-000000000001'
+      and name='Chassis & Structure')),
+  'E2 a stage cannot start while an earlier step is still open');
+
+-- Close the design step the way the build would, so the chassis opens.
+reset role; set test.uid = '';
+update stages set status = 'done', actual_end = current_date
+ where project_id = '77777777-0000-0000-0000-000000000001'
+   and name = 'Design & Layout';
+set role authenticated;
+
 set test.uid = 'd0000000-0000-0000-0000-000000000001';        -- the assignee
 select public.fn_start_stage((select id from stages
   where project_id='77777777-0000-0000-0000-000000000001' and name='Chassis & Structure'));
@@ -283,8 +300,11 @@ select t_assert((select status from stages
                   where project_id='77777777-0000-0000-0000-000000000001'
                     and name='Exterior cladding') = 'in_progress',
                 'E6 the next stage is pulled into progress automatically');
-select t_assert((select progress_pct from projects where code='AZ-200') = 14,
-                'progress recomputed (1 of 7 stages done)');
+-- Two of seven now: Design & Layout was closed above so the chassis could
+-- open at all (0031 — a stage waits for its step), and the chassis has just
+-- been approved. round(200/7) = 29.
+select t_assert((select progress_pct from projects where code='AZ-200') = 29,
+                'progress recomputed (2 of 7 stages done)');
 reset role;
 select t_assert((select count(*) from notifications
                   where user_id='f0000000-0000-0000-0000-000000000001'
