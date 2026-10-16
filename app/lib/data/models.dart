@@ -492,6 +492,104 @@ class StageMaterial {
   bool get isReceived => status == 'received';
 }
 
+/// One piece of a workshop stage, given to one person (0033).
+///
+/// The supervisor's breakdown — not the checklist, which is the PM's condition
+/// for approving the stage. This answers "who is doing this, and is it done";
+/// the stage still answers "is there proof".
+class StageTask {
+  final String id, stageId, title, status;
+  final int ord, step;
+  final String? assigneeId, assigneeName, note, doneByName;
+  final DateTime? doneAt;
+
+  StageTask({required this.id, required this.stageId, required this.title,
+    required this.status, required this.ord, required this.step,
+    this.assigneeId, this.assigneeName, this.note, this.doneByName, this.doneAt});
+
+  factory StageTask.fromMap(Map<String, dynamic> m) {
+    final a = m['assignee'] as Map<String, dynamic>?;
+    final d = m['done_by_profile'] as Map<String, dynamic>?;
+    final an = (a?['full_name'] as String?)?.trim();
+    final dn = (d?['full_name'] as String?)?.trim();
+    final ord = (m['ord'] as num?)?.toInt() ?? 0;
+    return StageTask(
+      id: m['id'] as String,
+      stageId: m['stage_id'] as String? ?? '',
+      title: m['title'] as String? ?? '',
+      status: m['status'] as String? ?? 'todo',
+      ord: ord,
+      // Null means "its own step", exactly as for a stage (0031).
+      step: (m['step'] as num?)?.toInt() ?? ord,
+      assigneeId: m['assignee_id'] as String?,
+      assigneeName: (an == null || an.isEmpty) ? null : an,
+      note: (m['note'] as String?)?.trim().isEmpty ?? true ? null : (m['note'] as String?)?.trim(),
+      doneByName: (dn == null || dn.isEmpty) ? null : dn,
+      doneAt: parseDate(m['done_at']),
+    );
+  }
+
+  bool get isDone => status == 'done';
+  bool get isActive => status == 'in_progress';
+  bool get isUnassigned => assigneeId == null;
+}
+
+/// A worker's own piece of work, with the build and stage it sits in — the
+/// list they open the app to see.
+class MyStageTask {
+  final StageTask task;
+  final String projectCode, projectName, stageName;
+  /// Something in an earlier sub-step of the same stage is still open.
+  final bool isLocked;
+  final String? blockedBy;
+  MyStageTask({required this.task, required this.projectCode,
+    required this.projectName, required this.stageName,
+    this.isLocked = false, this.blockedBy});
+
+  /// Worst first: what is already started, then what can be picked up, then
+  /// what is waiting on somebody else, then what is finished.
+  int get rank {
+    if (task.isDone) return 3;
+    if (isLocked) return 2;
+    if (task.isActive) return 0;
+    return 1;
+  }
+
+  static int compare(MyStageTask a, MyStageTask b) {
+    final r = a.rank.compareTo(b.rank);
+    if (r != 0) return r;
+    final c = a.projectCode.compareTo(b.projectCode);
+    return c != 0 ? c : a.task.ord.compareTo(b.task.ord);
+  }
+}
+
+/// Which sub-stages of one stage cannot start yet.
+///
+/// Same rule as [lockedStageIds], one level down: a sub-stage waits while any
+/// sub-stage in an earlier step is unfinished. Computed from the list the
+/// screen already holds rather than asked for.
+Set<String> lockedTaskIds(List<StageTask> tasks) {
+  int? openFrom;
+  for (final t in tasks) {
+    if (t.isDone) continue;
+    if (openFrom == null || t.step < openFrom) openFrom = t.step;
+  }
+  if (openFrom == null) return const {};
+  return {for (final t in tasks) if (!t.isDone && t.step > openFrom) t.id};
+}
+
+/// What a locked sub-stage is waiting for.
+StageTask? taskBlockerFor(StageTask task, List<StageTask> all) {
+  StageTask? best;
+  for (final t in all) {
+    if (t.isDone || t.step >= task.step) continue;
+    if (best == null || t.step < best.step || (t.step == best.step && t.ord < best.ord)) {
+      best = t;
+    }
+  }
+  return best;
+}
+
 /// A photo / image attached to a stage (attachments where owner_type='stage').
 ///
 /// [id] matters since 0029: a photo-required check records **which** photo
