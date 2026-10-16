@@ -77,6 +77,16 @@ A command exiting 0 is not proof; check the actual result.
   matters, make it an RPC and force it with a guard trigger plus a transaction-local flag
   (`fn_stage_rpc_begin`, `fn_check_rpc_begin`) — otherwise the audit trail has a hole the client
   library walks straight through.
+- **Replacing a function? Copy the parts you are not changing — do not retype
+  them.** `create or replace` needs the whole body, so most of what you write is
+  code that already exists and must come back byte-for-byte. Twice now a
+  from-memory rewrite shipped something subtly wrong: `trg_guard_stages` came
+  back with a different error message, and `fn_recompute_schedule` came back
+  joining `vendors` on an `ic.preferred_vendor_id` that does not exist (the real
+  line reads `ic.lead_time_days` and `ic.buffer_days` off item_catalog and needs
+  no join), which took the whole seed down. Read the current definition, paste
+  it, change only the part that is the point of the migration — comments
+  included, so the diff shows what actually moved.
 - Something approved is frozen. `fn_submit_stage` / `fn_start_stage` / `fn_install_component` /
   `fn_tick_check` all refuse a `done` stage; a new RPC that touches a stage's evidence should too.
 - `supabase/full_setup.sql` is **generated** — regenerate with `cd supabase && sh build_full_setup.sh`,
