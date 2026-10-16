@@ -16,10 +16,17 @@ insert into projects (id, code, name, pm_id, status, target_delivery_date)
 values ('80000000-0000-0000-0000-0000000000a1','AZ-STEP','Step Build',
         'b0000000-0000-0000-0000-000000000002','on_track', current_date + 50);
 
--- Step 1: design. Step 2: two stages that run alongside each other. Step 3: one.
+-- Step 1: the chassis. Step 2: two stages that run alongside each other —
+-- the countertop and the electricals both wait for the chassis and then
+-- happen at the same time, which is the case strict `ord` ordering got wrong.
+-- Step 3: the paint, which waits for both of them.
+--
+-- Deliberately no design stage in here: 0028 refuses to submit one until the
+-- client has approved a design, and that rule has its own suite (82). Mixing
+-- it in would make a failure here ambiguous between the two gates.
 insert into stages (id, project_id, name, ord, step, status, discipline, assignee_id) values
   ('80000000-0000-0000-0000-0000000000b1','80000000-0000-0000-0000-0000000000a1',
-   'Design & Layout', 1, 1, 'todo', 'design',   'c0000000-0000-0000-0000-000000000001'),
+   'Chassis',         1, 1, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001'),
   ('80000000-0000-0000-0000-0000000000b2','80000000-0000-0000-0000-0000000000a1',
    'Countertop',      2, 2, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001'),
   ('80000000-0000-0000-0000-0000000000b3','80000000-0000-0000-0000-0000000000a1',
@@ -31,7 +38,7 @@ set role authenticated;
 set test.uid = 'd0000000-0000-0000-0000-000000000001';
 select t_expect_error($$
   select public.fn_start_stage('80000000-0000-0000-0000-0000000000b2')$$,
-  'S1 a step-2 stage cannot start while the design is still open');
+  'S1 a step-2 stage cannot start while step 1 is still open');
 
 -- The screens read the same rule from one place, so they can never disagree
 -- with the RPC about whether a stage is open.
@@ -40,7 +47,7 @@ select t_assert((select is_locked from v_stage_gate
                   where stage_id='80000000-0000-0000-0000-0000000000b2'),
                 'S1 …and the gate view says so too');
 select t_assert((select blocked_by from v_stage_gate
-                  where stage_id='80000000-0000-0000-0000-0000000000b2') = 'Design & Layout',
+                  where stage_id='80000000-0000-0000-0000-0000000000b2') = 'Chassis',
                 'S1 …naming what it is waiting for');
 select t_assert((select is_locked from v_stage_gate
                   where stage_id='80000000-0000-0000-0000-0000000000b1') is false,
@@ -50,7 +57,7 @@ select t_assert((select is_locked from v_stage_gate
 \echo '=== 0031 · finishing a step opens the whole next one =============='
 
 set role authenticated;
-set test.uid = 'c0000000-0000-0000-0000-000000000001';        -- the designer
+set test.uid = 'd0000000-0000-0000-0000-000000000001';        -- the fitter
 select public.fn_start_stage('80000000-0000-0000-0000-0000000000b1');
 select public.fn_submit_stage('80000000-0000-0000-0000-0000000000b1') as a1 \gset
 set test.uid = 'b0000000-0000-0000-0000-000000000002';        -- the PM
@@ -216,9 +223,15 @@ select t_assert((select count(*) from stages s
                 'S8 an existing build still runs one stage per step');
 
 -- A stage inserted without a step — every fixture in every other suite, and
--- anything written before 0031 — reads as its own step, not as step 1. The
--- column has **no default** for exactly this reason: defaulting it to 1 would
--- make a build silently parallel the moment somebody forgot the column.
+-- anything written before 0031 — reads as **its own step** (`coalesce(step,
+-- ord)`), not as step 1. The column has no default for exactly this reason:
+-- defaulting it to 1 made the seed's whole workflow parallel and the gate
+-- never fired.
+--
+-- Added to AZ-STEP at ord 9, where the paint (step 3) is in progress. If the
+-- missing step were read as 1 this stage would be *open*, because nothing
+-- precedes step 1 — so asserting that it is locked is what proves the
+-- fallback is `ord` and not a default.
 insert into stages (id, project_id, name, ord, status, discipline, assignee_id)
 values ('80000000-0000-0000-0000-0000000000d1','80000000-0000-0000-0000-0000000000a1',
         'Afterthought', 9, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001');
@@ -226,17 +239,11 @@ select t_assert((select step from stages
                   where id='80000000-0000-0000-0000-0000000000d1') is null,
                 'S8 a stage inserted without a step keeps it null');
 select t_assert((select is_locked from v_stage_gate
-                  where stage_id='80000000-0000-0000-0000-0000000000d1') is false,
-                'S8 …and reads as its own step (ord 9, everything before it done)');
-
--- …and it is genuinely gated, not merely ungrouped: put an open stage in front
--- of it and it locks.
-insert into stages (id, project_id, name, ord, status, discipline, assignee_id)
-values ('80000000-0000-0000-0000-0000000000d2','80000000-0000-0000-0000-0000000000a1',
-        'Comes first', 8, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001');
-select t_assert((select is_locked from v_stage_gate
                   where stage_id='80000000-0000-0000-0000-0000000000d1'),
-                'S8 …so an unset step still waits for the one before it');
+                'S8 …and is read as its own step, so it waits like any other');
+select t_assert((select blocked_by from v_stage_gate
+                  where stage_id='80000000-0000-0000-0000-0000000000d1') = 'Paint',
+                'S8 …behind the stage that is actually still open');
 
 reset role;
 \echo ''

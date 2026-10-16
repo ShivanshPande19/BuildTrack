@@ -6459,6 +6459,7 @@ begin
    where ts.template_id = v_template
      and not exists (select 1 from stages s where s.project_id = p_project);
 
+  -- 1b) checklist for each stage, carrying the template's photo rule (0029).
   insert into checklist_items (stage_id, label, done, photo_required)
   select s.id, tsc.label, false, coalesce(tsc.photo_required, false)
     from template_stage_checks tsc
