@@ -98,7 +98,10 @@ with checks(migration, applied) as (values
      exists (select 1 from information_schema.columns where table_schema = 'public'
                and table_name = 'profiles' and column_name = 'is_supervisor')
      and exists (select 1 from information_schema.columns where table_schema = 'public'
-               and table_name = 'projects' and column_name = 'created_by'))
+               and table_name = 'projects' and column_name = 'created_by')),
+  ('0033_workshop_sub_stages',
+     to_regclass('public.stage_tasks') is not null
+     and exists (select 1 from pg_proc where proname = 'fn_set_task_status'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status
