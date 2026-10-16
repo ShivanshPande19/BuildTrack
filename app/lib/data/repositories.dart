@@ -1636,9 +1636,13 @@ class AdminRepo {
     final t = await sb.from('workflow_templates')
         .insert({'name': name, 'truck_type': truckType}).select('id,name').single();
     final tid = t['id'] as String;
+    // `step` is what waits for what; `ord` is only the order they are listed
+    // in (0031). A stage marked "runs alongside the one above" shares its step.
+    final steps = stepsFor(stages);
     for (var i = 0; i < stages.length; i++) {
       final st = await sb.from('template_stages').insert({
-        'template_id': tid, 'name': stages[i].name, 'ord': i + 1, 'default_duration_days': stages[i].days,
+        'template_id': tid, 'name': stages[i].name, 'ord': i + 1,
+        'step': steps[i], 'default_duration_days': stages[i].days,
       }).select('id').single();
       final sid = st['id'] as String;
       if (stages[i].items.isNotEmpty) {
@@ -1757,17 +1761,50 @@ class AdminRepo {
   /// [pmId] is required: fn_onboard_project refuses a build with no project
   /// manager, because such a build is invisible to every PM and none of its
   /// stages can ever be assigned or approved.
+  /// Create a build and, when a template is chosen, generate its plan.
+  ///
+  /// [templateId] is optional since 0031. An admin knows the client, the code
+  /// and who is managing it; the **PM** is the one who knows what this
+  /// particular truck involves, so the admin can hand the build over with no
+  /// plan at all and the PM builds it from their own screen. The project row
+  /// is identical either way — `projects.template_id` has always been nullable
+  /// — it simply has no stages until somebody chooses one.
   Future<void> onboard({
-    required String code, required String name, required String templateId,
+    required String code, required String name, String? templateId,
     required String pmId, String? clientId, required DateTime target,
   }) async {
     final proj = await sb.from('projects').insert({
       'code': code.trim(), 'name': name.trim(), 'template_id': templateId,
-      'client_account_id': clientId, 'pm_id': pmId,
-      'pm_assigned_at': DateTime.now().toIso8601String(),
+      'client_account_id': clientId,
+      // With a template, the PM is set here and fn_onboard_project tells them.
+      // Without one, the row goes in PM-less and fn_assign_pm does both, so the
+      // hand-over is a real assignment rather than a column write nobody hears.
+      if (templateId != null) ...{
+        'pm_id': pmId,
+        'pm_assigned_at': DateTime.now().toIso8601String(),
+      },
       'target_delivery_date': target.toIso8601String().split('T').first,
     }).select('id').single();
-    await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+    if (templateId != null) {
+      await sb.rpc('fn_onboard_project', params: {'p_project': proj['id']});
+    } else {
+      // No plan yet, so fn_onboard_project — which is what normally tells the
+      // PM the build is theirs — is not being called. fn_assign_pm does the
+      // same job and is the sanctioned path for it: fn_notify itself is
+      // revoked from `authenticated` (0026) precisely so notifications cannot
+      // be written by a client.
+      await sb.rpc('fn_assign_pm', params: {
+        'p_project': proj['id'], 'p_pm': pmId,
+      });
+    }
+  }
+
+  /// Choose the workflow template for a build that was handed over without one,
+  /// and generate its stages. The build's own PM may do this, or an admin
+  /// (0031).
+  Future<void> setUpPlan(String projectId, String templateId) async {
+    await sb.from('projects').update({'template_id': templateId}).eq('id', projectId);
+    await sb.rpc('fn_onboard_project', params: {'p_project': projectId});
   }
 
   /// Assign or change a build's project manager (admin only).

@@ -109,11 +109,31 @@ class StageItemDraft {
 class StageDraft {
   String name;
   int days;
+  /// This stage runs **alongside the one above it** rather than after it
+  /// (0031). Expressed as a flag per stage rather than a group number because
+  /// that is the question someone building a template can actually answer:
+  /// "does this wait for the one before, or happen at the same time?"
+  /// [stepsFor] turns a list of these into the step numbers the database wants.
+  bool runsWithPrevious;
   final List<StageItemDraft> items;
   final List<String> checks;
-  StageDraft(this.name, this.days, {List<StageItemDraft>? items, List<String>? checks})
+  StageDraft(this.name, this.days, {List<StageItemDraft>? items, List<String>? checks,
+    this.runsWithPrevious = false})
       : items = items ?? [],
         checks = checks ?? [];
+}
+
+/// Step numbers for a drafted template: each stage joins the previous step or
+/// starts the next one. The first stage always starts step 1, whatever its
+/// flag says — nothing precedes it to run alongside.
+List<int> stepsFor(List<StageDraft> stages) {
+  final out = <int>[];
+  var step = 0;
+  for (var i = 0; i < stages.length; i++) {
+    if (i == 0 || !stages[i].runsWithPrevious) step++;
+    out.add(step);
+  }
+  return out;
 }
 
 /// A pending stage-completion approval (PM approves work submitted by workshop).
@@ -1220,11 +1240,22 @@ class BuildSchedule {
   int? get daysToDelivery => targetDelivery == null ? null : daysUntil(targetDelivery!);
   bool get isDelivered => project.status == 'delivered';
 
+  /// Handed over without a workflow, so it has no stages at all (0031). This
+  /// is the PM's to fix and nothing else about the build can happen until they
+  /// do — no stage can be assigned, worked or approved.
+  bool get needsPlan => !isDelivered && stages.isEmpty;
+
+  /// Which of this build's stages cannot start yet. Computed from the whole
+  /// list rather than fetched — this screen already holds every stage.
+  Set<String> get lockedIds => lockedStageIds(stages);
+
   /// The one line that says what to do about this build. Ordered by who is
   /// holding it up: the PM first, because that is the one they can clear
   /// without asking anyone.
   String get blockedLabel {
     if (isDelivered) return 'Delivered';
+    // Nothing else is true of this build yet, and nothing can be.
+    if (needsPlan) return 'Needs a plan';
     final bits = <String>[];
     if (awaitingCount > 0) bits.add('$awaitingCount waiting on you');
     if (overdueCount > 0) bits.add('$overdueCount overdue');
@@ -1236,13 +1267,17 @@ class BuildSchedule {
 
   /// True when nothing needs the PM and nothing has slipped.
   bool get isClear =>
+      !needsPlan &&
       awaitingCount == 0 && overdueCount == 0 && reworkCount == 0 && unassignedCount == 0;
 
-  /// Worst first. A build waiting on the PM outranks one that is merely late,
-  /// because it is the one the PM can unblock right now; after that it is how
-  /// late it is, then how close delivery is.
+  /// Worst first. A build with no plan leads — nothing about it can start at
+  /// all. Then one waiting on the PM, because it is the one they can unblock
+  /// right now; after that it is how late it is, then how close delivery is.
   List<int> get severity => [
         isDelivered ? 1 : 0,
+        // A build with no plan outranks everything live: until the PM chooses
+        // a workflow, not one stage of it can be assigned, worked or approved.
+        needsPlan ? 0 : 1,
         awaitingCount > 0 ? 0 : 1,
         -overdueCount,
         -reworkCount,

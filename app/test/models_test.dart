@@ -43,6 +43,7 @@ void main() {
   designTodoTests();
   workshopTests();
   stageStepTests();
+  pmSetupTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -1252,6 +1253,89 @@ void stageStepTests() {
       ], designs: const []);
       expect(r.todos.first.kind, DesignTodoKind.rework);
       expect(r.todos.last.kind, DesignTodoKind.waitingOnEarlierWork);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Part 1: an admin can hand a build over with no plan, and the PM builds it.
+// ───────────────────────────────────────────────────────────────────────────
+
+void pmSetupTests() {
+  group('stepsFor · "runs alongside the one above"', () {
+    StageDraft d(String n, {bool with_ = false}) =>
+        StageDraft(n, 1, runsWithPrevious: with_);
+
+    test('plain stages each get their own step', () {
+      expect(stepsFor([d('Design'), d('Chassis'), d('Paint')]), [1, 2, 3]);
+    });
+
+    test('a stage marked "alongside" shares the step above it', () {
+      // The case the owner described: the countertop and the electricals both
+      // wait for the chassis, then run together.
+      expect(stepsFor([
+        d('Chassis'), d('Countertop'), d('Electricals', with_: true), d('Paint'),
+      ]), [1, 2, 2, 3]);
+    });
+
+    test('three in a row all share one step', () {
+      expect(stepsFor([
+        d('Chassis'), d('A'), d('B', with_: true), d('C', with_: true), d('Paint'),
+      ]), [1, 2, 2, 2, 3]);
+    });
+
+    test('the first stage always starts step 1, whatever its flag says', () {
+      // Nothing precedes it to run alongside, so the flag is meaningless there
+      // — and the UI does not offer it. This is the belt to that braces.
+      expect(stepsFor([d('Design', with_: true), d('Chassis')]), [1, 2]);
+    });
+
+    test('an empty template produces no steps', () {
+      expect(stepsFor([]), isEmpty);
+    });
+  });
+
+  group('BuildSchedule.needsPlan', () {
+    BuildSchedule sched(List<StageTick> stages, {String status = 'on_track'}) =>
+        BuildSchedule(
+          project: Project(id: 'p', code: 'AZ-1', name: 'T', status: status, progressPct: 0),
+          stages: stages);
+
+    test('a build with no stages needs a plan', () {
+      expect(sched(const []).needsPlan, isTrue);
+      expect(sched(const []).blockedLabel, 'Needs a plan');
+    });
+
+    test('…and is never reported as clear', () {
+      // It has no overdue, no rework, nothing unassigned — every count is zero,
+      // which is exactly why it used to read as "all clear".
+      expect(sched(const []).isClear, isFalse);
+    });
+
+    test('a build with stages does not', () {
+      expect(sched([stageTick('Design', ord: 1)]).needsPlan, isFalse);
+    });
+
+    test('a delivered build with no stages is history, not a gap', () {
+      expect(sched(const [], status: 'delivered').needsPlan, isFalse);
+      expect(sched(const [], status: 'delivered').blockedLabel, 'Delivered');
+    });
+
+    test('it outranks every live build in the PM\'s list', () {
+      final noPlan = sched(const []);
+      final waitingOnPm = BuildSchedule(
+        project: Project(id: 'q', code: 'AZ-2', name: 'U', status: 'on_track', progressPct: 0),
+        stages: [stageTick('Design', ord: 1, status: 'in_progress', awaiting: true)]);
+      final list = [waitingOnPm, noPlan]..sort(BuildSchedule.compare);
+      expect(list.first.project.code, 'AZ-1');
+    });
+
+    test('lockedIds reads the build it already holds', () {
+      final b = sched([
+        stageTick('Design', ord: 1, status: 'in_progress'),
+        stageTick('Chassis', ord: 2),
+      ]);
+      expect(b.lockedIds, {'st-Chassis-2'});
     });
   });
 }

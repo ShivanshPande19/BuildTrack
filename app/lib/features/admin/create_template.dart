@@ -20,8 +20,11 @@ class _StageRow {
   final TextEditingController days;
   final List<StageItemDraft> items;
   final List<TextEditingController> checks;
+  /// Runs alongside the stage above instead of after it (0031).
+  bool runsWithPrevious;
   _StageRow(String n, int d)
-      : name = TextEditingController(text: n),
+      : runsWithPrevious = false,
+        name = TextEditingController(text: n),
         days = TextEditingController(text: '$d'),
         items = [],
         checks = [];
@@ -58,13 +61,28 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
     super.dispose();
   }
 
+  /// Which step a row lands in, counting the "runs alongside" flags above it.
+  int _stepOf(int i) {
+    var step = 0;
+    for (var k = 0; k <= i; k++) {
+      if (k == 0 || !_rows[k].runsWithPrevious) step++;
+    }
+    return step;
+  }
+
+  String _nameOf(int i) {
+    final n = _rows[i].name.text.trim();
+    return n.isEmpty ? 'the stage above' : n;
+  }
+
   Future<void> _save() async {
     final stages = <StageDraft>[];
     for (final r in _rows) {
       final n = r.name.text.trim();
       if (n.isEmpty) continue;
       final checks = [for (final c in r.checks) c.text.trim()]..removeWhere((c) => c.isEmpty);
-      stages.add(StageDraft(n, int.tryParse(r.days.text.trim()) ?? 1, items: r.items, checks: checks));
+      stages.add(StageDraft(n, int.tryParse(r.days.text.trim()) ?? 1,
+        items: r.items, checks: checks, runsWithPrevious: r.runsWithPrevious));
     }
     if (_name.text.trim().isEmpty || stages.isEmpty) {
       setState(() => _error = 'Template name and at least one stage are required.');
@@ -123,9 +141,14 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
         padding: const EdgeInsets.fromLTRB(14, 12, 12, 14),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
+            // The **step**, not the row number: two stages that run alongside
+            // each other share it, which is the whole point of the toggle below.
             Container(width: 26, height: 26, alignment: Alignment.center,
-              decoration: const BoxDecoration(color: BT.card2, shape: BoxShape.circle),
-              child: Text('${i + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: BT.mut))),
+              decoration: BoxDecoration(
+                color: r.runsWithPrevious ? BT.sky : BT.card2, shape: BoxShape.circle),
+              child: Text('${_stepOf(i)}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                  color: r.runsWithPrevious ? const Color(0xFF123040) : BT.mut))),
             const SizedBox(width: 10),
             Expanded(child: _boxField(r.name, 'Stage name')),
             const SizedBox(width: 8),
@@ -133,6 +156,28 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
             IconButton(onPressed: () => setState(() => _rows.removeAt(i)),
               icon: const Icon(Icons.close, size: 18, color: BT.mut2), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
           ]),
+          // What waits for what. The first stage has nothing above it to run
+          // alongside, so it never offers this.
+          if (i > 0) ...[
+            const SizedBox(height: 8),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => r.runsWithPrevious = !r.runsWithPrevious),
+              child: Row(children: [
+                Icon(r.runsWithPrevious
+                    ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                  size: 18, color: r.runsWithPrevious ? BT.ink : BT.mut2),
+                const SizedBox(width: 8),
+                Expanded(child: Text(
+                  r.runsWithPrevious
+                    ? 'Runs alongside "${_nameOf(i - 1)}"'
+                    : 'Waits for "${_nameOf(i - 1)}" to be approved',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 12,
+                    color: r.runsWithPrevious ? BT.ink : BT.mut))),
+              ]),
+            ),
+          ],
           const SizedBox(height: 10),
           Wrap(spacing: 7, runSpacing: 7, children: [
             ...r.items.asMap().entries.map((e) => _itemChip(i, e.key, e.value)),
