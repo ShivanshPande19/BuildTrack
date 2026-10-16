@@ -65,7 +65,8 @@ final myProfileProvider = FutureProvider<MyProfile?>((ref) async {
   final uid = sb.auth.currentUser?.id;
   if (uid == null) return null;
   final d = await sb.from('profiles')
-      .select('id,full_name,email,role,status,phone,created_at,sub_team_id,sub_teams(name)')
+      .select('id,full_name,email,role,status,phone,created_at,designation,is_supervisor,'
+              'sub_team_id,sub_teams(name)')
       .eq('id', uid).maybeSingle();
   return d == null ? null : MyProfile.fromMap(d);
 });
@@ -181,7 +182,12 @@ Future<String> uploadToBuilds(Uint8List bytes, {
 class ProjectsRepo {
   /// pm_id comes along so Admin can spot builds with no project manager —
   /// those are stranded: no PM sees them and their stages cannot be assigned.
-  static const _projectSelect = 'id,code,name,status,progress_pct,pm_id';
+  // `created_by` names its foreign key: `projects` points at `profiles` twice
+  // (pm_id and created_by), so a bare embed is ambiguous and PostgREST refuses
+  // the whole query with PGRST201 — the trap that silently broke PM Approvals.
+  static const _projectSelect =
+      'id,code,name,status,progress_pct,pm_id,created_by,'
+      'created_by_profile:profiles!projects_created_by_fkey(full_name)';
 
   Future<List<Project>> all() async {
     final data = await sb
@@ -1663,10 +1669,24 @@ class AdminRepo {
     return OptRef(tid, name);
   }
 
+  /// What a person does, and whether they supervise workshop work (0032).
+  ///
+  /// Admin only — `trg_profiles_self_update` refuses both from the person
+  /// themselves, because `is_supervisor` decides who a PM can hand workshop
+  /// work to and who may then assign it on.
+  Future<void> setDesignation(String uid, {String? designation, bool? isSupervisor}) async {
+    final d = designation?.trim();
+    await sb.from('profiles').update({
+      if (designation != null) 'designation': (d == null || d.isEmpty) ? null : d,
+      if (isSupervisor != null) 'is_supervisor': isSupervisor,
+    }).eq('id', uid);
+  }
+
   /// List all team members (with their sub-team, if any).
   Future<List<Member>> members() async {
     final d = await sb.from('profiles')
-        .select('id,full_name,email,role,status,sub_team_id,sub_teams(name)')
+        .select('id,full_name,email,role,status,designation,is_supervisor,'
+                'sub_team_id,sub_teams(name)')
         .order('full_name', ascending: true);
     return (d as List).map((e) => Member.fromMap(e as Map<String, dynamic>)).toList();
   }

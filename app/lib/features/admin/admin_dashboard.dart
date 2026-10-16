@@ -403,6 +403,11 @@ class _ProjectsTab extends ConsumerStatefulWidget {
 
 class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
   String _filter = 'all'; // all | on_track | at_risk | delayed | delivered | no_pm
+  /// Which admin onboarded the build (0032). A second axis, not a `_filter`
+  /// value: "delayed builds **and** the ones I brought in" is the question
+  /// worth asking once there are several admins, and folding it into the
+  /// status chips would have made the two mutually exclusive.
+  String? _createdBy;
 
   @override
   Widget build(BuildContext context) {
@@ -432,11 +437,36 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
     // If a filter's last build moved away (e.g. its PM was assigned), fall back.
     if (_filter == 'no_pm' && noPm.isEmpty) _filter = 'all';
     if (_filter == 'delivered' && delivered == 0) _filter = 'all';
-    final list = switch (_filter) {
+    // Who onboarded what, worst-case one entry per admin plus the builds that
+    // predate the record. Only offered once there is more than one — a single
+    // admin filtering by themselves is a chip that does nothing.
+    final creators = <String, String>{};   // id → name
+    var unrecorded = 0;
+    for (final p in f.projects) {
+      if (p.createdById == null) {
+        unrecorded++;
+      } else {
+        creators[p.createdById!] = p.createdByName ?? 'Admin';
+      }
+    }
+    final showCreators = creators.length > 1 || (creators.isNotEmpty && unrecorded > 0);
+    if (_createdBy != null &&
+        _createdBy != '__none__' &&
+        !creators.containsKey(_createdBy)) {
+      _createdBy = null;
+    }
+    if (_createdBy == '__none__' && unrecorded == 0) _createdBy = null;
+
+    var list = switch (_filter) {
       'all'   => f.projects,
       'no_pm' => noPm,
       _       => f.projects.where((p) => p.status == _filter).toList(),
     };
+    if (_createdBy == '__none__') {
+      list = list.where((p) => p.createdById == null).toList();
+    } else if (_createdBy != null) {
+      list = list.where((p) => p.createdById == _createdBy).toList();
+    }
     return [
       FadeSlideIn(delay: Motion.stagger(1), child: ChipBar(chips: [
         _chip('All', 'all', count: f.total),
@@ -448,6 +478,25 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         // work), so they get their own filter.
         if (noPm.isNotEmpty) _chip('No PM', 'no_pm', count: noPm.length, tint: BT.coral),
       ])),
+      if (showCreators) ...[
+        const SizedBox(height: 9),
+        FadeSlideIn(delay: Motion.stagger(2), child: ChipBar(chips: [
+          AppChip('Anyone',
+            selected: _createdBy == null,
+            icon: Icons.person_outline_rounded,
+            onTap: () => setState(() => _createdBy = null)),
+          for (final e in creators.entries)
+            AppChip(e.value,
+              selected: _createdBy == e.key,
+              count: f.projects.where((p) => p.createdById == e.key).length,
+              onTap: () => setState(() => _createdBy = e.key)),
+          if (unrecorded > 0)
+            AppChip('Not recorded',
+              selected: _createdBy == '__none__',
+              count: unrecorded,
+              onTap: () => setState(() => _createdBy = '__none__')),
+        ])),
+      ],
       const SizedBox(height: 14),
       AnimatedSize(
         duration: Motion.base, curve: Motion.move, alignment: Alignment.topCenter,
@@ -462,7 +511,7 @@ class _ProjectsTabState extends ConsumerState<_ProjectsTab> {
         transitionBuilder: (c, a) => FadeTransition(opacity: a, child: c),
         layoutBuilder: (cur, prev) => Stack(alignment: Alignment.topCenter, children: [...prev, if (cur != null) cur]),
         child: KeyedSubtree(
-          key: ValueKey(_filter),
+          key: ValueKey('$_filter|$_createdBy'),
           child: list.isEmpty
             ? const EmptyState(
                 icon: Icons.grid_view_rounded, tint: BT.sky,
@@ -706,12 +755,85 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
     );
   }
 
+  /// What this person does, and — for workshop — whether they supervise.
+  ///
+  /// Admin only: `trg_profiles_self_update` refuses both from the person
+  /// themselves (0032), because `is_supervisor` decides who a PM can hand
+  /// workshop work to and who may then assign it on.
+  Future<void> _editMember(BuildContext context, Member m) async {
+    final c = TextEditingController(text: m.designation ?? '');
+    var supervisor = m.isSupervisor;
+    final isWorkshop = m.role == 'workshop';
+
+    final ok = await showAppSheet<bool>(context: context, builder: (sctx) =>
+      StatefulBuilder(builder: (sctx, setLocal) => Column(
+        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(m.name.isEmpty ? m.email : m.name, style: display(21, w: FontWeight.w600)),
+          const SizedBox(height: 4),
+          Text('${m.role[0].toUpperCase()}${m.role.substring(1)} · ${m.email}',
+            style: const TextStyle(fontSize: 12.5, color: BT.mut)),
+          const SizedBox(height: 18),
+          LabelledField('DESIGNATION', controller: c,
+            hint: isWorkshop ? 'Senior fitter' : 'Operations'),
+          const Padding(
+            padding: EdgeInsets.only(top: 7, left: 4),
+            child: Text('What they do, shown beside their name. Their role is '
+                        'what decides what they can open — this does not change that.',
+              style: TextStyle(fontSize: 11.5, color: BT.mut2, height: 1.35)),
+          ),
+          if (isWorkshop) ...[
+            const SizedBox(height: 16),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setLocal(() => supervisor = !supervisor),
+              child: Row(children: [
+                Icon(supervisor
+                    ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                  size: 20, color: supervisor ? BT.ink : BT.mut2),
+                const SizedBox(width: 10),
+                const Expanded(child: Text('Workshop supervisor',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14))),
+              ]),
+            ),
+            const Padding(
+              padding: EdgeInsets.only(top: 6, left: 30),
+              child: Text('A project manager can hand workshop work to a supervisor, '
+                          'who then breaks it down for their own people. There can be '
+                          'more than one.',
+                style: TextStyle(fontSize: 11.5, color: BT.mut2, height: 1.35)),
+            ),
+          ],
+          const SizedBox(height: 20),
+          PrimaryButton('Save', icon: Icons.check_rounded,
+            onTap: () => Navigator.pop(sctx, true)),
+          const SizedBox(height: 6),
+        ])));
+    if (ok != true || !context.mounted) return;
+
+    try {
+      await ref.read(adminRepoProvider).setDesignation(m.id,
+        designation: c.text, isSupervisor: isWorkshop ? supervisor : null);
+      ref.invalidate(membersProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          backgroundColor: BT.ink, content: Text('Saved')));
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+      }
+    }
+  }
+
   Widget _memberRow(BuildContext context, Member m) {
     final rc = roleColor(m.role);
     final isAdmin = m.role == 'admin';
     final isSelf = sb.auth.currentUser?.id == m.id;
-    // The sub-team (Welding / Paint …) is shown once, as a pill. The line
-    // under the name is always the email (it used to repeat the sub-team).
+    // The pill is the one thing worth calling out about this person: that they
+    // supervise, else which sub-team they are in. The line under the name is
+    // what they do and how to reach them.
     final note = switch (m.status) {
       'invited'  => (label: 'Invited', color: BT.amber),
       'disabled' => (label: 'Disabled', color: BT.mut2),
@@ -749,12 +871,22 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
             ],
           ]),
           const SizedBox(height: 2),
-          Text(m.email, maxLines: 1, overflow: TextOverflow.ellipsis,
+          // What they do, then how to reach them. With several admins the role
+          // alone stopped telling them apart — Operations and Finance both
+          // just read "admin" (0032).
+          Text([
+            if (m.designation != null) m.designation!,
+            m.email,
+          ].join(' · '),
+            maxLines: 1, overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: BT.mut, fontSize: 12)),
         ])),
         if (note != null) ...[
           const SizedBox(width: 8),
           StatusPill(note.label, color: note.color),
+        ] else if (m.isSupervisor) ...[
+          const SizedBox(width: 8),
+          StatusPill('Supervisor', color: rc, dark: isAdmin),
         ] else if (m.subTeamName != null) ...[
           const SizedBox(width: 8),
           StatusPill(m.subTeamName!, color: rc, dark: isAdmin),
@@ -762,8 +894,13 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
       ]),
     );
 
+    final tappable = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _editMember(context, m),
+      child: card);
+
     // Admin can't remove themselves; everyone else is swipe-to-delete.
-    if (isSelf) return Padding(padding: const EdgeInsets.only(bottom: 11), child: card);
+    if (isSelf) return Padding(padding: const EdgeInsets.only(bottom: 11), child: tappable);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
@@ -806,7 +943,7 @@ class _TeamTabState extends ConsumerState<_TeamTab> {
             return false;
           }
         },
-        child: card,
+        child: tappable,
       ),
     );
   }

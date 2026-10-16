@@ -93,7 +93,12 @@ with checks(migration, applied) as (values
   ('0031_stages_run_in_steps',
      exists (select 1 from information_schema.columns where table_schema = 'public'
                and table_name = 'stages' and column_name = 'step')
-     and to_regclass('public.v_stage_gate') is not null)
+     and to_regclass('public.v_stage_gate') is not null),
+  ('0032_designations_and_who_created_a_build',
+     exists (select 1 from information_schema.columns where table_schema = 'public'
+               and table_name = 'profiles' and column_name = 'is_supervisor')
+     and exists (select 1 from information_schema.columns where table_schema = 'public'
+               and table_name = 'projects' and column_name = 'created_by'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

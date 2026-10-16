@@ -44,6 +44,7 @@ void main() {
   workshopTests();
   stageStepTests();
   pmSetupTests();
+  designationTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -1336,6 +1337,91 @@ void pmSetupTests() {
         stageTick('Chassis', ord: 2),
       ]);
       expect(b.lockedIds, {'st-Chassis-2'});
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 0032: a designation beside the role, and which admin brought a build in.
+// ───────────────────────────────────────────────────────────────────────────
+
+void designationTests() {
+  group('Member · designation and supervisor', () {
+    Member m(Map<String, dynamic> extra) => Member.fromMap({
+      'id': 'u1', 'full_name': 'Ravi', 'email': 'r@az.co',
+      'role': 'workshop', 'status': 'active', ...extra,
+    });
+
+    test('a designation is read and shown under the name', () {
+      expect(m({'designation': 'Senior fitter'}).subtitle, 'Senior fitter');
+    });
+
+    test('blank or whitespace is the same as none', () {
+      // The field is free text, so an admin who clears it leaves '' behind.
+      expect(m({'designation': '   '}).designation, isNull);
+      expect(m({'designation': ''}).designation, isNull);
+    });
+
+    test('a supervisor is called one even with no designation typed', () {
+      expect(m({'is_supervisor': true}).subtitle, 'Workshop supervisor');
+    });
+
+    test('a typed designation wins over the generic label', () {
+      expect(m({'designation': 'Night shift lead', 'is_supervisor': true}).subtitle,
+        'Night shift lead');
+    });
+
+    test('otherwise it falls back to the sub-team', () {
+      expect(m({'sub_teams': {'name': 'Welding'}}).subtitle, 'Welding');
+    });
+
+    test('and to nothing at all', () {
+      expect(m(const {}).subtitle, isNull);
+    });
+
+    test('a row without the new columns still reads', () {
+      // RLS and column-level selects mean a screen can legitimately get a row
+      // without them; it must not throw.
+      final x = Member.fromMap({
+        'id': 'u1', 'full_name': 'R', 'email': 'r@az.co',
+        'role': 'admin', 'status': 'active',
+      });
+      expect(x.designation, isNull);
+      expect(x.isSupervisor, isFalse);
+    });
+  });
+
+  group('Project · which admin brought it in', () {
+    Project p(Map<String, dynamic> extra) => Project.fromMap({
+      'id': 'p1', 'code': 'AZ-1', 'name': 'T', 'status': 'on_track',
+      'progress_pct': 0, ...extra,
+    });
+
+    test('reads the creator and their name', () {
+      final x = p({
+        'created_by': 'a1',
+        'created_by_profile': {'full_name': 'Asha'},
+      });
+      expect(x.createdById, 'a1');
+      expect(x.createdByName, 'Asha');
+    });
+
+    test('a build created before this was recorded has neither', () {
+      expect(p(const {}).createdById, isNull);
+      expect(p(const {}).createdByName, isNull);
+    });
+
+    test('an offboarded admin leaves the id but no name', () {
+      // projects.created_by is ON DELETE SET NULL, so in practice both go —
+      // but a column-level select can legitimately return one without the
+      // other, and the filter shows the id's group either way.
+      expect(p({'created_by': 'a1'}).createdById, 'a1');
+      expect(p({'created_by': 'a1'}).createdByName, isNull);
+    });
+
+    test('a blank name is treated as no name', () {
+      final x = p({'created_by': 'a1', 'created_by_profile': {'full_name': '  '}});
+      expect(x.createdByName, isNull);
     });
   });
 }

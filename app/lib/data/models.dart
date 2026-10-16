@@ -9,16 +9,27 @@ class Project {
   /// The project manager who owns this build. Null = nobody can work on it yet:
   /// no PM sees it and its stages cannot be assigned, so Admin must fix that.
   final String? pmId;
+  /// The admin who onboarded this build (0032). Null on builds created before
+  /// it was recorded, or whose admin has since been offboarded — shown as
+  /// "Not recorded" rather than guessed at.
+  final String? createdById;
+  final String? createdByName;
   Project({required this.id, required this.code, required this.name, required this.status,
-    required this.progressPct, this.pmId});
-  factory Project.fromMap(Map<String, dynamic> m) => Project(
-    id: m['id'] as String,
-    code: m['code'] as String? ?? '',
-    name: m['name'] as String? ?? '',
-    status: m['status'] as String? ?? 'on_track',
-    progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
-    pmId: m['pm_id'] as String?,
-  );
+    required this.progressPct, this.pmId, this.createdById, this.createdByName});
+  factory Project.fromMap(Map<String, dynamic> m) {
+    final by = m['created_by_profile'] as Map<String, dynamic>?;
+    final nm = (by?['full_name'] as String?)?.trim();
+    return Project(
+      id: m['id'] as String,
+      code: m['code'] as String? ?? '',
+      name: m['name'] as String? ?? '',
+      status: m['status'] as String? ?? 'on_track',
+      progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
+      pmId: m['pm_id'] as String?,
+      createdById: m['created_by'] as String?,
+      createdByName: (nm == null || nm.isEmpty) ? null : nm,
+    );
+  }
 
   bool get hasPm => pmId != null;
 }
@@ -149,10 +160,20 @@ class ApprovalItem {
 class Member {
   final String id, name, email, role, status;
   final String? subTeamId, subTeamName;   // team within the department (optional)
+  /// What this person does — "Operations", "Senior Fitter" (0032). The [role]
+  /// is still the permission; this is only what people call each other, and it
+  /// exists because a company with several admins has an Operations one and a
+  /// Finance one and the list could not tell them apart.
+  final String? designation;
+  /// A workshop supervisor: who a PM hands workshop work to, and who assigns
+  /// it on. Not a role — they are still workshop.
+  final bool isSupervisor;
   Member({required this.id, required this.name, required this.email, required this.role,
-    required this.status, this.subTeamId, this.subTeamName});
+    required this.status, this.subTeamId, this.subTeamName,
+    this.designation, this.isSupervisor = false});
   factory Member.fromMap(Map<String, dynamic> m) {
     final st = m['sub_teams'] as Map<String, dynamic>?;
+    final d = (m['designation'] as String?)?.trim();
     return Member(
       id: m['id'] as String,
       name: m['full_name'] as String? ?? '',
@@ -161,8 +182,14 @@ class Member {
       status: m['status'] as String? ?? 'active',
       subTeamId: m['sub_team_id'] as String?,
       subTeamName: st?['name'] as String?,
+      designation: (d == null || d.isEmpty) ? null : d,
+      isSupervisor: m['is_supervisor'] as bool? ?? false,
     );
   }
+
+  /// The line under a name: what they do, else which team, else nothing. A
+  /// supervisor is called one even if nobody typed a designation.
+  String? get subtitle => designation ?? (isSupervisor ? 'Workshop supervisor' : subTeamName);
 }
 
 /// The signed-in user's own profile row, for Settings → Account details.
