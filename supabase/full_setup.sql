@@ -6067,8 +6067,14 @@ alter table public.template_stages add column if not exists step int;
 update public.stages          set step = ord where step is null;
 update public.template_stages set step = ord where step is null;
 
-alter table public.stages          alter column step set default 1;
-alter table public.template_stages alter column step set default 1;
+-- Deliberately **no default**. `step` left unset means "its own step", which
+-- every reader spells `coalesce(step, ord)` — not "step 1", which is what a
+-- default of 1 would mean and which quietly makes an entire build parallel.
+-- An insert that forgets the column is the normal case (every existing test
+-- fixture, and seed.sql, which runs *after* this migration), so the safe
+-- reading of a missing value has to be the sequential one.
+alter table public.stages          alter column step drop default;
+alter table public.template_stages alter column step drop default;
 
 comment on column public.stages.step is
   'Stages sharing a step run in parallel. A step opens when every earlier step is done. `ord` is only the display order.';
@@ -6492,14 +6498,19 @@ end $$;
 insert into workflow_templates (id, name, truck_type) values
   ('11111111-0000-0000-0000-000000000001','Standard Food Truck','food_truck');
 
-insert into template_stages (template_id, name, ord, default_duration_days) values
-  ('11111111-0000-0000-0000-000000000001','Design & Layout',1,4),
-  ('11111111-0000-0000-0000-000000000001','Chassis & Structure',2,7),
-  ('11111111-0000-0000-0000-000000000001','Exterior cladding',3,3),
-  ('11111111-0000-0000-0000-000000000001','Electrical work',4,4),
-  ('11111111-0000-0000-0000-000000000001','Interior & Equipment',5,3),
-  ('11111111-0000-0000-0000-000000000001','Paint & Branding',6,2),
-  ('11111111-0000-0000-0000-000000000001','Testing & Delivery',7,2);
+-- `step` says what waits for what (0031); `ord` is only the order they are
+-- listed in. This workflow is strictly sequential — one stage per step — which
+-- is how every build behaved before steps existed. A template that wanted the
+-- cladding and the electricals to run alongside each other would give them the
+-- same step.
+insert into template_stages (template_id, name, ord, step, default_duration_days) values
+  ('11111111-0000-0000-0000-000000000001','Design & Layout',1,1,4),
+  ('11111111-0000-0000-0000-000000000001','Chassis & Structure',2,2,7),
+  ('11111111-0000-0000-0000-000000000001','Exterior cladding',3,3,3),
+  ('11111111-0000-0000-0000-000000000001','Electrical work',4,4,4),
+  ('11111111-0000-0000-0000-000000000001','Interior & Equipment',5,5,3),
+  ('11111111-0000-0000-0000-000000000001','Paint & Branding',6,6,2),
+  ('11111111-0000-0000-0000-000000000001','Testing & Delivery',7,7,2);
 
 -- ===== vendors =====
 insert into vendors (id, name, category, avg_lead_time_days, reliability_score) values

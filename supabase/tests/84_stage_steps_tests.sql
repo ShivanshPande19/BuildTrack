@@ -193,7 +193,7 @@ select t_assert((select count(*) from stages
 select t_assert((select count(*) from stages
                   where project_id='80000000-0000-0000-0000-0000000000a3'
                     and step is null) = 0,
-                'S7 …and every stage lands in a step');
+                'S7 …and every stage lands in a step, copied from the template');
 
 -- A build with no template is refused rather than quietly producing nothing.
 reset role; set test.uid = '';
@@ -210,14 +210,33 @@ select t_expect_error($$
 \echo '=== 0031 · every build that already existed is unchanged =========='
 
 reset role; set test.uid = '';
-select t_assert((select count(*) from stages where step is null) = 0,
-                'S8 the backfill left no stage without a step');
-select t_assert((select count(*) from template_stages where step is null) = 0,
-                'S8 …nor any template stage');
 select t_assert((select count(*) from stages s
                   where s.project_id = '77777777-0000-0000-0000-000000000001'
                     and s.step <> s.ord) = 0,
                 'S8 an existing build still runs one stage per step');
+
+-- A stage inserted without a step — every fixture in every other suite, and
+-- anything written before 0031 — reads as its own step, not as step 1. The
+-- column has **no default** for exactly this reason: defaulting it to 1 would
+-- make a build silently parallel the moment somebody forgot the column.
+insert into stages (id, project_id, name, ord, status, discipline, assignee_id)
+values ('80000000-0000-0000-0000-0000000000d1','80000000-0000-0000-0000-0000000000a1',
+        'Afterthought', 9, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001');
+select t_assert((select step from stages
+                  where id='80000000-0000-0000-0000-0000000000d1') is null,
+                'S8 a stage inserted without a step keeps it null');
+select t_assert((select is_locked from v_stage_gate
+                  where stage_id='80000000-0000-0000-0000-0000000000d1') is false,
+                'S8 …and reads as its own step (ord 9, everything before it done)');
+
+-- …and it is genuinely gated, not merely ungrouped: put an open stage in front
+-- of it and it locks.
+insert into stages (id, project_id, name, ord, status, discipline, assignee_id)
+values ('80000000-0000-0000-0000-0000000000d2','80000000-0000-0000-0000-0000000000a1',
+        'Comes first', 8, 'todo', 'workshop', 'd0000000-0000-0000-0000-000000000001');
+select t_assert((select is_locked from v_stage_gate
+                  where stage_id='80000000-0000-0000-0000-0000000000d1'),
+                'S8 …so an unset step still waits for the one before it');
 
 reset role;
 \echo ''

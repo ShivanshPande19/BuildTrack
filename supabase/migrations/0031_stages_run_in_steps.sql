@@ -45,8 +45,14 @@ alter table public.template_stages add column if not exists step int;
 update public.stages          set step = ord where step is null;
 update public.template_stages set step = ord where step is null;
 
-alter table public.stages          alter column step set default 1;
-alter table public.template_stages alter column step set default 1;
+-- Deliberately **no default**. `step` left unset means "its own step", which
+-- every reader spells `coalesce(step, ord)` — not "step 1", which is what a
+-- default of 1 would mean and which quietly makes an entire build parallel.
+-- An insert that forgets the column is the normal case (every existing test
+-- fixture, and seed.sql, which runs *after* this migration), so the safe
+-- reading of a missing value has to be the sequential one.
+alter table public.stages          alter column step drop default;
+alter table public.template_stages alter column step drop default;
 
 comment on column public.stages.step is
   'Stages sharing a step run in parallel. A step opens when every earlier step is done. `ord` is only the display order.';
