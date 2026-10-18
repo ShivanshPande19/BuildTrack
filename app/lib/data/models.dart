@@ -9,16 +9,27 @@ class Project {
   /// The project manager who owns this build. Null = nobody can work on it yet:
   /// no PM sees it and its stages cannot be assigned, so Admin must fix that.
   final String? pmId;
+  /// The admin who onboarded this build (0032). Null on builds created before
+  /// it was recorded, or whose admin has since been offboarded — shown as
+  /// "Not recorded" rather than guessed at.
+  final String? createdById;
+  final String? createdByName;
   Project({required this.id, required this.code, required this.name, required this.status,
-    required this.progressPct, this.pmId});
-  factory Project.fromMap(Map<String, dynamic> m) => Project(
-    id: m['id'] as String,
-    code: m['code'] as String? ?? '',
-    name: m['name'] as String? ?? '',
-    status: m['status'] as String? ?? 'on_track',
-    progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
-    pmId: m['pm_id'] as String?,
-  );
+    required this.progressPct, this.pmId, this.createdById, this.createdByName});
+  factory Project.fromMap(Map<String, dynamic> m) {
+    final by = m['created_by_profile'] as Map<String, dynamic>?;
+    final nm = (by?['full_name'] as String?)?.trim();
+    return Project(
+      id: m['id'] as String,
+      code: m['code'] as String? ?? '',
+      name: m['name'] as String? ?? '',
+      status: m['status'] as String? ?? 'on_track',
+      progressPct: (m['progress_pct'] as num?)?.toInt() ?? 0,
+      pmId: m['pm_id'] as String?,
+      createdById: m['created_by'] as String?,
+      createdByName: (nm == null || nm.isEmpty) ? null : nm,
+    );
+  }
 
   bool get hasPm => pmId != null;
 }
@@ -149,10 +160,20 @@ class ApprovalItem {
 class Member {
   final String id, name, email, role, status;
   final String? subTeamId, subTeamName;   // team within the department (optional)
+  /// What this person does — "Operations", "Senior Fitter" (0032). The [role]
+  /// is still the permission; this is only what people call each other, and it
+  /// exists because a company with several admins has an Operations one and a
+  /// Finance one and the list could not tell them apart.
+  final String? designation;
+  /// A workshop supervisor: who a PM hands workshop work to, and who assigns
+  /// it on. Not a role — they are still workshop.
+  final bool isSupervisor;
   Member({required this.id, required this.name, required this.email, required this.role,
-    required this.status, this.subTeamId, this.subTeamName});
+    required this.status, this.subTeamId, this.subTeamName,
+    this.designation, this.isSupervisor = false});
   factory Member.fromMap(Map<String, dynamic> m) {
     final st = m['sub_teams'] as Map<String, dynamic>?;
+    final d = (m['designation'] as String?)?.trim();
     return Member(
       id: m['id'] as String,
       name: m['full_name'] as String? ?? '',
@@ -161,8 +182,14 @@ class Member {
       status: m['status'] as String? ?? 'active',
       subTeamId: m['sub_team_id'] as String?,
       subTeamName: st?['name'] as String?,
+      designation: (d == null || d.isEmpty) ? null : d,
+      isSupervisor: m['is_supervisor'] as bool? ?? false,
     );
   }
+
+  /// The line under a name: what they do, else which team, else nothing. A
+  /// supervisor is called one even if nobody typed a designation.
+  String? get subtitle => designation ?? (isSupervisor ? 'Workshop supervisor' : subTeamName);
 }
 
 /// The signed-in user's own profile row, for Settings → Account details.
@@ -463,6 +490,104 @@ class StageMaterial {
     );
   }
   bool get isReceived => status == 'received';
+}
+
+/// One piece of a workshop stage, given to one person (0033).
+///
+/// The supervisor's breakdown — not the checklist, which is the PM's condition
+/// for approving the stage. This answers "who is doing this, and is it done";
+/// the stage still answers "is there proof".
+class StageTask {
+  final String id, stageId, title, status;
+  final int ord, step;
+  final String? assigneeId, assigneeName, note, doneByName;
+  final DateTime? doneAt;
+
+  StageTask({required this.id, required this.stageId, required this.title,
+    required this.status, required this.ord, required this.step,
+    this.assigneeId, this.assigneeName, this.note, this.doneByName, this.doneAt});
+
+  factory StageTask.fromMap(Map<String, dynamic> m) {
+    final a = m['assignee'] as Map<String, dynamic>?;
+    final d = m['done_by_profile'] as Map<String, dynamic>?;
+    final an = (a?['full_name'] as String?)?.trim();
+    final dn = (d?['full_name'] as String?)?.trim();
+    final ord = (m['ord'] as num?)?.toInt() ?? 0;
+    return StageTask(
+      id: m['id'] as String,
+      stageId: m['stage_id'] as String? ?? '',
+      title: m['title'] as String? ?? '',
+      status: m['status'] as String? ?? 'todo',
+      ord: ord,
+      // Null means "its own step", exactly as for a stage (0031).
+      step: (m['step'] as num?)?.toInt() ?? ord,
+      assigneeId: m['assignee_id'] as String?,
+      assigneeName: (an == null || an.isEmpty) ? null : an,
+      note: (m['note'] as String?)?.trim().isEmpty ?? true ? null : (m['note'] as String?)?.trim(),
+      doneByName: (dn == null || dn.isEmpty) ? null : dn,
+      doneAt: parseDate(m['done_at']),
+    );
+  }
+
+  bool get isDone => status == 'done';
+  bool get isActive => status == 'in_progress';
+  bool get isUnassigned => assigneeId == null;
+}
+
+/// A worker's own piece of work, with the build and stage it sits in — the
+/// list they open the app to see.
+class MyStageTask {
+  final StageTask task;
+  final String projectCode, projectName, stageName;
+  /// Something in an earlier sub-step of the same stage is still open.
+  final bool isLocked;
+  final String? blockedBy;
+  MyStageTask({required this.task, required this.projectCode,
+    required this.projectName, required this.stageName,
+    this.isLocked = false, this.blockedBy});
+
+  /// Worst first: what is already started, then what can be picked up, then
+  /// what is waiting on somebody else, then what is finished.
+  int get rank {
+    if (task.isDone) return 3;
+    if (isLocked) return 2;
+    if (task.isActive) return 0;
+    return 1;
+  }
+
+  static int compare(MyStageTask a, MyStageTask b) {
+    final r = a.rank.compareTo(b.rank);
+    if (r != 0) return r;
+    final c = a.projectCode.compareTo(b.projectCode);
+    return c != 0 ? c : a.task.ord.compareTo(b.task.ord);
+  }
+}
+
+/// Which sub-stages of one stage cannot start yet.
+///
+/// Same rule as [lockedStageIds], one level down: a sub-stage waits while any
+/// sub-stage in an earlier step is unfinished. Computed from the list the
+/// screen already holds rather than asked for.
+Set<String> lockedTaskIds(List<StageTask> tasks) {
+  int? openFrom;
+  for (final t in tasks) {
+    if (t.isDone) continue;
+    if (openFrom == null || t.step < openFrom) openFrom = t.step;
+  }
+  if (openFrom == null) return const {};
+  return {for (final t in tasks) if (!t.isDone && t.step > openFrom) t.id};
+}
+
+/// What a locked sub-stage is waiting for.
+StageTask? taskBlockerFor(StageTask task, List<StageTask> all) {
+  StageTask? best;
+  for (final t in all) {
+    if (t.isDone || t.step >= task.step) continue;
+    if (best == null || t.step < best.step || (t.step == best.step && t.ord < best.ord)) {
+      best = t;
+    }
+  }
+  return best;
 }
 
 /// A photo / image attached to a stage (attachments where owner_type='stage').

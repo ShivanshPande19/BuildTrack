@@ -44,6 +44,8 @@ void main() {
   workshopTests();
   stageStepTests();
   pmSetupTests();
+  designationTests();
+  subStageTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -1336,6 +1338,226 @@ void pmSetupTests() {
         stageTick('Chassis', ord: 2),
       ]);
       expect(b.lockedIds, {'st-Chassis-2'});
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 0032: a designation beside the role, and which admin brought a build in.
+// ───────────────────────────────────────────────────────────────────────────
+
+void designationTests() {
+  group('Member · designation and supervisor', () {
+    Member m(Map<String, dynamic> extra) => Member.fromMap({
+      'id': 'u1', 'full_name': 'Ravi', 'email': 'r@az.co',
+      'role': 'workshop', 'status': 'active', ...extra,
+    });
+
+    test('a designation is read and shown under the name', () {
+      expect(m({'designation': 'Senior fitter'}).subtitle, 'Senior fitter');
+    });
+
+    test('blank or whitespace is the same as none', () {
+      // The field is free text, so an admin who clears it leaves '' behind.
+      expect(m({'designation': '   '}).designation, isNull);
+      expect(m({'designation': ''}).designation, isNull);
+    });
+
+    test('a supervisor is called one even with no designation typed', () {
+      expect(m({'is_supervisor': true}).subtitle, 'Workshop supervisor');
+    });
+
+    test('a typed designation wins over the generic label', () {
+      expect(m({'designation': 'Night shift lead', 'is_supervisor': true}).subtitle,
+        'Night shift lead');
+    });
+
+    test('otherwise it falls back to the sub-team', () {
+      expect(m({'sub_teams': {'name': 'Welding'}}).subtitle, 'Welding');
+    });
+
+    test('and to nothing at all', () {
+      expect(m(const {}).subtitle, isNull);
+    });
+
+    test('a row without the new columns still reads', () {
+      // RLS and column-level selects mean a screen can legitimately get a row
+      // without them; it must not throw.
+      final x = Member.fromMap({
+        'id': 'u1', 'full_name': 'R', 'email': 'r@az.co',
+        'role': 'admin', 'status': 'active',
+      });
+      expect(x.designation, isNull);
+      expect(x.isSupervisor, isFalse);
+    });
+  });
+
+  group('Project · which admin brought it in', () {
+    Project p(Map<String, dynamic> extra) => Project.fromMap({
+      'id': 'p1', 'code': 'AZ-1', 'name': 'T', 'status': 'on_track',
+      'progress_pct': 0, ...extra,
+    });
+
+    test('reads the creator and their name', () {
+      final x = p({
+        'created_by': 'a1',
+        'created_by_profile': {'full_name': 'Asha'},
+      });
+      expect(x.createdById, 'a1');
+      expect(x.createdByName, 'Asha');
+    });
+
+    test('a build created before this was recorded has neither', () {
+      expect(p(const {}).createdById, isNull);
+      expect(p(const {}).createdByName, isNull);
+    });
+
+    test('an offboarded admin leaves the id but no name', () {
+      // projects.created_by is ON DELETE SET NULL, so in practice both go —
+      // but a column-level select can legitimately return one without the
+      // other, and the filter shows the id's group either way.
+      expect(p({'created_by': 'a1'}).createdById, 'a1');
+      expect(p({'created_by': 'a1'}).createdByName, isNull);
+    });
+
+    test('a blank name is treated as no name', () {
+      final x = p({'created_by': 'a1', 'created_by_profile': {'full_name': '  '}});
+      expect(x.createdByName, isNull);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 0033: a workshop stage breaks into sub-stages. Same step rule as 0031, one
+// level down — and the supervisor, not the template, decides what runs
+// together on this truck.
+// ───────────────────────────────────────────────────────────────────────────
+
+StageTask subTask(String title, {
+  required int ord, int? step, String status = 'todo', String? who,
+}) => StageTask(
+  id: 'st-$title', stageId: 'stage-1', title: title, status: status,
+  ord: ord, step: step ?? ord,
+  assigneeId: who, assigneeName: who == null ? null : 'Worker $who');
+
+void subStageTests() {
+  group('StageTask.fromMap', () {
+    test('reads the people on both sides by their named foreign keys', () {
+      final t = StageTask.fromMap({
+        'id': 't1', 'stage_id': 's1', 'title': 'Flooring', 'ord': 3,
+        'step': 2, 'status': 'done', 'done_at': '2026-10-16T09:00:00Z',
+        'assignee_id': 'u1',
+        'assignee': {'full_name': 'Ravi'},
+        'done_by_profile': {'full_name': 'Ravi'},
+      });
+      expect(t.assigneeName, 'Ravi');
+      expect(t.doneByName, 'Ravi');
+      expect(t.doneAt, isNotNull);
+      expect(t.isDone, isTrue);
+    });
+
+    test('a null step means its own step, which is ord', () {
+      // Matches the column: no default, and every reader coalesces to ord.
+      final t = StageTask.fromMap({
+        'id': 't1', 'stage_id': 's1', 'title': 'Plumbing', 'ord': 5,
+      });
+      expect(t.step, 5);
+    });
+
+    test('an unassigned item says so rather than inventing a name', () {
+      final t = StageTask.fromMap({'id': 't1', 'stage_id': 's1', 'title': 'X', 'ord': 1});
+      expect(t.isUnassigned, isTrue);
+      expect(t.assigneeName, isNull);
+    });
+
+    test('a blank note is no note', () {
+      final t = StageTask.fromMap({
+        'id': 't1', 'stage_id': 's1', 'title': 'X', 'ord': 1, 'note': '   '});
+      expect(t.note, isNull);
+    });
+  });
+
+  group('lockedTaskIds · the step rule, one level down', () {
+    test('everything after the first open sub-step waits', () {
+      final tasks = [
+        subTask('Framework', ord: 1, status: 'in_progress'),
+        subTask('Cladding', ord: 2),
+        subTask('Paint', ord: 3),
+      ];
+      expect(lockedTaskIds(tasks), {'st-Cladding', 'st-Paint'});
+    });
+
+    test('items sharing a step are open together', () {
+      // The owner's own example: after the cladding, the paint and the
+      // branding run at the same time.
+      final tasks = [
+        subTask('Cladding', ord: 1, step: 1, status: 'done'),
+        subTask('Paint', ord: 2, step: 2),
+        subTask('Branding', ord: 3, step: 2),
+        subTask('Plumbing', ord: 4, step: 3),
+      ];
+      expect(lockedTaskIds(tasks), {'st-Plumbing'});
+    });
+
+    test('half a step does not open the next one', () {
+      final tasks = [
+        subTask('Paint', ord: 1, step: 1, status: 'done'),
+        subTask('Branding', ord: 2, step: 1, status: 'in_progress'),
+        subTask('Plumbing', ord: 3, step: 2),
+      ];
+      expect(lockedTaskIds(tasks), {'st-Plumbing'});
+    });
+
+    test('a finished breakdown locks nothing', () {
+      final tasks = [
+        subTask('A', ord: 1, status: 'done'),
+        subTask('B', ord: 2, status: 'done'),
+      ];
+      expect(lockedTaskIds(tasks), isEmpty);
+    });
+
+    test('an empty breakdown locks nothing', () {
+      expect(lockedTaskIds(const []), isEmpty);
+    });
+  });
+
+  group('taskBlockerFor · what to name on the card', () {
+    final tasks = [
+      subTask('Framework', ord: 1, step: 1, status: 'done'),
+      subTask('Cladding', ord: 2, step: 2, status: 'in_progress'),
+      subTask('Drilling', ord: 3, step: 2),
+      subTask('Paint', ord: 4, step: 3),
+    ];
+
+    test('names the earliest unfinished item before it', () {
+      expect(taskBlockerFor(tasks[3], tasks)?.title, 'Cladding');
+    });
+
+    test('an item in the open step has no blocker', () {
+      expect(taskBlockerFor(tasks[2], tasks), isNull);
+    });
+  });
+
+  group('MyStageTask · the worker\'s own list', () {
+    MyStageTask item(StageTask t, {bool locked = false}) => MyStageTask(
+      task: t, projectCode: 'AZ-1', projectName: 'Truck', stageName: 'Workshop',
+      isLocked: locked);
+
+    test('started work leads, then what can be picked up, then what waits', () {
+      final list = [
+        item(subTask('C', ord: 3), locked: true),
+        item(subTask('A', ord: 1, status: 'in_progress')),
+        item(subTask('B', ord: 2)),
+      ]..sort(MyStageTask.compare);
+      expect(list.map((i) => i.task.title).toList(), ['A', 'B', 'C']);
+    });
+
+    test('finished work sorts last of all', () {
+      final list = [
+        item(subTask('Done', ord: 1, status: 'done')),
+        item(subTask('Waiting', ord: 2), locked: true),
+      ]..sort(MyStageTask.compare);
+      expect(list.first.task.title, 'Waiting');
     });
   });
 }

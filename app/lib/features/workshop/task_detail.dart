@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
@@ -205,6 +206,14 @@ class TaskDetailScreen extends ConsumerWidget {
               'a photo before ${b.proofOutstanding == 1 ? 'it' : 'they'} can be ticked.',
               style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.3))),
           ])),
+
+      // ── Who is doing what ────────────────────────────────────────────
+      //
+      // A workshop stage is a fortnight of work by several people. The person
+      // the PM handed it to breaks it down here and gives each piece to
+      // somebody; everyone else sees it read-only, which is how a PM watches
+      // progress without assigning fifteen items by name across forty builds.
+      if (showInstallPart) _SubStages(task: task, frozen: task.isClosed),
 
       // ── What this stage is built from ────────────────────────────────
       if (b.materials.isNotEmpty) ...[
@@ -1030,6 +1039,344 @@ class _ChecklistTileState extends ConsumerState<_ChecklistTile> {
           ])),
         ]),
       ),
+    );
+  }
+}
+
+/// The supervisor's breakdown of a workshop stage into work for individual
+/// people (0033).
+///
+/// Read-only for everyone but the person the stage was handed to — and for a
+/// worker looking at a stage that is not theirs, this is simply the picture of
+/// who is doing what, which is worth seeing.
+class _SubStages extends ConsumerWidget {
+  final WorkshopTask task;
+  final bool frozen;
+  const _SubStages({required this.task, required this.frozen});
+
+  static final _fmt = DateFormat('d MMM');
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(stageTasksProvider(task.stageId));
+    // Only the person holding the stage plans it. This screen is reached from
+    // "my stages" — myTasks() returns only stages assigned to the signed-in
+    // person — so the viewer *is* that person. The server says the same thing
+    // (trg_guard_stage_tasks); this is only so the screen never offers an edit
+    // that would be refused.
+    final canPlan = !frozen;
+
+    return async.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: ErrorCard('Could not load the work items.\n${friendlyError(e)}',
+          onRetry: () => ref.invalidate(stageTasksProvider(task.stageId))),
+      ),
+      data: (tasks) {
+        if (tasks.isEmpty && !canPlan) return const SizedBox.shrink();
+        final locked = lockedTaskIds(tasks);
+        final done = tasks.where((t) => t.isDone).length;
+
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 20, bottom: 10),
+            child: Row(children: [
+              Expanded(child: Text(
+                tasks.isEmpty ? 'WORK ITEMS' : 'WORK ITEMS · $done/${tasks.length}',
+                style: const TextStyle(fontSize: 11, letterSpacing: 1.2,
+                  color: BT.mut, fontWeight: FontWeight.w600))),
+              if (canPlan)
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _add(context, ref, tasks),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 12),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(Icons.add_rounded, size: 15, color: BT.ink),
+                      SizedBox(width: 3),
+                      Text('Add item', style: TextStyle(fontSize: 12.5,
+                        fontWeight: FontWeight.w700, color: BT.ink)),
+                    ])),
+                ),
+            ]),
+          ),
+          if (tasks.isEmpty)
+            EmptyState(icon: Icons.checklist_rtl_rounded, tint: BT.card2,
+              title: 'Nothing broken down yet',
+              subtitle: canPlan
+                ? 'Split this stage into the jobs it actually is, and give each '
+                  'one to somebody. They will see it in their own list.'
+                : 'The supervisor has not split this stage up yet.')
+          else
+            AppCard(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Column(children: [
+                for (var i = 0; i < tasks.length; i++)
+                  _row(context, ref, tasks[i], tasks,
+                    locked: locked.contains(tasks[i].id),
+                    sharesWithAbove: i > 0 && tasks[i].step == tasks[i - 1].step,
+                    canPlan: canPlan,
+                    divider: i < tasks.length - 1),
+              ])),
+          if (canPlan && tasks.isNotEmpty)
+            const Padding(padding: EdgeInsets.only(top: 9, left: 4),
+              child: Text('Tap an item to give it to someone, or to say it runs '
+                          'alongside the one above.',
+                style: TextStyle(fontSize: 12, color: BT.mut, height: 1.3))),
+        ]);
+      },
+    );
+  }
+
+  Widget _row(BuildContext context, WidgetRef ref, StageTask t, List<StageTask> all, {
+    required bool locked, required bool sharesWithAbove,
+    required bool canPlan, required bool divider,
+  }) {
+    final mine = sb.auth.currentUser?.id;
+    final isMine = t.assigneeId != null && t.assigneeId == mine;
+    final tone = t.isDone
+        ? (label: 'Done', color: BT.lime)
+        : locked
+            ? (label: 'Waiting', color: BT.card2)
+            : t.isActive
+                ? (label: 'In progress', color: BT.amber)
+                : (label: 'To do', color: BT.sky);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: BoxDecoration(border: divider
+          ? const Border(bottom: BorderSide(color: BT.line)) : null),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: canPlan ? () => _edit(context, ref, t, all) : null,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          // Items that run together are drawn as one group, so the shape of
+          // the plan is visible without reading step numbers.
+          SizedBox(width: 16, child: Column(children: [
+            Icon(sharesWithAbove ? Icons.subdirectory_arrow_right_rounded
+                                 : Icons.circle,
+              size: sharesWithAbove ? 14 : 7,
+              color: sharesWithAbove ? BT.mut2 : (t.isDone ? BT.lime : BT.mut2)),
+          ])),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.title, maxLines: 2, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600,
+                color: t.isDone ? BT.mut2 : BT.ink,
+                decoration: t.isDone ? TextDecoration.lineThrough : null,
+                decorationColor: BT.mut2)),
+            const SizedBox(height: 3),
+            Text([
+              if (t.assigneeName != null) t.assigneeName! else 'Nobody yet',
+              if (t.isDone && t.doneAt != null) _fmt.format(t.doneAt!),
+            ].join(' · '),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.5,
+                color: t.isUnassigned && !t.isDone ? BT.coral : BT.mut2)),
+          ])),
+          const SizedBox(width: 8),
+          // The person it belongs to moves it from here; everyone else reads it.
+          if (isMine && !frozen && !locked && !t.isDone)
+            StageTaskMoveButton(task: t, stageId: task.stageId)
+          else
+            StatusPill(tone.label, color: tone.color),
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _add(BuildContext context, WidgetRef ref, List<StageTask> existing) async {
+    final c = TextEditingController();
+    final ok = await showAppSheet<bool>(context: context, builder: (sctx) => Column(
+      mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Add a work item', style: display(20, w: FontWeight.w600)),
+        const SizedBox(height: 4),
+        const Text('One job, for one person. You can give it to somebody after.',
+          style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+        const SizedBox(height: 16),
+        LabelledField('WHAT NEEDS DOING', controller: c,
+          hint: 'Hole drilling for electrical work'),
+        const SizedBox(height: 18),
+        PrimaryButton('Add', icon: Icons.add_rounded,
+          onTap: () => Navigator.pop(sctx, true)),
+        const SizedBox(height: 6),
+      ]));
+    if (ok != true || !context.mounted || c.text.trim().isEmpty) return;
+
+    // New items go at the end, in their own step — the supervisor groups them
+    // afterwards if they run alongside something.
+    final nextOrd = existing.isEmpty
+        ? 1 : existing.map((t) => t.ord).reduce((a, b) => a > b ? a : b) + 1;
+    try {
+      await ref.read(workshopRepoProvider)
+          .addStageTask(task.stageId, c.text, ord: nextOrd, step: nextOrd);
+      ref.invalidate(stageTasksProvider(task.stageId));
+    } catch (e) {
+      if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    }
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref, StageTask t, List<StageTask> all) async {
+    final idx = all.indexOf(t);
+    final above = idx > 0 ? all[idx - 1] : null;
+    var runsWithAbove = above != null && t.step == above.step;
+
+    await showAppSheet<void>(context: context, builder: (sctx) =>
+      StatefulBuilder(builder: (sctx, setLocal) => Column(
+        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(t.title, style: display(19, w: FontWeight.w600)),
+          const SizedBox(height: 14),
+          const SectionLabel('Who is doing it'),
+          _AssigneePicker(
+            current: t.assigneeId,
+            onPick: (uid) async {
+              await ref.read(workshopRepoProvider).assignStageTask(t.id, uid);
+              ref.invalidate(stageTasksProvider(task.stageId));
+              if (sctx.mounted) Navigator.pop(sctx);
+            }),
+          if (above != null) ...[
+            const SizedBox(height: 18),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () async {
+                final next = !runsWithAbove;
+                setLocal(() => runsWithAbove = next);
+                // Joining the step above, or taking its own back.
+                await ref.read(workshopRepoProvider)
+                    .setStageTaskStep(t.id, next ? above.step : t.ord);
+                ref.invalidate(stageTasksProvider(task.stageId));
+              },
+              child: Row(children: [
+                Icon(runsWithAbove
+                    ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                  size: 20, color: runsWithAbove ? BT.ink : BT.mut2),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Runs alongside "${above.title}"',
+                  maxLines: 2,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5))),
+              ]),
+            ),
+            const Padding(padding: EdgeInsets.only(top: 6, left: 30),
+              child: Text('Off, it waits for the one above to be finished.',
+                style: TextStyle(fontSize: 11.5, color: BT.mut2))),
+          ],
+          const SizedBox(height: 20),
+          SecondaryButton('Remove this item', icon: Icons.delete_outline_rounded,
+            onTap: () async {
+              await ref.read(workshopRepoProvider).removeStageTask(t.id);
+              ref.invalidate(stageTasksProvider(task.stageId));
+              if (sctx.mounted) Navigator.pop(sctx);
+            }),
+          const SizedBox(height: 6),
+        ])));
+  }
+}
+
+/// Start / finish, for the person a work item belongs to.
+///
+/// Public because the same button is the whole interaction on two screens: the
+/// stage's breakdown, and the worker's own list of items on the Tasks tab.
+class StageTaskMoveButton extends ConsumerStatefulWidget {
+  final StageTask task;
+  final String stageId;
+  const StageTaskMoveButton({super.key, required this.task, required this.stageId});
+  @override
+  ConsumerState<StageTaskMoveButton> createState() => StageTaskMoveButtonState();
+}
+
+class StageTaskMoveButtonState extends ConsumerState<StageTaskMoveButton> {
+  bool _busy = false;
+
+  Future<void> _move(String to) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ref.read(workshopRepoProvider).setStageTaskStatus(widget.task.id, to);
+      ref.invalidate(stageTasksProvider(widget.stageId));
+      ref.invalidate(myStageTasksProvider);
+      Haptic.confirm();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_busy) {
+      return const Padding(padding: EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        child: SizedBox(width: 15, height: 15,
+          child: CircularProgressIndicator(strokeWidth: 2, color: BT.mut2)));
+    }
+    final next = widget.task.isActive ? 'done' : 'in_progress';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _move(next),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: widget.task.isActive ? BT.ink : BT.card2,
+          borderRadius: BorderRadius.circular(999),
+          border: widget.task.isActive ? null : Border.all(color: BT.line)),
+        child: Text(widget.task.isActive ? 'Finish' : 'Start',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
+            color: widget.task.isActive ? Colors.white : BT.ink)),
+      ),
+    );
+  }
+}
+
+/// The workshop people a job can be given to.
+class _AssigneePicker extends ConsumerWidget {
+  final String? current;
+  final ValueChanged<String?> onPick;
+  const _AssigneePicker({required this.current, required this.onPick});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final members = ref.watch(membersProvider);
+    return members.when(
+      loading: () => const SkeletonList(count: 2),
+      error: (e, _) => ErrorCard('Could not load the team.\n${friendlyError(e)}'),
+      data: (list) {
+        final workshop = list
+            .where((m) => m.role == 'workshop' && m.status == 'active')
+            .toList();
+        return Column(children: [
+          for (final m in workshop)
+            Padding(padding: const EdgeInsets.only(bottom: 8),
+              child: AppCard(
+                onTap: () => onPick(m.id),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                child: Row(children: [
+                  Icon(current == m.id
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                    size: 18, color: current == m.id ? BT.ink : BT.mut2),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(m.name.isEmpty ? m.email : m.name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      if (m.subtitle != null) ...[
+                        const SizedBox(height: 1),
+                        Text(m.subtitle!, maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11.5, color: BT.mut2)),
+                      ],
+                    ])),
+                ]))),
+          if (current != null)
+            Padding(padding: const EdgeInsets.only(top: 2),
+              child: SecondaryButton('Give it back to nobody',
+                icon: Icons.person_off_outlined, onTap: () => onPick(null))),
+        ]);
+      },
     );
   }
 }
