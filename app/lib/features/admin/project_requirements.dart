@@ -131,8 +131,19 @@ class _ProjectRequirementsScreenState extends ConsumerState<ProjectRequirementsS
     // The empty fallback needs its element type spelled out: `?? []` infers
     // List<dynamic>, which makes `catalog` dynamic and `o.id` / `o.label` below
     // untyped (strict-casts then rejects them). `<OptRef>[]` keeps it OptRef.
+    // Wait for the catalogue: nothing on this screen watches it, so reading
+    // `.valueOrNull` offered an empty picker the first time it was opened.
+    var loaded = const <OptRef>[];
+    if (!isEdit) {
+      try {
+        loaded = await ref.read(itemsProvider.future);
+      } catch (_) {
+        // Offline or refused: "New item" still works.
+      }
+      if (!mounted) return;
+    }
     final catalog = {
-      for (final o in [...(ref.read(itemsProvider).valueOrNull ?? <OptRef>[]), ..._extraItems]) o.id: o
+      for (final o in [...loaded, ..._extraItems]) o.id: o
     }.values.toList();
 
     await showModalBottomSheet<void>(

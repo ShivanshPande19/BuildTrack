@@ -271,8 +271,9 @@ class ProjectDetailScreen extends ConsumerWidget {
       ],
 
       // Handover — the step that moves a build into after-sales. Until this
-      // happens the Service role has nothing to support.
-      if (canEditTimeline && d.project.status != 'delivered') ...[
+      // happens the Service role has nothing to support. Not offered on a
+      // build with no plan yet: no stages read as "all stages approved".
+      if (canEditTimeline && d.project.status != 'delivered' && d.stages.isNotEmpty) ...[
         const SizedBox(height: 12),
         _deliverCard(context, ref, d),
       ],
