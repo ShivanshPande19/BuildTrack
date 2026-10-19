@@ -35,6 +35,7 @@ bool reduceMotion(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(c
 class Haptic {
   static void tap() => HapticFeedback.selectionClick();
   static void confirm() => HapticFeedback.lightImpact();
+  static void warn() => HapticFeedback.mediumImpact();
 }
 
 // ───────────────────────────────────────────────────────────── entrances

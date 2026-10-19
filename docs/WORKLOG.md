@@ -11,6 +11,55 @@ verified through CI, not locally).
 
 ---
 
+## 16–19 Oct 2026: Stages in steps, the workshop's breakdown, and a workflow builder ✅ (migrations `0031`–`0034`)
+
+Branches `feat/stage-steps-and-pm-setup` (PR #56), `feat/workshop-sub-stages` (PR #57),
+`feat/workflow-builder` (PR #58). The full account is in `PROJECT_LOG.md` §6; this is the trail.
+
+**What was asked.** An admin can create a build and leave the plan to its PM. Stages keep their
+order — design before fabrication, chassis before countertop or electricals — but some run
+together. The workshop is one stage in the pipeline with fifteen jobs inside it (structural
+framework → hole drilling → exterior cladding → paint ∥ branding → electricals → insulation →
+interior cladding → flooring → equipment → ancillary → plumbing → finishing → testing → dispatch);
+the PM hands it to a **workshop supervisor** (there can be several), who hands the jobs out and
+decides what runs in parallel. Several admins with designations, all of whom still see the whole
+factory; Admin → Projects filters by who brought a build in. No pre-loaded template; a great
+template screen for PM and admin.
+
+**What shipped.**
+- ✅ `0031` — `step` on stages and template stages; the gate in `fn_start_stage`; the whole next
+  step opens on approval; scheduling by step; `v_stage_gate`; a PM can onboard their own build.
+  App: locked stages say what they wait for, everywhere a stage is listed; a build with no plan
+  offers **Set up the plan**; onboarding no longer requires a workflow.
+- ✅ `0032` — `designation`, `is_supervisor`, `projects.created_by`. App: member sheet, *Created
+  by* chips on Admin → Projects.
+- ✅ `0033` — `stage_tasks` + `fn_set_task_status`, with the step gate one level down. App: the
+  supervisor's **Work items** on a workshop stage; each fitter's own items on Tasks.
+- ✅ `0034` — `fn_save_template` (one transaction), `template_stage_tasks`, onboarding copies the
+  jobs. App: the new **workflow builder**, **Settings → Workflows** with a read-only preview, and
+  *start a new workflow from this one*.
+
+**What went wrong on the way, and stays written down.**
+- `0031` failed CI three times. `fn_recompute_schedule`'s tail was retyped from memory and
+  invented `ic.preferred_vendor_id` — restored verbatim. `step` had `default 1`, which makes every
+  stage of a build "step 1", i.e. parallel — dropped; a missing step now reads `coalesce(step, ord)`.
+  A test fixture put a design stage first and then submitted it without a design. → Lesson in
+  `.kiro/steering`: **copy an unchanged function body, never retype it.**
+- `0032`'s suite used an admin id that no fixture created — it now creates the second admin.
+- `0033`'s suite used fixture ids like `…t1`, which are not hex, and the visual check missed them.
+  → `supabase/check_uuid_literals.py`, and a steering note.
+
+**Verified.** `flutter analyze` 0 errors / 0 warnings; `flutter test` 247/247 locally, 12 of them driving the builder and the Workflows screen the way a PM
+would (add, group, save, leave unsaved) with the save faked at the repository. Postgres:
+341 assertions in 15 suites, green on CI for PR #58.
+
+⏭️ **Next:** apply `0031`–`0034` to the live project (check with `supabase/check_migrations.sql`)
+— the app needs all four — then a full walk of one build on the simulator, every role: onboard →
+the PM sets up the plan from a new workflow → design approved by the client → the supervisor's
+breakdown → fitters → checklist with photos → approve → POs and store → delivery.
+
+---
+
 ## 15 Oct 2026: The Workshop role aligned, and a checklist that is evidence ✅ (migration `0029`)
 
 Branch `feat/workshop-checklist-evidence`. Same method as the Design pass: read one role end to end

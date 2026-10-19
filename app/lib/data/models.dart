@@ -117,6 +117,24 @@ class StageItemDraft {
 /// One stage while building a custom workflow template — its BOM items and the
 /// checklist the assignee will tick off (copied onto every build's stage on
 /// onboarding).
+/// One check on a drafted stage, and whether it needs a photo to be ticked
+/// (0029's rule, set once on the template so every build inherits it).
+class CheckDraft {
+  String label;
+  bool photoRequired;
+  CheckDraft(this.label, {this.photoRequired = false});
+}
+
+/// One job inside a drafted stage — the workshop breakdown a supervisor gets
+/// on every build made from this workflow (0034). Never who does it: that is
+/// the supervisor's call on the day.
+class TaskDraft {
+  String title;
+  /// Runs alongside the job above rather than after it.
+  bool runsWithPrevious;
+  TaskDraft(this.title, {this.runsWithPrevious = false});
+}
+
 class StageDraft {
   String name;
   int days;
@@ -126,25 +144,125 @@ class StageDraft {
   /// "does this wait for the one before, or happen at the same time?"
   /// [stepsFor] turns a list of these into the step numbers the database wants.
   bool runsWithPrevious;
+  /// design · workshop · store · service. Null leaves it to the name-based
+  /// inference at onboarding, which is what every template did before this.
+  String? discipline;
   final List<StageItemDraft> items;
-  final List<String> checks;
-  StageDraft(this.name, this.days, {List<StageItemDraft>? items, List<String>? checks,
-    this.runsWithPrevious = false})
+  final List<CheckDraft> checks;
+  final List<TaskDraft> tasks;
+  StageDraft(this.name, this.days, {List<StageItemDraft>? items,
+    List<CheckDraft>? checks, List<TaskDraft>? tasks,
+    this.runsWithPrevious = false, this.discipline})
       : items = items ?? [],
-        checks = checks ?? [];
+        checks = checks ?? [],
+        tasks = tasks ?? [];
 }
 
-/// Step numbers for a drafted template: each stage joins the previous step or
-/// starts the next one. The first stage always starts step 1, whatever its
-/// flag says — nothing precedes it to run alongside.
-List<int> stepsFor(List<StageDraft> stages) {
+/// Step numbers from "runs alongside the one above" flags: each entry joins
+/// the previous step or starts the next one. The first always starts step 1
+/// — nothing precedes it to run alongside.
+///
+/// One function for both levels, stages and the jobs inside them, so the two
+/// can never disagree about what "alongside" means.
+List<int> stepsFromFlags(List<bool> runsWithPrevious) {
   final out = <int>[];
   var step = 0;
-  for (var i = 0; i < stages.length; i++) {
-    if (i == 0 || !stages[i].runsWithPrevious) step++;
+  for (var i = 0; i < runsWithPrevious.length; i++) {
+    if (i == 0 || !runsWithPrevious[i]) step++;
     out.add(step);
   }
   return out;
+}
+
+/// Step numbers for a drafted template's stages.
+List<int> stepsFor(List<StageDraft> stages) =>
+    stepsFromFlags([for (final s in stages) s.runsWithPrevious]);
+
+/// How many steps a drafted template has — the number of times the build has
+/// to wait for something to finish.
+int stepCountFor(List<StageDraft> stages) {
+  final s = stepsFor(stages);
+  return s.isEmpty ? 0 : s.last;
+}
+
+/// Roughly how long a build on this plan takes.
+///
+/// A step is as long as its longest stage — the same rule the scheduler uses
+/// (0031) — so grouping two stages to run alongside each other visibly
+/// shortens the estimate. That is the point of showing it: the plan's shape
+/// has a cost, and the builder should say what it is.
+int estimatedDaysFor(List<StageDraft> stages) {
+  final steps = stepsFor(stages);
+  final longest = <int, int>{};
+  for (var i = 0; i < stages.length; i++) {
+    final d = stages[i].days < 1 ? 1 : stages[i].days;
+    final cur = longest[steps[i]];
+    if (cur == null || d > cur) longest[steps[i]] = d;
+  }
+  return longest.values.fold(0, (a, b) => a + b);
+}
+
+/// The workshop as the owner described it, offered — never imposed — as a
+/// starting breakdown for a workshop stage. The one pair that runs together is
+/// the one they named: after the cladding, the paint and the branding.
+const standardWorkshopFlow = <(String, bool)>[
+  ('Structural framework', false),
+  ('Hole drilling for electrical work', false),
+  ('Exterior cladding', false),
+  ('Surface preparation and paint', false),
+  ('Branding signage / vinyl', true),
+  ('Basic electrical work', false),
+  ('Insulation work', false),
+  ('Interior cladding', false),
+  ('Flooring', false),
+  ('Equipment fittings', false),
+  ('Ancillary fittings', false),
+  ('Plumbing work', false),
+  ('Final finishing', false),
+  ('Testing', false),
+  ('Dispatch', false),
+];
+
+/// A saved workflow as the list shows it.
+class WorkflowSummary {
+  final String id, name;
+  final String? truckType, createdByName;
+  final DateTime? createdAt;
+  final int stageCount, stepCount, estimatedDays;
+  WorkflowSummary({required this.id, required this.name, this.truckType,
+    this.createdByName, this.createdAt, required this.stageCount,
+    required this.stepCount, required this.estimatedDays});
+
+  factory WorkflowSummary.fromMap(Map<String, dynamic> m) {
+    final stages = [
+      for (final e in (m['template_stages'] as List? ?? const []))
+        e as Map<String, dynamic>,
+    ]..sort((a, b) => ((a['ord'] as num?) ?? 0).compareTo((b['ord'] as num?) ?? 0));
+    // Rebuild the step groups from what was stored, so the list and the
+    // builder compute the estimate the same way.
+    final drafts = <StageDraft>[];
+    int? prevStep;
+    for (final e in stages) {
+      final ord = (e['ord'] as num?)?.toInt() ?? 0;
+      final step = (e['step'] as num?)?.toInt() ?? ord;
+      drafts.add(StageDraft('', (e['default_duration_days'] as num?)?.toInt() ?? 1,
+        runsWithPrevious: prevStep != null && step == prevStep));
+      prevStep = step;
+    }
+    final by = m['creator'] as Map<String, dynamic>?;
+    final nm = (by?['full_name'] as String?)?.trim();
+    final tt = (m['truck_type'] as String?)?.trim();
+    return WorkflowSummary(
+      id: m['id'] as String,
+      name: m['name'] as String? ?? '',
+      truckType: (tt == null || tt.isEmpty) ? null : tt,
+      createdByName: (nm == null || nm.isEmpty) ? null : nm,
+      createdAt: parseDate(m['created_at']),
+      stageCount: drafts.length,
+      stepCount: stepCountFor(drafts),
+      estimatedDays: estimatedDaysFor(drafts),
+    );
+  }
 }
 
 /// A pending stage-completion approval (PM approves work submitted by workshop).
