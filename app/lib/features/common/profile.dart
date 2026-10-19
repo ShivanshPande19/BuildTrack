@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../admin/company_settings.dart';
+import '../admin/workflows_screen.dart';
 import 'account_details.dart';
 import 'notifications.dart';
 import 'roles_reference.dart';
@@ -86,6 +87,16 @@ class ProfileScreen extends ConsumerWidget {
                 ? 'Buyer name, GSTIN and state on every purchase order'
                 : 'What is printed on every purchase order',
               open: () => const CompanySettingsScreen()),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+          // The people who plan builds keep their workflows here.
+          roleAsync.when(
+            data: (r) => r == 'admin' || r == 'pm'
+              ? _setRow(context, Icons.account_tree_outlined, 'Workflows',
+                  subtitle: 'How a build runs, stage by stage',
+                  open: () => const WorkflowsScreen())
+              : const SizedBox.shrink(),
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
           ),

@@ -3,7 +3,9 @@
 **The single source of truth for "where is this project right now".**
 Read this first. Update it at the end of every change — see [How to maintain this log](#how-to-maintain-this-log).
 
-Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simulator — which found the photo-picker freeze (§3 #63) and seven more, plus a pass over the stage screen's own order (§3 #68–#70) and `0030`, which puts a rule behind deleting a photo: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
+Last updated: **19 Oct 2026** (stages run in **steps** — what waits for what, what runs alongside — and a PM can set up their own build's plan (`0031`); **designations** beside roles and **which admin brought a build in** (`0032`); a workshop stage that a **supervisor** breaks into **work items** for their own people (`0033`); and a **workflow builder** that saves a whole plan in one transaction (`0034`). See §6.)
+
+Previously: **15 Oct 2026** (the Workshop role aligned, then driven on a simulator — which found the photo-picker freeze (§3 #63) and seven more, plus a pass over the stage screen's own order (§3 #68–#70) and `0030`, which puts a rule behind deleting a photo: migration `0029` makes a checklist tick evidence — recorded, optionally photo-backed, and frozen once the PM approves — plus the overdue-today bug in its third and fourth copies, a delivered truck that still offered work, and the fitter's missing BOM, photos and hold-up report.)
 
 ---
 
@@ -12,20 +14,24 @@ Last updated: **15 Oct 2026** (the Workshop role aligned, then driven on a simul
 | | |
 |---|---|
 | **What it is** | One Flutter app, 8 role-based experiences, for managing premium food-truck builds end to end |
-| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0030`: 33 tables, 5 views, 60 functions (about 34 called by the app), 2 Edge Functions |
+| **Backend** | Supabase (Postgres + Auth + Storage + RLS). Migrations `0001` → `0034`: 35 tables, 6 views, 65 functions, 2 Edge Functions |
 | **Where it stands** | **All 8 roles are usable** and the core chain works end to end, including both hero features and after-sales. The latest work is a live demo walk plus a study of the Design role (§6): `0027` stops a purchase order losing the PM's signature on a PM-less build, `0028` makes a design stage and its designs one piece of work — a design-discipline stage cannot be submitted until the client has approved a design — and lets the PM correct a checklist. On the app side Store stopped calling every project part "running low", and every role's home was re-read for the person carrying **many** builds at once rather than one. The remaining gaps are in §3 and are smaller than they were. |
-| **Verified** | 15 Oct 2026, on `feat/workshop-checklist-evidence` — **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 169/169** (108 model + 48 widget + 13 PO-document), run locally. **Backend: `0029` + its 31-assertion suite are gated on CI** — the dev machine has no Docker or local Postgres, so `supabase/tests/run.sh` could not be run here; the previous level was 223/223 in 10 suites. Android debug build and `flutter build ios --simulator` last verified 14 Oct on Flutter 3.47.2. |
-| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → demo walk + the Design role aligned (`0027`–`0028`) → **the Workshop role aligned, and a checklist that is evidence (`0029`)**. See §6 and `WORKLOG.md`. |
+| **Verified** | 19 Oct 2026, on `feat/workflow-builder` — **App: `flutter analyze` 0 errors / 0 warnings, `flutter test` 235/235** (174 model + 48 widget + 13 PO-document), run locally. **Backend: 341 assertions in 15 suites, green on CI** ([PR #58](https://github.com/ShivanshPande19/BuildTrack/pull/58)) — the dev machine has no Docker or local Postgres, so the Postgres suite runs on CI only. Android debug build is built by CI on every PR; `flutter build ios --simulator` last verified 14 Oct on Flutter 3.47.2. |
+| **Shipped phases** | Phase 0 (buildable repo + CI) → Phase 1 (seven broken loops closed, `0012`–`0014`) → inventory truthfulness (`0015`–`0019`) → PO approvals + ops backbone (`0020`–`0024`) → UI polish (PRs #32–#45) → Tier 1–3 hardening (PR #46, `0025`) → motion + UI polish → pre-demo audit + fix pass (`0026`) → demo walk + the Design role aligned (`0027`–`0028`) → the Workshop role aligned, and a checklist that is evidence (`0029`–`0030`) → **stages in steps, designations, the workshop's own breakdown, and the workflow builder (`0031`–`0034`)**. See §6 and `WORKLOG.md`. |
 | **Not started** | Offline support, push notifications, realtime, pagination, localization |
-| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0030` were applied, so check with `supabase/check_migrations.sql` (§4). **The app on this branch needs `0028`, `0029` and `0030`** — it reads `design_artifacts.stage_id`, `checklist_items.done_by` / `photo_required`, and calls `fn_create_design(p_stage => …)` and `fn_tick_check`. **Without `0029` the stage screen does not load at all** — `stageBundle` selects `done_at` / `photo_required` and embeds `done_by` and the proof attachment, so the whole query is refused, not just the tick. The app and these two migrations ship together. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
+| **Deployed state** | The last *recorded* level is `0001`–`0014` (Aug 2026). No doc records whether `0015`–`0034` were applied, so check with `supabase/check_migrations.sql` (§4), which has a row for every migration through `0034`. **The app on this branch needs everything through `0034`**, and most of it is not optional: every project list embeds `projects.created_by` (**`0032`** — without it no project list loads), Workshop's task list reads `v_stage_gate` (**`0031`**), a workshop stage's **Work items** read `stage_tasks` (**`0033`**), and the workflow builder calls `fn_save_template` (**`0034`**). Earlier: without `0029` the stage screen does not load at all (`stageBundle` selects `done_at` / `photo_required`). The app and these migrations ship together. Both Edge Functions are deployed; they last changed on 30 Jul 2026. |
 
 ### The operating chain — works end to end ✅
 
 ```
 Admin   creates the build + the client's login  ──►  assigns a Project Manager
+        (with a workflow, or without one and the PM sets up the plan)
 PM      sees only their builds  ──►  assigns each stage to the right discipline (+ dates)
+        a workshop stage goes to a workshop supervisor
+Supervisor  breaks it into work items, gives each to a fitter, decides what runs together
 Staff   see only their assigned work  ──►  start it, upload, submit
-PM      approves  ──►  stage done  ──►  next stage auto-starts  ──►  client sees progress
+        a stage opens only when every stage in the steps before it is approved
+PM      approves  ──►  stage done  ──►  the next step opens  ──►  client sees progress
 ```
 
 Then, after handover:
@@ -60,16 +66,16 @@ Full per-screen detail: [`Roles.md`](Roles.md).
 
 | Role | Tabs · FAB | What works | Known gap (see §3) |
 |---|---|---|---|
-| 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **Delivered** and **No PM** chips, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, **Add member** pill beside the title (admin sets the password), sub-teams, swipe to remove, **Workspace → Company details** (GST buyer block). **Insights:** on-track % of active builds, distribution. **Onboard:** create a client login inline, **create a template inline** (stages, days, BOM, checklist). | Templates can't be listed or edited. |
-| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. Home's at-risk and today rows open the build. | ✅ A PM hand-over now carries its approvals and unsigned POs across. |
+| 👑 **Admin** | Home · Projects · Team · Insights · **＋ Onboard project** | **Home:** fleet status, **Command Center** (factory board: who's on what, stuck > 7 days, order-by passed), **PO approvals** (final sign-off, priority override), order-by "needs attention", unread bell badge. **Projects:** status chips + **Delivered** and **No PM** chips, opening the build screen in *Oversight · read-only* mode, where the PM can be assigned or changed and documents added. **Team:** members grouped by department, **Add member** pill beside the title (admin sets the password), tap a member for their **designation** (free text — CEO, Managing Partner, Senior fitter) and, for workshop, **Workshop supervisor**; sub-teams, swipe to remove, **Workspace → Company details** (GST buyer block). **Projects** also filter by **which admin brought the build in** (`0032`). **Insights:** on-track % of active builds, distribution. **Onboard:** create a client login inline; the workflow is **optional** — pick one, build one inline, or leave it to the PM. **Settings → Workflows:** every saved workflow, previewed as a drawing. | A saved workflow is never edited in place — running builds point at its stages; the app offers *start a new workflow from this one* instead (`0034`). |
+| 📋 **PM** | Home · Projects · Schedule · Team · **＋ Assign work** | **Home:** counts, Assign work, **Approvals** (photos, checklist and parts as evidence; approve auto-starts the next stage, reject sends rework with a reason), **PO approvals** (sign or reject own builds' POs). **Projects:** a build handed over with no plan says so and offers **Set up the plan** (pick a workflow or build one, `0031`). Build screen in *You manage this build* mode, with discipline-aware stage assignment (override, start/due), editable materials, delivery date (re-baselines), **Log delay** (+ push the date), **Mark delivered** (force if stages are open), documents. **Schedule:** open stages as overdue / today / next 7 days / later / no date. **Team:** read-only workload. **Settings → Workflows** and the **workflow builder** (stages in steps, days, discipline, checklist with photo-required checks, parts, the workshop's jobs). Home's at-risk and today rows open the build. | ✅ A PM hand-over now carries its approvals and unsigned POs across. |
 | 🛒 **Procurement** | To Order · Orders · Receive · Vendors · **＋ New PO** | **To Order:** hero alert pre-fills a PO; Store's essentials requests become a *general PO*. **New PO:** lines with rate + GST % + HSN, terms, live total, sent through `fn_create_po` into the approval chain. **PO detail:** approval stepper + signature trail, **Fix & resubmit** after rejection, mark dispatched (ETA), receive, **GST PO PDF** (CGST/SGST vs IGST, amount in words with paise, signatories). **Receive tab:** awaiting dispatch / ready to receive. **Vendors:** list, add vendor (GSTIN, state). | Only the hero To-Order item pre-fills a PO. No vendor detail. No partial receipt. |
 | 📦 **Store** | Inbox · Stock · Parts · **＋ Log component** | **Inbox:** tracked / low-stock / lines + low-stock list. **Stock:** bulk items from `stock_items`, serialized items = in-stock component count; OK/Fair/Low; reorder or **Request from procurement** (essentials only, `fn_request_stock`). **Parts:** search by serial / model / truck, opening the component record (warranty banner, **bill viewer**, **Recall check → Notify all**). **Log component:** scan or type the serial, vendor, warranty, **bill photo**, optional build. | ✅ Inline "New item" works now. Still open: no incoming-PO / GRN list. |
-| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next / *delivered with this stage open*, ordered worst-first across every build, rework reason, awaiting approval. **Task detail:** **Start work**, checklist that **records who ticked each check and when** and can require a photo per check, **Parts this stage needs** (its BOM, with In store / On order), the stage's photos and logged delays, **Report a hold-up**, install part, the truck's full record, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, parts bought for *this* truck first, parts held for another build marked and refused. **Parts:** Fitted vs Waiting in store. **Week:** overdue / today / next 7 days / later / no date, plus what is with the PM. | ✅ Every discipline has a stage screen now (`0026`). Still open: Workshop can read PO rates at the DB level (§3 #16). |
+| 🔧 **Workshop** | Tasks · Parts · Week · **＋ Scan to install** | **My Tasks:** in progress / up next / *delivered with this stage open*, ordered worst-first across every build, rework reason, awaiting approval. **Task detail:** **Start work**, checklist that **records who ticked each check and when** and can require a photo per check, **Parts this stage needs** (its BOM, with In store / On order), the stage's photos and logged delays, **Report a hold-up**, install part, the truck's full record, submit for approval (both guarded against a double tap). **Scan to install:** camera barcode + manual serial, parts bought for *this* truck first, parts held for another build marked and refused. **Parts:** Fitted vs Waiting in store. **Week:** overdue / today / next 7 days / later / no date, plus what is with the PM. **A stage behind an earlier step shows as locked** and says what it waits for (`0031`). **Supervisor:** on a workshop stage, **Work items** — add, assign to a fitter, set what runs alongside, move them along; **fitters** see their own items on Tasks, with the same lock (`0033`). | ✅ Every discipline has a stage screen now (`0026`). Still open: Workshop can read PO rates at the DB level (§3 #16). |
 | 🎨 **Design** | Studio · Designs · Approvals (profile via avatar) · **＋ New design** | **Scoped to assigned builds.** **Studio:** "Assigned to me" carousel, draft / awaiting / changes / approved stats, and **What needs you** — one ranked list over stages *and* designs, each row naming its next action (Submit stage / Upload revision / Send for approval / Start a design) and opening the screen that does it; designs sitting with the client are counted beside the list, not in it. **Designs:** searchable library, counted filter chips, lazy list. **New design:** upload `.glb` (≤ 25 MB) + preview to the `designs` bucket, **attach it to the design stage it belongs to**, save draft or submit. **Design detail:** 3D/2D preview, client feedback, version history, **Upload revised / new version** (atomic numbering, `fn_add_design_version`). | ✅ Fixed: a design stage now **cannot** be submitted until the client has approved a design on that build (`0028`), and Studio no longer says *All caught up* over an overdue stage. |
 | 🛠️ **Service** | Tickets · Trucks · Warranty · Profile · **＋ New ticket** | **Tickets:** SLA-sorted queue, **live 1-min countdown**, open / overdue / fixed-today (local calendar day). **Ticket detail:** client photos, assign technician, linked part warranty, visits, resolution. **Schedule visit** (one live booking per ticket). **Resolve** (warranty replace / repair / remote guide + note the client reads). **Close.** **Trucks:** delivered list (open tickets / warranty soon / healthy), opening truck history. **Warranty:** search by serial / model / truck. **New ticket** for phoned-in requests. | ✅ Fixed: **My build stages** on the Trucks tab. Still open: "Linked component" never shows (nothing sets it). |
 | 🙋 **Client** | My Trucks · Support · Profile · **＋ Raise request** | **My Trucks:** cards with a live **3D model** (approved design, else demo), opening the truck. **Truck** (one scroll): progress ring, current stage, delivery date, **Approve design** cards, build journey (opening stage photos), documents, raise request. **Approve design:** approve / request changes with feedback. **Raise request:** category, description, photo. **Support:** every ticket on my trucks (incl. Service-raised), resolution note, **Still not fixed** reopen. | ✅ Documents open now (PDF → OS preview, image → viewer). Still open: no priority picker on requests. |
 
-**Shared:** login (a disabled account is told why, not dropped into an empty app) · set-password (email-invite path) · notifications feed (Today / Yesterday / Earlier by local day, mark all read, **tap a row to open the build / stage / PO / ticket it is about**; every role's bell shows the unread count) · **Settings** — Notifications, Account details, Company details, Roles & permissions — reached from the avatar (Admin, PM, Procurement, Store, Workshop, Design) or the Profile tab (Service, Client).
+**Shared:** login (a disabled account is told why, not dropped into an empty app) · set-password (email-invite path) · notifications feed (Today / Yesterday / Earlier by local day, mark all read, **tap a row to open the build / stage / PO / ticket it is about**; every role's bell shows the unread count) · **Settings** — Notifications, Account details, Company details, **Workflows** (admin, PM), Roles & permissions — reached from the avatar (Admin, PM, Procurement, Store, Workshop, Design) or the Profile tab (Service, Client).
 
 **The build screen** (`BuildScreen`): every entry point opens it, from Admin Projects, the Command Center, PM Projects and PM Schedule. Its tabs are **Overview · Pipeline · Materials · Record**. The Overview banner states the mode: *Oversight · read-only* for Admin, *You manage this build* for the PM.
 
@@ -489,6 +495,64 @@ cd supabase && sh build_full_setup.sh
 ---
 
 ## 6. Change log
+
+### 16–19 Oct 2026: Stages in steps, the workshop's own breakdown, and a workflow builder (migrations `0031`–`0034`)
+
+Asked for in one message: *the admin should be able to create a build and leave its whole plan to
+the PM; design has to finish before fabrication, the chassis before the countertop or the
+electricals — but some of those run together; the workshop is fifteen jobs, not one; a supervisor
+hands them out; there can be several admins, PMs and supervisors; and the template screen should be
+great.* Four migrations, in three PRs.
+
+**`0031` — stages run in steps** ([PR #56](https://github.com/ShivanshPande19/BuildTrack/pull/56)).
+`ord` had always been the running order — approval started "the next stage", the scheduler laid the
+plan out backwards — but `fn_start_stage` never checked it, so a fitter could start Fabrication
+with the design still with the client. Enforcing `ord` strictly would have made the electrician
+wait for the carpenter. So every stage has a **step**: stages sharing a step run alongside each
+other, and a step opens only when every stage in every earlier step is approved. `fn_start_stage`
+refuses with *"X cannot start yet — Y still has to be approved first"* (an admin is let through);
+`fn_decide_stage` opens the whole next step; `fn_recompute_schedule` schedules by step; `v_stage_gate`
+gives the app the same answer the server will. Backfilled `step = ord`, and **no default** — a
+missing step reads as "its own step", never as "step 1", which would quietly make a build parallel.
+`fn_onboard_project` now also accepts the build's own PM, so an admin can onboard a build with no
+workflow and the PM sets up the plan from the build screen.
+
+**`0032` — designations, supervisors, and who brought a build in** (with `0033`, PR #57). `profiles.designation` is free
+text beside the role (*CEO*, *Managing Partner*); the role still decides every permission, so every
+admin still sees the whole factory. `profiles.is_supervisor` is the one part the app acts on, and is
+checked to belong to workshop. `projects.created_by` is set by a trigger and backfilled from the
+audit log, so Admin → Projects can filter by the admin who onboarded each build.
+
+**`0033` — a workshop stage breaks into work items** ([PR #57](https://github.com/ShivanshPande19/BuildTrack/pull/57)).
+The PM gives the workshop stage to a supervisor; the supervisor breaks it into `stage_tasks`, gives
+each to a fitter and sets their steps — the same rule as stages, one level down, so *they* decide
+what runs alongside what on this truck. `fn_set_task_status` is the only way an item moves and
+records who finished it and when; a guard trigger keeps the fitter to the status of their own item.
+Deliberately no second evidence system: the stage's checklist and photos still answer "is there
+proof".
+
+**`0034` — the workflow builder** ([PR #58](https://github.com/ShivanshPande19/BuildTrack/pull/58)).
+The old screen opened with seven pre-filled stages and saved them as a chain of client inserts, so
+a failure halfway left half a template. `fn_save_template` saves the whole plan — stages with steps,
+days and discipline, their parts, their checks (with *photo required*), and the workshop's jobs with
+their own steps (`template_stage_tasks`) — in **one transaction**, audited, admin or PM only.
+Onboarding copies the jobs onto the build's stage as work items. A saved workflow is **never edited
+in place**: `stages.template_stage_id` has no `ON DELETE`, and running builds and their BOM lookups
+depend on it, so changing a plan means starting a new workflow from the old one.
+
+The app side: the builder opens empty (or from an existing workflow) and **draws the plan as it is
+built** — a numbered rail down the left, a branch where a stage runs alongside the one above, and a
+live *N stages · N steps · ~N days* that drops as stages are grouped (a step is as long as its
+longest stage, the scheduler's own rule). Stages reorder by drag; each opens on its own sheet —
+days stepper, discipline, *runs alongside*, checklist with a camera toggle per check, parts from the
+catalogue (or a new part inline), and jobs. A workshop stage with no jobs offers **the standard
+workshop flow** (framework → … → dispatch, paint and branding together) in one tap, never unasked.
+Leaving with unsaved work asks first. **Settings → Workflows** lists every workflow with its shape
+and opens a read-only drawing of it.
+
+Two lessons went into `.kiro/steering`: **copy an unchanged function body, never retype it** (a
+from-memory `fn_recompute_schedule` invented a column), and **fixture uuids must be hex**
+(`supabase/check_uuid_literals.py` now checks).
 
 ### 15 Oct 2026 (later): The stage screen read as a pile, and a photo could not be taken back (migration `0030`)
 

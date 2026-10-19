@@ -46,6 +46,7 @@ void main() {
   pmSetupTests();
   designationTests();
   subStageTests();
+  workflowBuilderTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -1558,6 +1559,111 @@ void subStageTests() {
         item(subTask('Waiting', ord: 2), locked: true),
       ]..sort(MyStageTask.compare);
       expect(list.first.task.title, 'Waiting');
+    });
+  });
+}
+
+void workflowBuilderTests() {
+  StageDraft d(String n, int days, {bool with_ = false}) =>
+      StageDraft(n, days, runsWithPrevious: with_);
+
+  group('estimatedDaysFor · a step is as long as its longest stage', () {
+    test('stages one after another add up', () {
+      expect(estimatedDaysFor([d('Design', 3), d('Chassis', 5), d('Paint', 2)]), 10);
+    });
+
+    test('stages running alongside cost only the longer of them', () {
+      // Countertop (4) and electricals (6) together: 6, not 10.
+      expect(estimatedDaysFor([
+        d('Chassis', 5), d('Countertop', 4), d('Electricals', 6, with_: true), d('Paint', 2),
+      ]), 5 + 6 + 2);
+    });
+
+    test('grouping two stages shortens the estimate — what the builder shows', () {
+      final apart = [d('Paint', 3), d('Branding', 2)];
+      final together = [d('Paint', 3), d('Branding', 2, with_: true)];
+      expect(estimatedDaysFor(apart), 5);
+      expect(estimatedDaysFor(together), 3);
+    });
+
+    test('a stage of zero days still takes a day', () {
+      expect(estimatedDaysFor([d('Handover', 0)]), 1);
+    });
+
+    test('no stages, no days', () {
+      expect(estimatedDaysFor([]), 0);
+    });
+  });
+
+  group('stepCountFor', () {
+    test('counts the waits, not the stages', () {
+      expect(stepCountFor([
+        d('Chassis', 1), d('Countertop', 1), d('Electricals', 1, with_: true),
+      ]), 2);
+    });
+
+    test('an empty plan has no steps', () {
+      expect(stepCountFor([]), 0);
+    });
+  });
+
+  group('standardWorkshopFlow · the workshop as the owner described it', () {
+    test('framework first, dispatch last, fifteen jobs', () {
+      expect(standardWorkshopFlow.length, 15);
+      expect(standardWorkshopFlow.first.$1, 'Structural framework');
+      expect(standardWorkshopFlow.last.$1, 'Dispatch');
+    });
+
+    test('branding runs alongside paint, and nothing else runs alongside', () {
+      final together = [for (final (t, w) in standardWorkshopFlow) if (w) t];
+      expect(together, ['Branding signage / vinyl']);
+      final i = standardWorkshopFlow.indexWhere((e) => e.$1 == 'Branding signage / vinyl');
+      expect(standardWorkshopFlow[i - 1].$1, 'Surface preparation and paint');
+    });
+
+    test('so fifteen jobs make fourteen steps', () {
+      final steps = stepsFromFlags([for (final (_, w) in standardWorkshopFlow) w]);
+      expect(steps.last, 14);
+    });
+  });
+
+  group('WorkflowSummary.fromMap · the list card', () {
+    Map<String, dynamic> stage(int ord, int? step, int days) =>
+        {'id': 's$ord', 'ord': ord, 'step': step, 'default_duration_days': days};
+
+    test('reads the shape back from the stored steps, in ord order', () {
+      final w = WorkflowSummary.fromMap({
+        'id': 'w1', 'name': 'Food truck', 'truck_type': 'Food truck',
+        'created_at': '2026-10-01T09:00:00Z',
+        'creator': {'full_name': 'Priya Nair'},
+        // Out of order on purpose: the embed does not promise an order.
+        'template_stages': [stage(3, 2, 3), stage(1, 1, 2), stage(4, 3, 1), stage(2, 2, 5)],
+      });
+      expect(w.stageCount, 4);
+      expect(w.stepCount, 3);
+      expect(w.estimatedDays, 2 + 5 + 1);
+      expect(w.createdByName, 'Priya Nair');
+      expect(w.createdAt, DateTime.utc(2026, 10, 1, 9));
+    });
+
+    test('a workflow saved before steps existed runs one stage at a time', () {
+      final w = WorkflowSummary.fromMap({
+        'id': 'w2', 'name': 'Old',
+        'template_stages': [stage(1, null, 2), stage(2, null, 3)],
+      });
+      expect(w.stepCount, 2);
+      expect(w.estimatedDays, 5);
+    });
+
+    test('blank truck type and creator read as not set', () {
+      final w = WorkflowSummary.fromMap({
+        'id': 'w3', 'name': 'Bare', 'truck_type': '  ',
+        'creator': {'full_name': ' '},
+      });
+      expect(w.truckType, isNull);
+      expect(w.createdByName, isNull);
+      expect(w.stageCount, 0);
+      expect(w.estimatedDays, 0);
     });
   });
 }

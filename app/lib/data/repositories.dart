@@ -1756,37 +1756,132 @@ class AdminRepo {
     }).toList();
   }
 
-  /// Create a custom workflow template + its stages + each stage's BOM items.
-  /// The BOM powers auto-generated requirements on onboarding (Hero #1).
-  Future<OptRef> createTemplate(String name, String? truckType, List<StageDraft> stages) async {
-    final t = await sb.from('workflow_templates')
-        .insert({'name': name, 'truck_type': truckType}).select('id,name').single();
-    final tid = t['id'] as String;
-    // `step` is what waits for what; `ord` is only the order they are listed
-    // in (0031). A stage marked "runs alongside the one above" shares its step.
+  /// Save a workflow, all or nothing (0034).
+  ///
+  /// This used to be a chain of client inserts — template, then each stage,
+  /// then each stage's parts and checks — and a network blip halfway left a
+  /// template with three of its seven stages and no way to tell.
+  /// fn_save_template writes the whole plan in one transaction or nothing.
+  Future<OptRef> saveTemplate(String name, String? truckType, List<StageDraft> stages) async {
     final steps = stepsFor(stages);
-    for (var i = 0; i < stages.length; i++) {
-      final st = await sb.from('template_stages').insert({
-        'template_id': tid, 'name': stages[i].name, 'ord': i + 1,
-        'step': steps[i], 'default_duration_days': stages[i].days,
-      }).select('id').single();
-      final sid = st['id'] as String;
-      if (stages[i].items.isNotEmpty) {
-        await sb.from('template_stage_items').insert([
-          for (final it in stages[i].items) {'template_stage_id': sid, 'item_catalog_id': it.itemId, 'qty': it.qty},
-        ]);
+    final payload = [
+      for (var i = 0; i < stages.length; i++) {
+        'name': stages[i].name.trim(),
+        'days': stages[i].days < 1 ? 1 : stages[i].days,
+        'step': steps[i],
+        if (stages[i].discipline != null) 'discipline': stages[i].discipline,
+        'items': [
+          for (final it in stages[i].items)
+            {'item_catalog_id': it.itemId, 'qty': it.qty},
+        ],
+        'checks': [
+          for (final c in stages[i].checks)
+            if (c.label.trim().isNotEmpty)
+              {'label': c.label.trim(), 'photo_required': c.photoRequired},
+        ],
+        'tasks': () {
+          final kept = [for (final t in stages[i].tasks) if (t.title.trim().isNotEmpty) t];
+          final taskSteps = stepsFromFlags([for (final t in kept) t.runsWithPrevious]);
+          return [
+            for (var k = 0; k < kept.length; k++)
+              {'title': kept[k].title.trim(), 'step': taskSteps[k]},
+          ];
+        }(),
+      },
+    ];
+    final id = await sb.rpc('fn_save_template', params: {
+      'p_name': name.trim(),
+      'p_truck_type': (truckType == null || truckType.trim().isEmpty) ? null : truckType.trim(),
+      'p_stages': payload,
+    });
+    return OptRef(id as String, name.trim());
+  }
+
+  /// Every saved workflow, newest first, with enough of its shape for the list.
+  Future<List<WorkflowSummary>> workflowSummaries() async {
+    // `creator` names its foreign key: one FK to profiles today, but this is
+    // the trap that broke PM Approvals and the stage screen (PGRST201) the
+    // moment a second appeared.
+    final d = await sb.from('workflow_templates')
+        .select('id,name,truck_type,created_at,'
+                'creator:profiles!workflow_templates_created_by_fkey(full_name),'
+                'template_stages(id,ord,step,default_duration_days)')
+        .order('created_at', ascending: false);
+    return [for (final e in (d as List)) WorkflowSummary.fromMap(e as Map<String, dynamic>)];
+  }
+
+  /// A saved workflow in full, as drafts — what "start from this one" loads
+  /// into the builder and what the preview draws.
+  ///
+  /// Step numbers come back as "runs alongside the one above" flags, the only
+  /// form the builder deals in, so a workflow round-trips unchanged.
+  Future<({String name, String? truckType, List<StageDraft> stages})> templateDrafts(String id) async {
+    final t = await sb.from('workflow_templates')
+        .select('name,truck_type').eq('id', id).single();
+    final st = await sb.from('template_stages')
+        .select('id,name,ord,step,default_duration_days,discipline')
+        .eq('template_id', id).order('ord', ascending: true);
+    final rows = (st as List).cast<Map<String, dynamic>>();
+    final ids = [for (final r in rows) r['id'] as String];
+
+    final itemsByStage = <String, List<StageItemDraft>>{};
+    final checksByStage = <String, List<CheckDraft>>{};
+    final tasksByStage = <String, List<Map<String, dynamic>>>{};
+    if (ids.isNotEmpty) {
+      final results = await Future.wait([
+        sb.from('template_stage_items')
+          .select('template_stage_id,qty,item_catalog_id,item_catalog(name)')
+          .inFilter('template_stage_id', ids),
+        sb.from('template_stage_checks')
+          .select('template_stage_id,label,ord,photo_required')
+          .inFilter('template_stage_id', ids).order('ord', ascending: true),
+        sb.from('template_stage_tasks')
+          .select('template_stage_id,title,ord,step')
+          .inFilter('template_stage_id', ids).order('ord', ascending: true),
+      ]);
+      for (final e in results[0]) {
+        final ic = e['item_catalog'] as Map<String, dynamic>?;
+        (itemsByStage[e['template_stage_id'] as String] ??= []).add(StageItemDraft(
+          e['item_catalog_id'] as String, ic?['name'] as String? ?? 'Item',
+          (e['qty'] as num?)?.toInt() ?? 1));
       }
-      // The checklist labels for this stage. fn_onboard_project copies these
-      // onto every build's stage as real checklist_items.
-      final checks = [for (final c in stages[i].checks) c.trim()]..removeWhere((c) => c.isEmpty);
-      if (checks.isNotEmpty) {
-        await sb.from('template_stage_checks').insert([
-          for (var j = 0; j < checks.length; j++)
-            {'template_stage_id': sid, 'label': checks[j], 'ord': j},
-        ]);
+      for (final e in results[1]) {
+        (checksByStage[e['template_stage_id'] as String] ??= []).add(CheckDraft(
+          e['label'] as String? ?? '', photoRequired: e['photo_required'] as bool? ?? false));
+      }
+      for (final e in results[2]) {
+        (tasksByStage[e['template_stage_id'] as String] ??= []).add(e);
       }
     }
-    return OptRef(tid, name);
+
+    final stages = <StageDraft>[];
+    int? prevStep;
+    for (final r in rows) {
+      final ord = (r['ord'] as num?)?.toInt() ?? 0;
+      final step = (r['step'] as num?)?.toInt() ?? ord;
+      final rawTasks = tasksByStage[r['id'] as String] ?? const [];
+      final tasks = <TaskDraft>[];
+      int? prevTaskStep;
+      for (final tk in rawTasks) {
+        final tord = (tk['ord'] as num?)?.toInt() ?? 0;
+        final tstep = (tk['step'] as num?)?.toInt() ?? tord;
+        tasks.add(TaskDraft(tk['title'] as String? ?? '',
+          runsWithPrevious: prevTaskStep != null && tstep == prevTaskStep));
+        prevTaskStep = tstep;
+      }
+      stages.add(StageDraft(r['name'] as String? ?? '',
+        (r['default_duration_days'] as num?)?.toInt() ?? 1,
+        runsWithPrevious: prevStep != null && step == prevStep,
+        discipline: r['discipline'] as String?,
+        items: itemsByStage[r['id'] as String],
+        checks: checksByStage[r['id'] as String],
+        tasks: tasks));
+      prevStep = step;
+    }
+    final tt = (t['truck_type'] as String?)?.trim();
+    return (name: t['name'] as String? ?? '',
+            truckType: (tt == null || tt.isEmpty) ? null : tt,
+            stages: stages);
   }
 
   /// What a person does, and whether they supervise workshop work (0032).
@@ -2237,6 +2332,20 @@ final opsBoardProvider  = FutureProvider<List<OpsRow>>((ref) async {
   await repo.refreshStatuses(); // keep the board honest as the calendar moves
   return repo.opsBoard();
 });
+/// Every saved workflow with its shape, newest first — the Workflows list.
+final workflowSummariesProvider = FutureProvider<List<WorkflowSummary>>((ref) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).workflowSummaries();
+});
+
+/// One saved workflow, unpacked into drafts — the preview draws it. A saved
+/// workflow never changes (0034), so this needs no invalidation.
+final workflowDraftsProvider = FutureProvider.family<
+    ({String name, String? truckType, List<StageDraft> stages}), String>((ref, id) {
+  ref.watch(currentUserIdProvider);
+  return ref.read(adminRepoProvider).templateDrafts(id);
+});
+
 final templatesProvider = FutureProvider<List<OptRef>>((ref) {
   ref.watch(currentUserIdProvider);
   return ref.read(adminRepoProvider).templates();

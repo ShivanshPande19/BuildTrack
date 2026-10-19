@@ -42,7 +42,7 @@ BuildTrack/
 │   ├── analysis_options.yaml     # lint + strict-cast rules CI enforces
 │   └── pubspec.lock              # committed: every machine resolves the same versions
 ├── supabase/                 # backend
-│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0029 checklist evidence
+│   ├── migrations/               # 0001 schema … 0020 PO approvals … 0029 checklist evidence … 0034 workflows
 │   ├── functions/                # Edge Functions (admin create/delete member)
 │   ├── tests/                    # run.sh: 202 assertions on real Postgres, as real users
 │   ├── check_migrations.sql      # read-only: which migrations a database has
@@ -85,8 +85,13 @@ BuildTrack/
 | A PO can't skip the PM's signature · only essentials go "running low" · every home holds many builds | ✅ `0027` + app |
 | A checklist tick is recorded, can require a photo, and locks once the PM approves | ✅ `0029` |
 | A part can't be fitted into an approved stage, or taken off another build's reservation | ✅ `0029` |
+| Stages run in steps — a stage can't start before the steps ahead of it are approved; some run together | ✅ `0031` |
+| An admin can hand over a build with no plan, and its PM sets the plan up | ✅ `0031` |
+| Designations beside roles · several admins, PMs and workshop supervisors · filter builds by who brought them in | ✅ `0032` |
+| A workshop stage breaks into work items a supervisor hands out and orders | ✅ `0033` |
+| Workflow builder: stages in steps, checks, parts, the workshop's jobs, saved in one transaction | ✅ `0034` |
 | Reproducible build + CI (analyze, test, Android build, Postgres suite) | ✅ |
-| Known gaps: no template management, a few DB rules still bypassable, buckets are public-read | ⬜ `docs/PROJECT_LOG.md` §3 |
+| Known gaps: a saved workflow is replaced, not edited · a few DB rules still bypassable, buckets are public-read | ⬜ `docs/PROJECT_LOG.md` §3 |
 | Offline · push notifications · realtime · pagination · localization | ⏭️ not started |
 
 The gaps are real and listed deliberately. `docs/PROJECT_LOG.md` §3 has the full numbered set.
