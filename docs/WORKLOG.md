@@ -49,7 +49,8 @@ template screen for PM and admin.
 - `0033`'s suite used fixture ids like `…t1`, which are not hex, and the visual check missed them.
   → `supabase/check_uuid_literals.py`, and a steering note.
 
-**Verified.** `flutter analyze` 0 errors / 0 warnings; `flutter test` 235/235 locally. Postgres:
+**Verified.** `flutter analyze` 0 errors / 0 warnings; `flutter test` 247/247 locally, 12 of them driving the builder and the Workflows screen the way a PM
+would (add, group, save, leave unsaved) with the save faked at the repository. Postgres:
 341 assertions in 15 suites, green on CI for PR #58.
 
 ⏭️ **Next:** apply `0031`–`0034` to the live project (check with `supabase/check_migrations.sql`)
