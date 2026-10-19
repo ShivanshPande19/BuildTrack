@@ -2035,11 +2035,11 @@ class AdminRepo {
   }
 
   /// Choose the workflow template for a build that was handed over without one,
-  /// and generate its stages. The build's own PM may do this, or an admin
-  /// (0031).
+  /// and generate its stages — one transaction, for the build's own PM or an
+  /// admin (0035). Two writes from here was the bug: the guard refused the PM's
+  /// `template_id` update, and a failed onboarding left the template recorded.
   Future<void> setUpPlan(String projectId, String templateId) async {
-    await sb.from('projects').update({'template_id': templateId}).eq('id', projectId);
-    await sb.rpc('fn_onboard_project', params: {'p_project': projectId});
+    await sb.rpc('fn_set_up_plan', params: {'p_project': projectId, 'p_template': templateId});
   }
 
   /// Assign or change a build's project manager (admin only).
