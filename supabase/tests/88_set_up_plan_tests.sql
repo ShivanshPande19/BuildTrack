@@ -24,6 +24,15 @@ select public.fn_save_template('Plan test', null, $j$[
 -- A workflow with a stage list that onboarding will refuse cannot be saved
 -- through fn_save_template, so the refusal case uses a bare template row.
 reset role; set test.uid = '';
+-- A second PM of this suite's own: 10_workflow_tests offboards pm1 to test the
+-- ON DELETE SET NULL cascade, so by the time this file runs pm2 is the only
+-- PM the shared fixture still has.
+insert into auth.users (id, email) values
+  ('b3000000-0000-0000-0000-0000000000b1','pm-plan@az.co') on conflict do nothing;
+insert into profiles (id, full_name, email, role, status) values
+  ('b3000000-0000-0000-0000-0000000000b1','Meena PM','pm-plan@az.co','pm','active')
+  on conflict do nothing;
+
 insert into workflow_templates (id, name)
 values ('b3000000-0000-0000-0000-0000000000e1', 'No stages');
 
@@ -31,7 +40,7 @@ insert into projects (id, code, name, pm_id, status, target_delivery_date) value
   ('b3000000-0000-0000-0000-0000000000a1','AZ-P1','Handed over, no plan',
    'b0000000-0000-0000-0000-000000000002','on_track', current_date + 60),
   ('b3000000-0000-0000-0000-0000000000a2','AZ-P2','Someone else''s build',
-   'b0000000-0000-0000-0000-000000000001','on_track', current_date + 60),
+   'b3000000-0000-0000-0000-0000000000b1','on_track', current_date + 60),
   ('b3000000-0000-0000-0000-0000000000a3','AZ-P3','No PM yet',
    null,'on_track', current_date + 60);
 
@@ -83,7 +92,7 @@ select t_expect_error($$
 \echo ''
 \echo '=== 0035 · all or nothing ========================================'
 
-set test.uid = 'b0000000-0000-0000-0000-000000000001';        -- AZ-P2's PM
+set test.uid = 'b3000000-0000-0000-0000-0000000000b1';        -- AZ-P2's PM (Meena)
 select t_expect_error($$
   select public.fn_set_up_plan('b3000000-0000-0000-0000-0000000000a2',
                                'b3000000-0000-0000-0000-0000000000e1')$$,

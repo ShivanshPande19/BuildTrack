@@ -92,6 +92,17 @@ A command exiting 0 is not proof; check the actual result.
   (`[0-9a-f]{12}`) cannot find it, because the typo is exactly what stops it
   matching. Run `python3 supabase/check_uuid_literals.py` before pushing SQL;
   it matches the shape first and then checks the hex.
+- **A fixture user can be gone by the time your suite runs.** The suites share one
+  database in file order, and some remove people on purpose (`10_workflow_tests`
+  deletes pm1, b0…01, to test the ON DELETE SET NULL cascade). Before borrowing a
+  shared user, grep every earlier suite for `delete`/`status` on that id. If a
+  suite needs a second user of a role, it creates its own, as 85 and 88 do,
+  with a unique email too, since `profiles.email` is unique and `on conflict do
+  nothing` would skip the insert without saying so.
+- **Test a permission through the path the app takes.** 0031's tests inserted
+  `template_id` as the database owner and called the RPC; the app's PM had to write
+  `template_id` first and was refused (0035). Arrange a fixture as the role
+  that will really do it, or call the same RPC the app calls.
 - Something approved is frozen. `fn_submit_stage` / `fn_start_stage` / `fn_install_component` /
   `fn_tick_check` all refuse a `done` stage; a new RPC that touches a stage's evidence should too.
 - `supabase/full_setup.sql` is **generated** — regenerate with `cd supabase && sh build_full_setup.sh`,
