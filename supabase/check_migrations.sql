@@ -104,7 +104,9 @@ with checks(migration, applied) as (values
      and exists (select 1 from pg_proc where proname = 'fn_set_task_status')),
   ('0034_workflow_templates',
      to_regclass('public.template_stage_tasks') is not null
-     and exists (select 1 from pg_proc where proname = 'fn_save_template'))
+     and exists (select 1 from pg_proc where proname = 'fn_save_template')),
+  ('0035_a_pm_can_set_up_the_plan',
+     exists (select 1 from pg_proc where proname = 'fn_set_up_plan'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

@@ -88,6 +88,15 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
     await _editStage(_stages.length - 1, isNew: true);
   }
 
+  /// Every stage in the step directly above [index] — what this stage waits
+  /// for, or joins if it runs alongside. Naming only the one stage above was
+  /// wrong whenever that stage was itself running alongside another.
+  List<StageDraft> _groupAbove(int index) {
+    if (index == 0) return const [];
+    final steps = stepsFor(_stages);
+    return [for (var j = 0; j < index; j++) if (steps[j] == steps[index - 1]) _stages[j]];
+  }
+
   Future<void> _editStage(int index, {bool isNew = false}) async {
     final stage = _stages[index];
     final removed = await Navigator.of(context).push<bool>(PageRouteBuilder(
@@ -99,7 +108,7 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
       pageBuilder: (_, __, ___) => _StageEditor(
         stage: stage,
         index: index,
-        above: index > 0 ? _stages[index - 1] : null,
+        aboveGroup: _groupAbove(index),
         extraItems: _extraItems,
         isNew: isNew,
       ),
@@ -438,12 +447,14 @@ class _CreateTemplateState extends ConsumerState<CreateTemplate> {
                       decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999)),
                       child: Text('${s.days} ${s.days == 1 ? 'day' : 'days'}',
                         style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700))),
-                    if (meta.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11.5, color: BT.mut2))),
-                    ],
                   ]),
+                  // On its own line: beside the pills it was cut off at
+                  // "1 check · 1 part · …", hiding the jobs entirely.
+                  if (meta.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(meta, maxLines: 2, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11.5, color: BT.mut2)),
+                  ],
                 ])),
                 ReorderableDragStartListener(
                   index: i,
@@ -553,10 +564,11 @@ class _SummaryBar extends StatelessWidget {
 class _StageEditor extends ConsumerStatefulWidget {
   final StageDraft stage;
   final int index;
-  final StageDraft? above;
+  /// The stages of the step directly above; empty for the first stage.
+  final List<StageDraft> aboveGroup;
   final List<OptRef> extraItems;
   final bool isNew;
-  const _StageEditor({required this.stage, required this.index, required this.above,
+  const _StageEditor({required this.stage, required this.index, required this.aboveGroup,
     required this.extraItems, required this.isNew});
 
   @override
@@ -612,7 +624,7 @@ class _StageEditorState extends ConsumerState<_StageEditor> {
                 ),
                 const SizedBox(height: 14),
                 _basics(),
-                if (widget.above != null) ...[
+                if (widget.aboveGroup.isNotEmpty) ...[
                   const SizedBox(height: 14),
                   _alongside(),
                 ],
@@ -715,14 +727,16 @@ class _StageEditorState extends ConsumerState<_StageEditor> {
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(s.runsWithPrevious
-              ? 'Runs alongside "${_name(widget.above!)}"'
-              : 'Waits for "${_name(widget.above!)}"',
-            maxLines: 2,
+              ? 'Runs alongside $_aboveNames'
+              : 'Waits for $_aboveNames',
+            maxLines: 3,
             style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
           const SizedBox(height: 2),
           Text(s.runsWithPrevious
-              ? 'Both start once the step before them is approved.'
-              : 'Starts once that stage is approved. Tap if they happen at the same time.',
+              ? 'They all start once the step before them is approved.'
+              : widget.aboveGroup.length > 1
+                  ? 'Starts once all of them are approved. Tap if it happens at the same time.'
+                  : 'Starts once that stage is approved. Tap if they happen at the same time.',
             style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.3)),
         ])),
         Switch.adaptive(value: s.runsWithPrevious,
@@ -733,6 +747,12 @@ class _StageEditorState extends ConsumerState<_StageEditor> {
   );
 
   String _name(StageDraft d) => d.name.trim().isEmpty ? 'the stage above' : d.name.trim();
+
+  /// "Workshop" · "Workshop" and "Kitchen" · "A", "B" and "C".
+  String get _aboveNames {
+    final n = [for (final d in widget.aboveGroup) '"${_name(d)}"'];
+    return n.length == 1 ? n.first : '${n.sublist(0, n.length - 1).join(', ')} and ${n.last}';
+  }
 
   Widget _section(String label, int count, String hint) => Padding(
     padding: const EdgeInsets.only(top: 24, bottom: 8),
@@ -950,9 +970,17 @@ class _StageEditorState extends ConsumerState<_StageEditor> {
     String? itemId;
     String? itemLabel;
     int qty = 1;
+    // Nothing on this screen watches the catalogue, so wait for it: reading
+    // `.valueOrNull` here offered an empty list the first time, every time.
+    var loaded = const <OptRef>[];
+    try {
+      loaded = await ref.read(itemsProvider.future);
+    } catch (_) {
+      // Offline or refused: "Add a new part" still works.
+    }
+    if (!mounted) return;
     final catalog = {
-      for (final o in [...(ref.read(itemsProvider).valueOrNull ?? <OptRef>[]), ...widget.extraItems])
-        o.id: o,
+      for (final o in [...loaded, ...widget.extraItems]) o.id: o,
     }.values.toList();
 
     await showAppSheet<void>(context: context, builder: (ctx) => StatefulBuilder(

@@ -122,6 +122,18 @@ void main() {
     expect(summary(t), [3, 2, 6]);
   });
 
+  testWidgets('a stage after a group says it waits for the whole group', (t) async {
+    await open(t);
+    await addStage(t, 'Chassis');
+    await addStage(t, 'Countertop');
+    await addStage(t, 'Electricals', alongside: true);
+    await t.tap(find.text('Add a stage'));
+    await t.pumpAndSettle();
+    // Not just "Electricals" — Paint waits for both stages of step 2.
+    expect(find.text('Waits for "Countertop" and "Electricals"'), findsOneWidget);
+    expect(find.textContaining('all of them are approved'), findsOneWidget);
+  });
+
   testWidgets('a workshop stage offers the standard flow, and fills it in one tap', (t) async {
     await open(t);
     await t.tap(find.text('Add the first stage'));
