@@ -873,6 +873,9 @@ void openAssignSheet(BuildContext context, WidgetRef ref, Stage stage, String pr
   showModalBottomSheet<void>(
       sheetAnimationStyle: sheetMotion,
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
+      // A long team list grows the sheet to full height, and without this its
+      // title was drawn under the status bar / Dynamic Island.
+      useSafeArea: true,
     builder: (_) => _AssignSheet(stage: stage, projectId: projectId, onDone: onDone),
   );
 }

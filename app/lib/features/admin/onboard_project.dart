@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../core/theme.dart';
 import '../../data/models.dart';
 import '../../data/repositories.dart';
@@ -29,6 +30,8 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
   DateTime? _target;
   bool _saving = false;
   String? _error;
+
+  static final _fmt = DateFormat('d MMM yyyy');
 
   @override
   void dispose() {
@@ -248,7 +251,7 @@ class _OnboardProjectState extends ConsumerState<OnboardProject> {
         decoration: BoxDecoration(color: BT.card, borderRadius: BorderRadius.circular(16), border: Border.all(color: BT.line)),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(_target == null ? 'Target delivery date' : _target!.toIso8601String().split('T').first,
+          Text(_target == null ? 'Target delivery date' : _fmt.format(_target!),
             style: TextStyle(color: _target == null ? BT.mut : BT.ink, fontSize: 14, fontWeight: _target == null ? FontWeight.normal : FontWeight.w600)),
           const Icon(Icons.calendar_today_rounded, size: 18, color: BT.mut),
         ]),

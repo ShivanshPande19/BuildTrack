@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/supabase_client.dart';
 import '../../core/theme.dart';
+import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../admin/company_settings.dart';
@@ -23,15 +24,36 @@ class ProfileScreen extends ConsumerWidget {
 
   static const _roleLabel = {
     'admin': 'Owner · Admin', 'pm': 'Project Manager', 'procurement': 'Procurement',
-    'workshop': 'Workshop Lead', 'store': 'Store / Inventory', 'design': 'Design',
+    'workshop': 'Workshop', 'store': 'Store / Inventory', 'design': 'Design',
     'service': 'Service', 'client': 'Client',
   };
+
+  /// The pill under the name. Every workshop member used to be called
+  /// "Workshop Lead", fitters included. The lead is the supervisor (0032) —
+  /// the one a PM hands workshop work to — so they are the one called that,
+  /// by the designation the admin gave them if there is one, exactly as the
+  /// line under their name in Team reads.
+  static String roleLabel(String? role, {MyProfile? me}) {
+    if (role == 'workshop' && me != null && me.isSupervisor) {
+      return me.designation ?? 'Workshop Supervisor';
+    }
+    return _roleLabel[role] ?? 'Team member';
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final u = sb.auth.currentUser;
-    final name = (u?.userMetadata?['full_name'] as String?)
-        ?? u?.email?.split('@').first ?? 'User';
+    final me = ref.watch(myProfileProvider).valueOrNull;
+    // profiles.full_name first: it is the name Account details edits. The
+    // auth metadata only carries a name when the account was made from Add
+    // member; the owner's own account was not, so their card showed the
+    // email prefix — "admin".
+    final metaName = (u?.userMetadata?['full_name'] as String?)?.trim();
+    final name = (me != null && me.name.trim().isNotEmpty)
+        ? me.name.trim()
+        : (metaName != null && metaName.isNotEmpty)
+            ? metaName
+            : u?.email?.split('@').first ?? 'User';
     final email = u?.email ?? '';
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'U';
     final roleAsync = ref.watch(myRoleProvider);
@@ -60,7 +82,7 @@ class ProfileScreen extends ConsumerWidget {
               Text(name, style: display(20, w: FontWeight.w600)),
               const SizedBox(height: 8),
               roleAsync.when(
-                data: (r) => StatusPill(_roleLabel[r] ?? 'Team member', color: BT.ink, dark: true),
+                data: (r) => StatusPill(roleLabel(r, me: me), color: BT.ink, dark: true),
                 loading: () => Container(width: 116, height: 30,
                   decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(999))),
                 error: (_, __) => const StatusPill('Team member', color: BT.ink, dark: true),

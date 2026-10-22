@@ -225,9 +225,12 @@ class _DesignHomeState extends ConsumerState<DesignHome> {
             builder: (_) => TaskDetailScreen(task: t.task!,
               showInstallPart: false, designGate: true)));
         }
+      // A design for *this* stage: its build is already chosen and the design
+      // is linked to it, rather than the designer picking the truck again.
       case DesignTodoKind.overdueNoDesign:
       case DesignTodoKind.notStarted:
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const NewDesign()));
+        await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => NewDesign(forStage: t.task)));
     }
     ref.invalidate(myTasksProvider);
     ref.invalidate(myDesignsProvider);

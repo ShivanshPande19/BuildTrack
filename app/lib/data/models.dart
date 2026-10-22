@@ -267,11 +267,51 @@ class WorkflowSummary {
 
 /// A pending stage-completion approval (PM approves work submitted by workshop).
 class ApprovalItem {
-  final String id, stageId, stageName, projectCode;
+  final String id, stageId, stageName, projectId, projectCode;
+  /// Which role the stage is for. A design stage's evidence is the design the
+  /// client approved (0028), not photos.
+  final String? discipline;
   final String? submittedBy;
   final DateTime? submittedAt;
   ApprovalItem({required this.id, required this.stageId, required this.stageName,
-    required this.projectCode, this.submittedBy, this.submittedAt});
+    required this.projectId, required this.projectCode, this.discipline,
+    this.submittedBy, this.submittedAt});
+
+  bool get isDesign => discipline == 'design';
+}
+
+/// What approving a stage did to its build, read off the build's stages
+/// *after* `fn_decide_stage` ran — for the PM's confirmation.
+///
+/// The toast used to say "next stage started" every time. Since 0031 that is
+/// only true when the approved stage was the last open one in its step:
+/// approve one of two stages that run together and nothing starts, and
+/// approve the last stage of a build and there is nothing to start. Null when
+/// there is nothing more to say than "approved".
+String? approvalOutcome(List<Stage> stages, String stageId) {
+  final i = stages.indexWhere((s) => s.id == stageId);
+  if (i < 0) return null;
+  final me = stages[i];
+  final open = stages.where((s) => s.status != 'done').toList();
+  if (open.isEmpty) return 'every stage on this build is done';
+
+  // The step is not finished, so fn_decide_stage opened nothing.
+  final sameStep = open.where((s) => s.step == me.step).toList();
+  if (sameStep.isNotEmpty) {
+    return sameStep.length == 1
+        ? '${sameStep.first.name} is still open in this step'
+        : '${sameStep.length} more stages are still open in this step';
+  }
+
+  int? next;
+  for (final s in open) {
+    if (s.step > me.step && (next == null || s.step < next)) next = s.step;
+  }
+  final started = open.where((s) => s.step == next && s.status == 'in_progress').toList();
+  if (started.isEmpty) return null;
+  return started.length == 1
+      ? '${started.first.name} started'
+      : '${started.length} stages started';
 }
 
 /// A team member (profiles row).
@@ -317,11 +357,16 @@ class Member {
 class MyProfile {
   final String id, name, email, role, status;
   final String? phone, subTeamName;
+  /// Same as [Member.designation] and [Member.isSupervisor] (0032).
+  final String? designation;
+  final bool isSupervisor;
   final DateTime? createdAt;
   MyProfile({required this.id, required this.name, required this.email,
-    required this.role, required this.status, this.phone, this.subTeamName, this.createdAt});
+    required this.role, required this.status, this.phone, this.subTeamName,
+    this.designation, this.isSupervisor = false, this.createdAt});
   factory MyProfile.fromMap(Map<String, dynamic> m) {
     final st = m['sub_teams'] as Map<String, dynamic>?;
+    final d = (m['designation'] as String?)?.trim();
     return MyProfile(
       id: m['id'] as String,
       name: m['full_name'] as String? ?? '',
@@ -330,6 +375,8 @@ class MyProfile {
       status: m['status'] as String? ?? 'active',
       phone: (m['phone'] as String?)?.trim().isEmpty ?? true ? null : (m['phone'] as String?),
       subTeamName: st?['name'] as String?,
+      designation: (d == null || d.isEmpty) ? null : d,
+      isSupervisor: m['is_supervisor'] as bool? ?? false,
       createdAt: parseDate(m['created_at']),
     );
   }
@@ -1761,14 +1808,30 @@ class TicketRow {
 class DesignRow {
   final String id, type, status;
   final String? modelUrl, imageUrl, changeNote, clientFeedback;
+  /// The build stage this design is the deliverable for (0028).
+  final String? stageId;
   DesignRow({required this.id, required this.type, required this.status,
-    this.modelUrl, this.imageUrl, this.changeNote, this.clientFeedback});
+    this.modelUrl, this.imageUrl, this.changeNote, this.clientFeedback, this.stageId});
   factory DesignRow.fromMap(Map<String, dynamic> m) => DesignRow(
     id: m['id'] as String,
     type: m['type'] as String? ?? 'layout',
     status: m['status'] as String? ?? 'draft',
     clientFeedback: m['client_feedback'] as String?,
+    stageId: m['stage_id'] as String?,
   );
+}
+
+/// The client-approved design that discharges a design stage, by the rule
+/// `fn_submit_stage` applies (0028): a design linked to this stage if there is
+/// one, otherwise any design on the build — so a design made before the link
+/// existed still counts.
+DesignRow? approvedDesignFor(String stageId, List<DesignRow> designs) {
+  final linked = designs.where((d) => d.stageId == stageId).toList();
+  final pool = linked.isNotEmpty ? linked : designs;
+  for (final d in pool) {
+    if (d.status == 'approved') return d;
+  }
+  return null;
 }
 
 /// A design artifact from the Designer's perspective (adds project context +

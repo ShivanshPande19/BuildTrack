@@ -34,6 +34,7 @@ class RolesReferenceScreen extends ConsumerWidget {
     _RoleSpec('pm', 'Project Manager', Icons.assignment_rounded,
       'Owns the plan for the builds assigned to them.',
       can: [
+        'Set up the plan of a build handed over without one: choose its workflow, or make a new one',
         'Assign each stage to the right discipline, with start and due dates',
         'Plan materials: quantities and needed-by dates, which set each order-by date',
         'Approve or send back submitted work, on the photos, checklist and parts as evidence',
@@ -42,7 +43,8 @@ class RolesReferenceScreen extends ConsumerWidget {
         'Mark the truck delivered and add the client\'s documents',
       ],
       cannot: [
-        'Create a build, or change its code, client or template',
+        'Create a build, or change its code or client',
+        'Switch a build to another workflow once it has a plan',
         'Touch a build that is not theirs — enforced in the database, not just hidden',
         'Take a build from another PM',
       ]),

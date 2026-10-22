@@ -32,6 +32,28 @@ class TaskDetailScreen extends ConsumerWidget {
   const TaskDetailScreen({super.key, required this.task,
     this.showInstallPart = true, this.designGate = false});
 
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The stage as it stands now, not as it was when the screen opened. Start
+    // work keeps you here — starting is the beginning of the work, not the end
+    // of it — so the screen has to follow the stage on to in progress, and the
+    // bar under the thumb on to Submit. Every way in hands over a row of
+    // myTasksProvider; the one passed in covers a stage that has since left
+    // the list.
+    final live = ref.watch(myTasksProvider.select((a) =>
+        a.valueOrNull?.where((t) => t.stageId == task.stageId).firstOrNull)) ?? task;
+    return _TaskDetailView(task: live,
+      showInstallPart: showInstallPart, designGate: designGate);
+  }
+}
+
+class _TaskDetailView extends ConsumerWidget {
+  final WorkshopTask task;
+  final bool showInstallPart;
+  final bool designGate;
+  const _TaskDetailView({required this.task,
+    required this.showInstallPart, required this.designGate});
+
   static final _fmt = DateFormat('d MMM');
   String _shortDate(DateTime d) => _fmt.format(d);
 
@@ -669,10 +691,19 @@ class TaskDetailScreen extends ConsumerWidget {
     try {
       await ref.read(workshopRepoProvider).startTask(task.stageId);
       Haptic.confirm();
-      ref.invalidate(myTasksProvider);
       ref.invalidate(stageBundleProvider(task.stageId));
+      // Stays on this screen. It used to pop straight back to the list, so a
+      // designer who tapped Start on a stage that was ready to submit landed
+      // in the Studio and had to find the stage again to submit it. The
+      // button keeps spinning until the stage has reloaded, so it turns into
+      // Submit rather than offering Start a second time.
+      ref.invalidate(myTasksProvider);
+      try {
+        await ref.read(myTasksProvider.future);
+      } catch (_) {
+        // The stage did start; the list says so on its next load.
+      }
       if (context.mounted) {
-        Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           backgroundColor: BT.ink, content: Text('Stage started — your PM has been told')));
       }
@@ -1212,6 +1243,7 @@ class _SubStages extends ConsumerWidget {
       await ref.read(workshopRepoProvider)
           .addStageTask(task.stageId, c.text, ord: nextOrd, step: nextOrd);
       ref.invalidate(stageTasksProvider(task.stageId));
+      ref.invalidate(myStageTasksProvider);
     } catch (e) {
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));
@@ -1235,6 +1267,10 @@ class _SubStages extends ConsumerWidget {
             onPick: (uid) async {
               await ref.read(workshopRepoProvider).assignStageTask(t.id, uid);
               ref.invalidate(stageTasksProvider(task.stageId));
+              // "My work items" is somebody's whole list — the supervisor's
+              // own, when they give an item to themselves. It must not wait
+              // for a re-login to show up.
+              ref.invalidate(myStageTasksProvider);
               if (sctx.mounted) Navigator.pop(sctx);
             }),
           if (above != null) ...[
@@ -1248,6 +1284,8 @@ class _SubStages extends ConsumerWidget {
                 await ref.read(workshopRepoProvider)
                     .setStageTaskStep(t.id, next ? above.step : t.ord);
                 ref.invalidate(stageTasksProvider(task.stageId));
+                // What is waiting on what changed, and the worker's list shows it.
+                ref.invalidate(myStageTasksProvider);
               },
               child: Row(children: [
                 Icon(runsWithAbove
@@ -1268,6 +1306,7 @@ class _SubStages extends ConsumerWidget {
             onTap: () async {
               await ref.read(workshopRepoProvider).removeStageTask(t.id);
               ref.invalidate(stageTasksProvider(task.stageId));
+              ref.invalidate(myStageTasksProvider);
               if (sctx.mounted) Navigator.pop(sctx);
             }),
           const SizedBox(height: 6),

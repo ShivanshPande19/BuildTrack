@@ -24,6 +24,36 @@ class _AddMemberState extends ConsumerState<AddMember> {
   bool _saving = false;
   bool _showPass = false;
   String? _error;
+  /// Something has been typed. Backing out then asks first: the back chip and
+  /// the swipe used to throw away a half-filled name, email and password.
+  bool _dirty = false;
+
+  List<TextEditingController> get _fields => [_name, _email, _password, _business];
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in _fields) {
+      c.addListener(_onEdit);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _fields) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _onEdit() {
+    final d = _fields.any((c) => c.text.trim().isNotEmpty);
+    if (d != _dirty) setState(() => _dirty = d);
+  }
+
+  /// Examples for the sub-team hint. Only where there is an obvious one: a
+  /// project manager's "e.g. Welding, Paint" told the admin nothing.
+  static const _teamExamples = {'workshop': ['Welding', 'Paint']};
 
   // Order matches the mockup; Admin added at the end for completeness.
   static const _roles = [
@@ -108,8 +138,34 @@ class _AddMemberState extends ConsumerState<AddMember> {
     ]),
   );
 
+  Future<bool?> _confirmLeave() => showDialog<bool>(
+    context: context, builder: (dctx) => AlertDialog(
+      backgroundColor: BT.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('Leave without creating?', style: display(18, w: FontWeight.w600)),
+      content: const Text('This member has not been created. What you typed will be lost.',
+        style: TextStyle(fontSize: 13.5, color: BT.mut, height: 1.35)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dctx, false),
+          child: const Text('Keep editing', style: TextStyle(color: BT.mut))),
+        TextButton(onPressed: () => Navigator.pop(dctx, true),
+          child: const Text('Leave', style: TextStyle(color: BT.coral, fontWeight: FontWeight.w700))),
+      ]));
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_dirty,
+    onPopInvokedWithResult: (didPop, _) async {
+      if (didPop) return;
+      final leave = await _confirmLeave();
+      if (leave != true || !context.mounted) return;
+      // Navigator.pop is not held back by canPop — only the back gesture is.
+      Navigator.of(context).pop();
+    },
+    child: _form(context),
+  );
+
+  Widget _form(BuildContext context) {
     return Scaffold(
       body: SafeArea(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
@@ -164,10 +220,12 @@ class _AddMemberState extends ConsumerState<AddMember> {
   Widget _subTeamSection() {
     final all = ref.watch(subTeamsProvider).valueOrNull ?? [];
     final teams = all.where((t) => t.role == _role).toList();
+    final eg = _teamExamples[_role];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SectionLabel('Team (optional)'),
       Padding(padding: const EdgeInsets.only(left: 4, bottom: 10),
-        child: Text('Sub-team within ${_deptLabel(_role)} — e.g. Welding, Paint. Skip if there are none.',
+        child: Text('Sub-team within ${_deptLabel(_role)}${eg == null ? '' : ' — e.g. ${eg.join(', ')}'}. '
+                    'Skip if there are none.',
           style: const TextStyle(color: BT.mut, fontSize: 12, height: 1.35))),
       Wrap(spacing: 9, runSpacing: 9, children: [
         for (final t in teams) _subTeamChip(t.id, t.name),
@@ -221,7 +279,9 @@ class _AddMemberState extends ConsumerState<AddMember> {
       content: Container(decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(12)),
         padding: const EdgeInsets.symmetric(horizontal: 14),
         child: TextField(controller: c, autofocus: true,
-          decoration: const InputDecoration(hintText: 'e.g. Welding', border: InputBorder.none))),
+          decoration: InputDecoration(
+            hintText: _teamExamples[_role] == null ? 'Team name' : 'e.g. ${_teamExamples[_role]!.first}',
+            border: InputBorder.none))),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dctx),
           child: const Text('Cancel', style: TextStyle(color: BT.mut))),

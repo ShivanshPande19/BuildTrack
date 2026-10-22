@@ -47,6 +47,7 @@ void main() {
   designationTests();
   subStageTests();
   workflowBuilderTests();
+  phaseDWalkTests();
   group('parseDate', () {
     test('returns null for null rather than throwing', () {
       // Every nullable date column in the schema arrives here as null at some
@@ -1664,6 +1665,133 @@ void workflowBuilderTests() {
       expect(w.createdByName, isNull);
       expect(w.stageCount, 0);
       expect(w.estimatedDays, 0);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Phase D simulator walk: what the PM is told an approval did, and what the
+// approvals card shows as a design stage's evidence.
+// ───────────────────────────────────────────────────────────────────────────
+
+void phaseDWalkTests() {
+  Stage st(String name, {required int ord, int? step, String status = 'todo'}) =>
+      Stage(id: 'id-$name', name: name, status: status, ord: ord, step: step ?? ord);
+
+  group('approvalOutcome · read off the build after fn_decide_stage', () {
+    test('a stage on its own in its step opens the next one', () {
+      final stages = [
+        st('Design', ord: 1, status: 'done'),
+        st('Chassis', ord: 2, status: 'in_progress'),
+        st('Paint', ord: 3),
+      ];
+      expect(approvalOutcome(stages, 'id-Design'), 'Chassis started');
+    });
+
+    test('a step still half open starts nothing — the bug the toast had', () {
+      // It said "next stage started" here, and Paint had not started.
+      final stages = [
+        st('Chassis', ord: 1, status: 'done'),
+        st('Countertop', ord: 2, step: 2, status: 'done'),
+        st('Electricals', ord: 3, step: 2, status: 'in_progress'),
+        st('Paint', ord: 4, step: 3),
+      ];
+      expect(approvalOutcome(stages, 'id-Countertop'),
+        'Electricals is still open in this step');
+    });
+
+    test('several stages still open in the step are counted', () {
+      final stages = [
+        st('A', ord: 1, step: 1, status: 'done'),
+        st('B', ord: 2, step: 1, status: 'in_progress'),
+        st('C', ord: 3, step: 1, status: 'rework'),
+      ];
+      expect(approvalOutcome(stages, 'id-A'), '2 more stages are still open in this step');
+    });
+
+    test('a step of several stages opening together is counted', () {
+      final stages = [
+        st('Chassis', ord: 1, status: 'done'),
+        st('Countertop', ord: 2, step: 2, status: 'in_progress'),
+        st('Electricals', ord: 3, step: 2, status: 'in_progress'),
+      ];
+      expect(approvalOutcome(stages, 'id-Chassis'), '2 stages started');
+    });
+
+    test('the last stage says the build is done, not that something started', () {
+      final stages = [
+        st('Design', ord: 1, status: 'done'),
+        st('Handover', ord: 2, status: 'done'),
+      ];
+      expect(approvalOutcome(stages, 'id-Handover'), 'every stage on this build is done');
+    });
+
+    test('nothing in progress after it: says nothing rather than guess', () {
+      // fn_decide_stage only opens stages still on `todo`; one sent back for
+      // rework stays where it is, and the toast must not claim it started.
+      final stages = [
+        st('Design', ord: 1, status: 'done'),
+        st('Chassis', ord: 2, status: 'rework'),
+      ];
+      expect(approvalOutcome(stages, 'id-Design'), isNull);
+    });
+
+    test('a stage that is not on the build reads as nothing to add', () {
+      expect(approvalOutcome([st('Design', ord: 1, status: 'done')], 'nope'), isNull);
+    });
+  });
+
+  group('approvedDesignFor · the same rule as fn_submit_stage (0028)', () {
+    DesignRow d(String id, String status, {String? stage}) =>
+        DesignRow(id: id, type: 'layout', status: status, stageId: stage);
+
+    test('a design linked to the stage is the one that counts', () {
+      final list = [d('loose', 'approved'), d('mine', 'approved', stage: 's1')];
+      expect(approvedDesignFor('s1', list)?.id, 'mine');
+    });
+
+    test('linked designs that are not approved are not rescued by a loose one', () {
+      // If the stage has designs of its own, one of *them* has to be approved.
+      final list = [d('loose', 'approved'), d('mine', 'pending_approval', stage: 's1')];
+      expect(approvedDesignFor('s1', list), isNull);
+    });
+
+    test('with nothing linked, any approved design on the build counts', () {
+      final list = [d('draft', 'draft'), d('old', 'approved')];
+      expect(approvedDesignFor('s1', list)?.id, 'old');
+    });
+
+    test('another stage\'s design counts only while this one has none of its own', () {
+      // Nothing linked to s1: the build-wide rule, as on the server.
+      expect(approvedDesignFor('s1', [d('other', 'approved', stage: 's2')])?.id, 'other');
+      // s1 has its own design, still with changes requested: that is the one.
+      expect(approvedDesignFor('s1', [
+        d('other', 'approved', stage: 's2'),
+        d('mine', 'revision', stage: 's1'),
+      ]), isNull);
+    });
+
+    test('reads stage_id from the row', () {
+      expect(DesignRow.fromMap({'id': 'x', 'stage_id': 's1'}).stageId, 's1');
+    });
+  });
+
+  group('MyProfile · designation and supervisor', () {
+    MyProfile me(Map<String, dynamic> extra) => MyProfile.fromMap({
+      'id': 'u1', 'full_name': 'Vikas', 'email': 'v@az.co',
+      'role': 'workshop', 'status': 'active', ...extra,
+    });
+
+    test('reads both', () {
+      final x = me({'designation': 'Floor lead', 'is_supervisor': true});
+      expect(x.designation, 'Floor lead');
+      expect(x.isSupervisor, isTrue);
+    });
+
+    test('blank designation is none, and a missing flag is false', () {
+      final x = me({'designation': '  '});
+      expect(x.designation, isNull);
+      expect(x.isSupervisor, isFalse);
     });
   });
 }

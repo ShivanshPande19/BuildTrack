@@ -69,7 +69,33 @@ Future<void> _openBuild(BuildContext context, WidgetRef ref, {required String pr
   c.invalidate(myProjectsProvider);
   c.invalidate(pmScheduleProvider);
   c.invalidate(stagesToAssignProvider);
+  c.invalidate(buildsNeedingPlanProvider);
 }
+
+/// Which build to set up, when more than one is waiting for a plan.
+Future<Project?> _pickUnplanned(BuildContext context, List<Project> list) =>
+  showAppSheet<Project>(context: context, builder: (sctx) => Column(
+    mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Builds with no plan', style: display(20, w: FontWeight.w600)),
+      const SizedBox(height: 4),
+      const Text('Choose the workflow each one follows. Until it has one, none of '
+                 'its work can be assigned.',
+        style: TextStyle(fontSize: 12.5, color: BT.mut, height: 1.35)),
+      const SizedBox(height: 14),
+      Flexible(child: ListView(shrinkWrap: true, children: [
+        for (final p in list)
+          Padding(padding: const EdgeInsets.only(bottom: 9), child: AppCard(
+            onTap: () => Navigator.pop(sctx, p),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(children: [
+              Expanded(child: Text('${p.code} · ${p.name}',
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14.5))),
+              const Icon(Icons.chevron_right_rounded, size: 20, color: BT.mut2),
+            ]))),
+      ])),
+    ]));
 
 /// A "needs you" shortcut card: icon tile, title, live count pill, chevron.
 Widget _shortcut(BuildContext context, {required IconData icon, required Color tint, required String title,
@@ -113,6 +139,7 @@ class _HomeTab extends ConsumerWidget {
     return RefreshIndicator(
       onRefresh: () async {
         ref.invalidate(stagesToAssignProvider);
+        ref.invalidate(buildsNeedingPlanProvider);
         ref.invalidate(pendingApprovalsProvider);
         ref.invalidate(poApprovalsProvider);
         return ref.refresh(pmDashboardProvider.future);
@@ -158,11 +185,30 @@ class _HomeTab extends ConsumerWidget {
                 ]),
               ),
               const SectionLabel('Needs you today'),
+              // A build handed over with no plan (0031) has no stages, so it
+              // added nothing to Assign work — which then said "All done" while
+              // nothing on that build could start. It leads: until it has a
+              // plan, nothing else about it can happen.
+              Consumer(builder: (_, r, __) {
+                final unplanned = r.watch(buildsNeedingPlanProvider).valueOrNull ?? const <Project>[];
+                if (unplanned.isEmpty) return const SizedBox.shrink();
+                final n = unplanned.length;
+                return _shortcut(context, icon: Icons.playlist_add_rounded, tint: BT.amber, title: 'Set up a plan',
+                  pill: StatusPill('$n build${n == 1 ? '' : 's'}', key: ValueKey(n), color: BT.amber),
+                  onTap: () async {
+                    final p = n == 1 ? unplanned.first : await _pickUnplanned(context, unplanned);
+                    if (p == null || !context.mounted) return;
+                    await _openBuild(context, ref, projectId: p.id, initial: p);
+                  });
+              }),
               // Unassigned work blocks the whole build, so it sits above approvals.
               Consumer(builder: (_, r, __) {
                 final n = r.watch(stagesToAssignProvider).valueOrNull?.length ?? 0;
+                // "All done" is only true of builds that have a plan to be done with.
+                final unplanned = r.watch(buildsNeedingPlanProvider).valueOrNull?.isNotEmpty ?? false;
+                final label = n > 0 ? '$n waiting' : unplanned ? 'Nothing yet' : 'All done';
                 return _shortcut(context, icon: Icons.person_add_alt_1_rounded, tint: BT.lav, title: 'Assign work',
-                  pill: StatusPill(n == 0 ? 'All done' : '$n waiting', key: ValueKey(n), color: n == 0 ? BT.mut2 : BT.lav),
+                  pill: StatusPill(label, key: ValueKey(label), color: n == 0 ? BT.mut2 : BT.lav),
                   onTap: () async {
                     // This Consumer can be disposed while the pushed screen is
                     // open (e.g. a background refresh fails), so grab the
