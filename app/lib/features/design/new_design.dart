@@ -15,7 +15,13 @@ class NewDesign extends ConsumerStatefulWidget {
   final String? artifactId;
   final String? lockedProjectLabel;
   final String? lockedType;
-  const NewDesign({super.key, this.artifactId, this.lockedProjectLabel, this.lockedType});
+  /// The design stage this design is for, when it was started from one (the
+  /// Studio's "Start a design"). Preselects its build and links the design to
+  /// that stage rather than to whichever of the designer's stages on the build
+  /// comes first.
+  final WorkshopTask? forStage;
+  const NewDesign({super.key, this.artifactId, this.lockedProjectLabel, this.lockedType,
+    this.forStage});
 
   @override
   ConsumerState<NewDesign> createState() => _NewDesignState();
@@ -39,6 +45,8 @@ class _NewDesignState extends ConsumerState<NewDesign> {
   /// the same list the Studio shows, so it costs nothing extra.
   WorkshopTask? _stageFor(String? projectId) {
     if (projectId == null) return null;
+    final given = widget.forStage;
+    if (given != null && given.projectId == projectId) return given;
     final tasks = ref.read(myTasksProvider).valueOrNull ?? const <WorkshopTask>[];
     for (final t in tasks) {
       if (t.projectId == projectId && t.status != 'done') return t;
@@ -54,6 +62,7 @@ class _NewDesignState extends ConsumerState<NewDesign> {
   void initState() {
     super.initState();
     _type = widget.lockedType ?? 'layout';
+    _projectId = widget.forStage?.projectId;
   }
 
   @override

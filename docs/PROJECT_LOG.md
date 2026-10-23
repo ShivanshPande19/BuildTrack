@@ -395,6 +395,50 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
     past the sheet — and once the list fills with pictures of the floor, the checks where a photo
     genuinely mattered lose their reader too.
 
+### Found in the Phase D simulator walk of one build (DEMO-01), 22 Oct 2026
+Every role, on the live database: onboard with no workflow → the PM builds one and sets up the
+plan (`0035`) → design approved by the client → a supervisor's 15 work items for two fitters →
+store and service stages → approvals → delivery. The chain held; these are what it found. App only. (#86–#87 were
+spotted while fixing the rest.)
+
+72. ✅ ~~**Store had no *My stages*.**~~ A store member given a stage could reach it only from its
+    notification. The Store Inbox carries the shared `MyStagesSection`, as Design and Service do.
+73. ✅ ~~**"Approved — next stage started", every time.**~~ Untrue when another stage in the same step
+    was still open (nothing starts) and on the last stage. The toast now reads the build after
+    `fn_decide_stage` (`approvalOutcome`): *X started*, *Y is still open in this step*, or *every
+    stage on this build is done*.
+74. ✅ ~~**Approvals showed a design stage's photos, not its design.**~~ The card leads with the design
+    the client approved (by `fn_submit_stage`'s own rule, `approvedDesignFor`), and no longer flags
+    "No photos" on a design stage. A stage with work items shows *Work items · 15 of 15 done*, who did
+    them, and what is still open.
+75. ✅ ~~**A supervisor's item given to themself appeared after a re-login.**~~ Adding, assigning,
+    regrouping or removing a work item now refreshes *My work items*; pull-to-refresh on Tasks does too.
+76. ✅ ~~**"No tasks assigned" above a worker's work items.**~~ Hidden while they have open items.
+77. ✅ ~~**PM home said "Assign work · All done" with a build that had no plan.**~~ A **Set up a plan**
+    row leads *Needs you today* (opens the build; a picker when several), and Assign work says
+    *Nothing yet* until the plan exists.
+78. ✅ ~~**Studio's "Start a design" opened New design blank.**~~ It preselects the build and links
+    the design to that stage, not to whichever of the designer's stages on the build came first.
+79. ✅ ~~**Start work popped back to the list.**~~ The stage screen follows the stage from
+    `myTasksProvider` and stays put, so Start turns into Submit — a designer whose design was
+    already approved no longer has to find the stage again in the Studio. For every role.
+80. ✅ ~~**Every workshop member's profile said "Workshop Lead".**~~ *Workshop*; a supervisor reads
+    *Workshop Supervisor*, or their designation.
+81. ✅ ~~**The owner's profile showed "admin".**~~ The card reads `profiles.full_name` first; only
+    accounts made from Add member carry a name in the auth metadata.
+82. ✅ ~~**Roles & permissions said a PM cannot change a build's template.**~~ Since `0035` a PM sets
+    up the plan of a build that has none; what they cannot do is switch a planned build's workflow.
+83. ✅ ~~**The Assign sheet's title sat under the status bar / Dynamic Island.**~~ `useSafeArea`.
+84. ✅ ~~**Add member discarded typed data on back, and hinted "e.g. Welding, Paint" for a PM.**~~
+    Leaving with anything typed asks first; the sub-team example is shown only for Workshop.
+85. ✅ ~~**Onboard showed the delivery date as `2026-12-15`.**~~ *15 Dec 2026*, like everywhere else.
+86. ✅ ~~**A failed work-item change said nothing.**~~ Assign, *runs alongside* and Remove in the
+    supervisor's item sheet were bare awaits, so a refusal was an unhandled error and the sheet just
+    sat there. Each now says why inside the sheet, and a failed *runs alongside* puts its box back.
+87. ✅ ~~**A design stage opened from a notification skipped the client gate.**~~ It opens with
+    `designGate` for a designer, as the Studio does, so the bar says *Waiting on the client* instead
+    of offering a Submit the server refuses.
+
 ---
 
 ## 4. Deploy / environment facts

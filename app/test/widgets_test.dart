@@ -10,7 +10,9 @@ import 'package:buildtrack/core/theme.dart';
 import 'package:buildtrack/data/models.dart';
 import 'package:buildtrack/data/repositories.dart';
 import 'package:buildtrack/features/common/notifications.dart';
+import 'package:buildtrack/features/common/profile.dart';
 import 'package:buildtrack/features/pm/pm_home.dart';
+import 'package:buildtrack/features/workshop/task_detail.dart';
 import 'package:buildtrack/shared/animations.dart';
 import 'package:buildtrack/shared/widgets.dart';
 import 'package:flutter/material.dart';
@@ -612,6 +614,74 @@ void main() {
       expect(find.text('sheet body'), findsNothing);
     });
   });
+
+  group('Stage screen · Start work keeps you on the stage', () {
+    WorkshopTask stage(String status) => WorkshopTask(
+      stageId: 's1', stageName: 'Design & Layout', status: status,
+      projectId: 'p1', projectCode: 'DEMO-01', projectName: 'Demo truck');
+
+    testWidgets('it follows the stage on to in progress and offers Submit', (t) async {
+      // It used to pop straight back to the list after Start, so a designer
+      // whose design was already approved landed in the Studio and had to
+      // find the stage again to submit it.
+      final repo = _FakeWorkshopRepo();
+      await t.pumpWidget(ProviderScope(
+        overrides: [
+          workshopRepoProvider.overrideWithValue(repo),
+          myTasksProvider.overrideWith((ref) async =>
+              [stage(repo.started ? 'in_progress' : 'todo')]),
+          stageBundleProvider.overrideWith((ref, id) async =>
+              StageBundle(checklist: const [], photos: const [], parts: const [], delays: const [])),
+        ],
+        child: MaterialApp(
+          theme: ThemeData(useMaterial3: true),
+          home: Builder(builder: (ctx) => Scaffold(body: Center(child: TextButton(
+            onPressed: () => Navigator.of(ctx).push(MaterialPageRoute(
+              builder: (_) => TaskDetailScreen(task: stage('todo'), showInstallPart: false))),
+            child: const Text('open'))))),
+        ),
+      ));
+      await t.tap(find.text('open'));
+      await t.pumpAndSettle();
+      expect(find.text('Start work'), findsOneWidget);
+
+      await t.tap(find.text('Start work'));
+      await t.pumpAndSettle();
+      expect(repo.started, isTrue);
+      expect(find.text('Submit for approval'), findsOneWidget);
+      expect(find.text('Start work'), findsNothing);
+      expect(find.text('open'), findsNothing, reason: 'still on the stage, not popped');
+    });
+  });
+
+  group('Profile · the role pill', () {
+    MyProfile me({bool supervisor = false, String? designation}) => MyProfile(
+      id: 'u1', name: 'Vikas', email: 'v@az.co', role: 'workshop', status: 'active',
+      isSupervisor: supervisor, designation: designation);
+
+    test('a workshop member is "Workshop", not "Workshop Lead"', () {
+      expect(ProfileScreen.roleLabel('workshop', me: me()), 'Workshop');
+      expect(ProfileScreen.roleLabel('workshop'), 'Workshop');
+    });
+
+    test('a supervisor is called one, by their designation if they have one', () {
+      expect(ProfileScreen.roleLabel('workshop', me: me(supervisor: true)), 'Workshop Supervisor');
+      expect(ProfileScreen.roleLabel('workshop', me: me(supervisor: true, designation: 'Floor lead')),
+        'Floor lead');
+    });
+
+    test('other roles are unchanged', () {
+      expect(ProfileScreen.roleLabel('pm'), 'Project Manager');
+      expect(ProfileScreen.roleLabel('admin'), 'Owner · Admin');
+      expect(ProfileScreen.roleLabel(null), 'Team member');
+    });
+  });
+}
+
+class _FakeWorkshopRepo extends WorkshopRepo {
+  bool started = false;
+  @override
+  Future<void> startTask(String stageId) async => started = true;
 }
 
 /// Counts how many times a tab body is created, so tests can tell "kept alive

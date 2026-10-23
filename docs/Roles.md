@@ -88,7 +88,8 @@ The database does let an admin do these through the RPCs.
 - **Team:** read-only workload (open stages per active workshop / design / store / service member, busiest first).
 - **＋ Assign work.**
 
-**PM can't:** create builds, take over another PM's build, or change a build's code / client / template (DB-enforced).
+**PM can't:** create builds, take over another PM's build, change a build's code / client, or switch a build to another
+workflow once it has a plan (DB-enforced). A build handed over with *no* plan is the PM's to set up (0035, `fn_set_up_plan`).
 Templates have no PM screen (§ gaps).
 
 ---

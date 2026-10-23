@@ -60,8 +60,15 @@ class _TasksTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tasks = ref.watch(myTasksProvider);
+    // A worker holds work items, not stages (0033). With open items below,
+    // "No tasks assigned" above them read as "you have nothing to do".
+    final hasWorkItems = ref.watch(myStageTasksProvider).valueOrNull
+        ?.any((i) => !i.task.isDone) ?? false;
     return RefreshIndicator(
-      onRefresh: () async => ref.refresh(myTasksProvider.future),
+      onRefresh: () async {
+        ref.invalidate(myStageTasksProvider);
+        return ref.refresh(myTasksProvider.future);
+      },
       child: tasks.when(
         loading: () => ListView(padding: _pad, children: [
           _wsHeader(context, 'My Tasks'), const SizedBox(height: 20),
@@ -97,11 +104,11 @@ class _TasksTab extends ConsumerWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _wsHeader(context, 'My Tasks'),
                 const SizedBox(height: 20),
-                if (list.isEmpty)
+                if (list.isEmpty && !hasWorkItems)
                   const EmptyState(icon: Icons.checklist_rounded, tint: BT.amber,
                     title: 'No tasks assigned',
                     subtitle: 'Stages your PM assigns to you will show here.')
-                else if (active.isEmpty && next.isEmpty)
+                else if (active.isEmpty && next.isEmpty && !hasWorkItems)
                   const EmptyState(icon: Icons.check_circle_outline_rounded, tint: BT.lime,
                     title: 'All done', subtitle: 'No active or queued stages right now.'),
                 if (active.isNotEmpty) const SectionLabel('In progress'),

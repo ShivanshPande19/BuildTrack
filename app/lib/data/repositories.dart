@@ -112,6 +112,7 @@ void invalidateBuild(WidgetRef ref, String projectId) {
   ref.invalidate(pmScheduleProvider);                 // PM Schedule
   ref.invalidate(pendingApprovalsProvider);
   ref.invalidate(stagesToAssignProvider);
+  ref.invalidate(buildsNeedingPlanProvider);          // PM home, once a plan is set up
 }
 
 /// Turns a Supabase/Postgres failure into something a human can act on.
@@ -365,6 +366,20 @@ class ProjectsRepo {
     return out;
   }
 
+  /// Which of [projects] have no plan yet — handed over without a workflow
+  /// (0031), so they have no stages, and nothing on them can be assigned until
+  /// their PM sets one up (0035). A delivered build with no stages is history,
+  /// not a gap, exactly as [BuildSchedule.needsPlan] reads it.
+  Future<List<Project>> withoutPlan(List<Project> projects) async {
+    final live = projects.where((p) => p.status != 'delivered').toList();
+    if (live.isEmpty) return [];
+    final d = await sb.from('stages')
+        .select('project_id')
+        .inFilter('project_id', [for (final p in live) p.id]);
+    final planned = {for (final r in (d as List)) r['project_id'] as String};
+    return [for (final p in live) if (!planned.contains(p.id)) p];
+  }
+
   /// The builds a PM has actually put me on (I hold at least one stage).
   ///
   /// This is what "my work" means for an execution role. Screens must scope to
@@ -513,7 +528,8 @@ class ProjectsRepo {
         // that cross the same pair already name the FK; this one was missed.
         .select('id,stage_id,status,created_at,approver_id,'
                 'profiles:submitted_by(full_name),'
-                'stages!inner(name,projects!stages_project_id_fkey!inner(code))')
+                'stages!inner(name,discipline,project_id,'
+                'projects!stages_project_id_fkey!inner(code))')
         .eq('status', 'pending')
         .eq('approver_id', uid)
         .order('created_at', ascending: true);
@@ -526,7 +542,9 @@ class ProjectsRepo {
         id: r['id'] as String,
         stageId: r['stage_id'] as String,
         stageName: st?['name'] as String? ?? 'Stage',
+        projectId: st?['project_id'] as String? ?? '',
         projectCode: pr?['code'] as String? ?? '',
+        discipline: st?['discipline'] as String?,
         submittedBy: by?['full_name'] as String?,
         submittedAt: parseDate(r['created_at']),
       );
@@ -972,6 +990,15 @@ final stagesToAssignProvider = FutureProvider<List<AssignableStage>>((ref) async
   final repo = ref.read(projectsRepoProvider);
   final mine = await ref.read(pmRepoProvider).myProjects();
   return repo.stagesNeedingAssignment(mine);
+});
+
+/// The signed-in PM's builds that still need a plan. Counted on the PM's home
+/// next to Assign work: a build with no stages has nothing to assign, so it
+/// read as "All done" while nothing on it could start.
+final buildsNeedingPlanProvider = FutureProvider<List<Project>>((ref) async {
+  ref.watch(currentUserIdProvider);
+  final mine = await ref.read(pmRepoProvider).myProjects();
+  return ref.read(projectsRepoProvider).withoutPlan(mine);
 });
 
 /// Pending stage-completion approvals for the signed-in PM's projects.
@@ -1593,7 +1620,7 @@ class ClientRepo {
 
   Future<List<DesignRow>> designs(String projectId) async {
     final rows = await sb.from('design_artifacts')
-        .select('id,type,status,current_version_id,client_feedback')
+        .select('id,type,status,current_version_id,client_feedback,stage_id')
         .eq('project_id', projectId);
     final list = (rows as List).cast<Map<String, dynamic>>();
     final verIds = <String>[
@@ -1617,6 +1644,7 @@ class ClientRepo {
         imageUrl: v?['file_url'] as String?,
         changeNote: v?['change_note'] as String?,
         clientFeedback: r['client_feedback'] as String?,
+        stageId: r['stage_id'] as String?,
       );
     }).toList();
   }

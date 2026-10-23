@@ -7,6 +7,7 @@ import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 import '../../shared/role_header.dart';
 import '../../shared/animations.dart';
+import '../../shared/my_stages.dart';
 import 'component_detail.dart';
 import 'log_component.dart';
 
@@ -81,6 +82,7 @@ class _InboxTab extends ConsumerWidget {
       onRefresh: () async {
         ref.invalidate(purchaseOrdersProvider);
         ref.invalidate(componentsProvider);
+        ref.invalidate(myTasksProvider);
         return ref.refresh(stockProvider.future);
       },
       child: ListView(padding: _pad, children: [
@@ -125,6 +127,17 @@ class _InboxTab extends ConsumerWidget {
                 items: [for (final o in coming) _comingCard(o)]),
             ],
           ], stepMs: 40)),
+        ),
+
+        // Build stages a PM assigned to the Store — material intake, a stock
+        // check. Without this a store member could reach one only from its
+        // notification, and it sat on 'todo' the way Design's and Service's
+        // stages used to (see MyStagesSection).
+        const MyStagesSection(
+          label: 'My build stages',
+          tint: BT.sky,
+          emptySubtitle: 'When a project manager assigns you a stage on a build, '
+                         'you can start it and submit it here.',
         ),
 
         // Low stock is a standing condition, so it sits below the things that

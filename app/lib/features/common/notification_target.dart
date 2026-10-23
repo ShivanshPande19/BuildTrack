@@ -70,7 +70,10 @@ Future<bool> openNotificationTarget(
       if (!context.mounted) return false;
       for (final t in tasks) {
         if (t.stageId == id) {
-          await push(TaskDetailScreen(task: t, showInstallPart: role == 'workshop'));
+          // A designer's stage finishes on the client's approval (0028), so it
+          // opens with the same "waiting on the client" gate as the Studio's.
+          await push(TaskDetailScreen(task: t, showInstallPart: role == 'workshop',
+            designGate: role == 'design'));
           return true;
         }
       }

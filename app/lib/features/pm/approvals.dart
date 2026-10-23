@@ -9,10 +9,12 @@ import '../../shared/widgets.dart';
 /// PM — Approvals (p7): stage completions submitted by workshop.
 ///
 /// Each card now shows the *evidence* the assignee submitted — the site photos,
-/// the checklist, and the parts installed on that stage — so the PM decides on
-/// what was actually done rather than on a stage name alone. Approving blind was
-/// the real risk here: on a factory floor a "done" with no photo and an
-/// unfinished checklist is exactly what a PM needs to catch before it moves on.
+/// the checklist, the work items and who finished them, the parts installed on
+/// that stage, and on a design stage the design the client approved — so the
+/// PM decides on what was actually done rather than on a stage name alone.
+/// Approving blind was the real risk here: on a factory floor a "done" with no
+/// photo and an unfinished checklist is exactly what a PM needs to catch before
+/// it moves on.
 class ApprovalsScreen extends ConsumerWidget {
   const ApprovalsScreen({super.key});
 
@@ -91,7 +93,7 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       await Future<void>.delayed(Motion.fast);
       if (mounted) setState(() => _folded = true);
       await Future<void>.delayed(Motion.base);
-      // Approving marks the stage done, auto-starts the next one and moves the
+      // Approving marks the stage done, can start the next step and moves the
       // build's progress and status — so the owner's fleet view and Command
       // Center and the PM's Schedule are all stale too, not just this queue.
       // (A ProviderContainer, not a WidgetRef: this card can be disposed while
@@ -105,13 +107,26 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
         ..invalidate(workloadProvider)
         ..invalidate(fleetProvider)
         ..invalidate(opsBoardProvider)
+        ..invalidate(projectDetailProvider(a.projectId))
         ..invalidate(stageBundleProvider(a.stageId))
         ..invalidate(notificationsProvider);
+      // What the approval did, read off the build as it now stands rather
+      // than assumed: since 0031 the next step opens only once every stage in
+      // this one is approved, and after the last stage there is no next one.
+      String? outcome;
+      if (approve && a.projectId.isNotEmpty) {
+        try {
+          final d = await container.read(projectDetailProvider(a.projectId).future);
+          outcome = approvalOutcome(d.stages, a.stageId);
+        } catch (_) {
+          // The decision is made either way; the toast just says less.
+        }
+      }
       if (messenger.mounted) {
         messenger.showSnackBar(SnackBar(
           backgroundColor: BT.ink,
           content: Text(approve
-            ? '${a.projectCode} · ${a.stageName} approved — next stage started'
+            ? '${a.projectCode} · ${a.stageName} approved${outcome == null ? '' : ' — $outcome'}'
             : '${a.projectCode} · ${a.stageName} sent back for rework')));
       }
     } catch (e) {
@@ -236,11 +251,17 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       const SizedBox(height: 14),
 
+      // A design stage's deliverable is the design the client approved (0028)
+      // — the thing the PM is actually signing off — so it leads.
+      if (a.isDesign) _designEvidence(context),
+
       // Photos — the fastest read on whether the work is really done. No photo
-      // is itself a signal, so it is called out rather than left blank.
-      if (b.photos.isEmpty)
-        _flag(Icons.no_photography_outlined, 'No photos attached', BT.amber)
-      else
+      // is itself a signal, so it is called out rather than left blank — except
+      // on a design stage, whose evidence is the design above.
+      if (b.photos.isEmpty && !a.isDesign) ...[
+        _flag(Icons.no_photography_outlined, 'No photos attached', BT.amber),
+        const SizedBox(height: 12),
+      ] else if (b.photos.isNotEmpty) ...[
         SizedBox(height: 76, child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: b.photos.length,
@@ -263,8 +284,8 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
             );
           },
         )),
-
-      const SizedBox(height: 12),
+        const SizedBox(height: 12),
+      ],
 
       // Checklist — "5 of 6 done", and an incomplete list is worth pausing on.
       if (total > 0) ...[
@@ -293,6 +314,8 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
       ] else
         _flag(Icons.checklist_rtl_rounded, 'No checklist on this stage', BT.mut2),
 
+      _workItemsEvidence(),
+
       // Parts installed on this stage (Hero #2 traceability, at a glance).
       if (b.parts.isNotEmpty) ...[
         const SizedBox(height: 6),
@@ -304,6 +327,105 @@ class _ApprovalCardState extends ConsumerState<_ApprovalCard> {
         ]),
       ],
     ]);
+  }
+
+  /// The design the client approved for this stage, by the same rule the
+  /// submit was checked against. fn_submit_stage refuses a design stage
+  /// without one, so the coral flag is the case where that has changed since.
+  Widget _designEvidence(BuildContext context) {
+    final designs = ref.watch(truckDesignsProvider(a.projectId));
+    return designs.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => Padding(padding: const EdgeInsets.only(bottom: 12),
+        child: Text('Could not load the design.\n${friendlyError(e)}',
+          style: const TextStyle(color: BT.coral, fontSize: 12))),
+      data: (list) {
+        final d = approvedDesignFor(a.stageId, list);
+        if (d == null) {
+          return Padding(padding: const EdgeInsets.only(bottom: 12),
+            child: _flag(Icons.palette_outlined, 'No client-approved design', BT.coral));
+        }
+        final type = d.type.isEmpty ? 'Design' : '${d.type[0].toUpperCase()}${d.type.substring(1)}';
+        final preview = d.imageUrl;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: GestureDetector(
+            onTap: preview == null ? null
+              : () => _openPhoto(context, StagePhoto(preview, '$type · approved design')),
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: BT.card2, borderRadius: BorderRadius.circular(13)),
+              child: Row(children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: preview == null
+                    ? Container(width: 56, height: 56, color: BT.card, alignment: Alignment.center,
+                        child: const Icon(Icons.view_in_ar_rounded, color: BT.mut, size: 22))
+                    : Image.network(preview, width: 56, height: 56, fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Container(width: 56, height: 56,
+                          color: BT.card, alignment: Alignment.center,
+                          child: const Icon(Icons.broken_image_outlined, color: BT.mut2, size: 20))),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text('$type design', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  const Text('Approved by the client',
+                    style: TextStyle(fontSize: 12, color: BT.mut)),
+                ])),
+                const Icon(Icons.verified_rounded, size: 18, color: Color(0xFF3A4A12)),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// A stage broken into work items (0033): how many are finished, and by
+  /// whom. The person who submits the stage is the supervisor; the work is
+  /// other people's, and this is where the PM sees whose.
+  Widget _workItemsEvidence() {
+    final items = ref.watch(stageTasksProvider(a.stageId));
+    return items.when(
+      loading: () => const SizedBox.shrink(),
+      error: (e, _) => Padding(padding: const EdgeInsets.only(top: 8),
+        child: Text('Could not load the work items.\n${friendlyError(e)}',
+          style: const TextStyle(color: BT.coral, fontSize: 12))),
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        final done = list.where((t) => t.isDone).toList();
+        final allDone = done.length == list.length;
+        final who = <String>{
+          for (final t in done)
+            if ((t.doneByName ?? t.assigneeName) != null) (t.doneByName ?? t.assigneeName)!,
+        };
+        final open = [for (final t in list) if (!t.isDone) t.title];
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(allDone ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
+                size: 16, color: allDone ? BT.ink : BT.amber),
+              const SizedBox(width: 6),
+              Text('Work items · ${done.length} of ${list.length} done',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600,
+                  color: allDone ? BT.ink : const Color(0xFF8A6D1E))),
+            ]),
+            if (who.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 4, left: 22),
+                child: Text('By ${who.join(', ')}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: BT.mut, height: 1.3))),
+            if (open.isNotEmpty)
+              Padding(padding: const EdgeInsets.only(top: 3, left: 22),
+                child: Text('Still open: ${open.join(', ')}',
+                  maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: BT.ink, height: 1.3))),
+          ]),
+        );
+      },
+    );
   }
 
   Widget _flag(IconData icon, String label, Color tint) => Container(
