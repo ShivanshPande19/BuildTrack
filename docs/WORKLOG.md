@@ -11,10 +11,10 @@ verified through CI, not locally).
 
 ---
 
-## 22 Oct 2026: Fourteen fixes from the Phase D simulator walk ✅ (app only, no migration)
+## 22–23 Oct 2026: Fourteen fixes from the Phase D simulator walk, plus two found on the way ✅ (app only, no migration)
 
 **What was asked.** One build (DEMO-01) walked end to end on the live database through every role
-worked; fix the UI and flow gaps it turned up. `PROJECT_LOG.md` §3 #72–#85 has each one.
+worked; fix the UI and flow gaps it turned up. `PROJECT_LOG.md` §3 #72–#87 has each one.
 
 **What shipped.**
 - ✅ Flow: Store gets *My build stages*; the PM's approve toast says what the approval actually did
@@ -26,13 +26,17 @@ worked; fix the UI and flow gaps it turned up. `PROJECT_LOG.md` §3 #72–#85 ha
 - ✅ Copy / UI: profile pill (*Workshop* / *Workshop Supervisor*) and full name from `profiles`;
   Roles & permissions matches `0035`; the Assign sheet clears the status bar; Add member asks before
   discarding and only offers Workshop's sub-team example to Workshop; Onboard's date reads *15 Dec 2026*.
+- ✅ Found on the way (23 Oct): a failed assign / regroup / remove in the work-item sheet now says
+  why in the sheet instead of failing silently; a design stage opened from a notification gets the
+  same client gate as the Studio.
 
 **Verified.** `flutter analyze` 0 errors / 0 warnings (the 42 infos are the same as before); `flutter
 test` 266/266, 18 of them new: `approvalOutcome`, `approvedDesignFor`, `MyProfile`'s designation,
 the profile pill, and a widget test that taps Start work and checks the screen is still there
-offering Submit (it fails on the old code).
+offering Submit (it fails on the old code). #86 has no widget test: the item sheet is reached
+through rows that read the signed-in user from Supabase, which the test harness does not start.
 
-⏭️ **Next:** the same walk again on the simulator for #72–#85.
+⏭️ **Next:** the same walk again on the simulator for #72–#87.
 
 ---
 

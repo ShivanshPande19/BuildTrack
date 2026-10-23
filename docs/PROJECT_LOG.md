@@ -398,7 +398,8 @@ bypassed, and 22–34 are smaller. Fixed items are ticked ✅ in place, so the n
 ### Found in the Phase D simulator walk of one build (DEMO-01), 22 Oct 2026
 Every role, on the live database: onboard with no workflow → the PM builds one and sets up the
 plan (`0035`) → design approved by the client → a supervisor's 15 work items for two fitters →
-store and service stages → approvals → delivery. The chain held; these are what it found. App only.
+store and service stages → approvals → delivery. The chain held; these are what it found. App only. (#86–#87 were
+spotted while fixing the rest.)
 
 72. ✅ ~~**Store had no *My stages*.**~~ A store member given a stage could reach it only from its
     notification. The Store Inbox carries the shared `MyStagesSection`, as Design and Service do.
@@ -431,6 +432,12 @@ store and service stages → approvals → delivery. The chain held; these are w
 84. ✅ ~~**Add member discarded typed data on back, and hinted "e.g. Welding, Paint" for a PM.**~~
     Leaving with anything typed asks first; the sub-team example is shown only for Workshop.
 85. ✅ ~~**Onboard showed the delivery date as `2026-12-15`.**~~ *15 Dec 2026*, like everywhere else.
+86. ✅ ~~**A failed work-item change said nothing.**~~ Assign, *runs alongside* and Remove in the
+    supervisor's item sheet were bare awaits, so a refusal was an unhandled error and the sheet just
+    sat there. Each now says why inside the sheet, and a failed *runs alongside* puts its box back.
+87. ✅ ~~**A design stage opened from a notification skipped the client gate.**~~ It opens with
+    `designGate` for a designer, as the Studio does, so the bar says *Waiting on the client* instead
+    of offering a Submit the server refuses.
 
 ---
 

@@ -1255,17 +1255,50 @@ class _SubStages extends ConsumerWidget {
     final above = idx > 0 ? all[idx - 1] : null;
     var runsWithAbove = above != null && t.step == above.step;
 
+    // A write that fails says so here, in the sheet, the way the stage's own
+    // Assign sheet does. These were bare awaits in tap handlers, so a refusal
+    // — the stage approved in the meantime, a dropped connection — was an
+    // unhandled error: nothing happened and nothing said why. A snackbar
+    // would land behind the sheet, so the sheet says it.
+    String? error;
+    Future<bool> attempt(BuildContext sctx, StateSetter setLocal,
+        Future<void> Function() write) async {
+      if (error != null) setLocal(() => error = null);
+      try {
+        await write();
+        return true;
+      } catch (e) {
+        if (sctx.mounted) setLocal(() => error = friendlyError(e));
+        return false;
+      }
+    }
+
     await showAppSheet<void>(context: context, builder: (sctx) =>
       StatefulBuilder(builder: (sctx, setLocal) => Column(
         mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(t.title, style: display(19, w: FontWeight.w600)),
+          if (error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(12)),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Icon(Icons.info_outline_rounded, size: 15, color: BT.coral),
+                const SizedBox(width: 7),
+                Expanded(child: Text(error!,
+                  style: const TextStyle(color: BT.ink, fontSize: 12.5, height: 1.35))),
+              ]),
+            ),
+          ],
           const SizedBox(height: 14),
           const SectionLabel('Who is doing it'),
           _AssigneePicker(
             current: t.assigneeId,
             onPick: (uid) async {
-              await ref.read(workshopRepoProvider).assignStageTask(t.id, uid);
+              final ok = await attempt(sctx, setLocal,
+                () => ref.read(workshopRepoProvider).assignStageTask(t.id, uid));
+              if (!ok) return;
               ref.invalidate(stageTasksProvider(task.stageId));
               // "My work items" is somebody's whole list — the supervisor's
               // own, when they give an item to themselves. It must not wait
@@ -1281,8 +1314,13 @@ class _SubStages extends ConsumerWidget {
                 final next = !runsWithAbove;
                 setLocal(() => runsWithAbove = next);
                 // Joining the step above, or taking its own back.
-                await ref.read(workshopRepoProvider)
-                    .setStageTaskStep(t.id, next ? above.step : t.ord);
+                final ok = await attempt(sctx, setLocal, () => ref.read(workshopRepoProvider)
+                    .setStageTaskStep(t.id, next ? above.step : t.ord));
+                if (!ok) {
+                  // Put the box back the way the server still has it.
+                  if (sctx.mounted) setLocal(() => runsWithAbove = !next);
+                  return;
+                }
                 ref.invalidate(stageTasksProvider(task.stageId));
                 // What is waiting on what changed, and the worker's list shows it.
                 ref.invalidate(myStageTasksProvider);
@@ -1304,7 +1342,9 @@ class _SubStages extends ConsumerWidget {
           const SizedBox(height: 20),
           SecondaryButton('Remove this item', icon: Icons.delete_outline_rounded,
             onTap: () async {
-              await ref.read(workshopRepoProvider).removeStageTask(t.id);
+              final ok = await attempt(sctx, setLocal,
+                () => ref.read(workshopRepoProvider).removeStageTask(t.id));
+              if (!ok) return;
               ref.invalidate(stageTasksProvider(task.stageId));
               ref.invalidate(myStageTasksProvider);
               if (sctx.mounted) Navigator.pop(sctx);
