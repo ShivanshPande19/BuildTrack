@@ -4,7 +4,7 @@ import '../../core/theme.dart';
 import '../../data/repositories.dart';
 import '../../shared/widgets.dart';
 
-/// Procurement — add a new vendor.
+/// Procurement — add a new vendor. Pops with the new vendor's id.
 class AddVendorScreen extends ConsumerStatefulWidget {
   const AddVendorScreen({super.key});
   @override
@@ -30,7 +30,7 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
     setState(() { _saving = true; _error = null; });
     try {
       String? t(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
-      await ref.read(procurementRepoProvider).addVendor(
+      final id = await ref.read(procurementRepoProvider).addVendor(
         name: _name.text.trim(),
         category: t(_category),
         avgLead: int.tryParse(_lead.text.trim()) ?? 0,
@@ -41,7 +41,7 @@ class _AddVendorScreenState extends ConsumerState<AddVendorScreen> {
       );
       ref.invalidate(vendorsProvider);
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, id);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           backgroundColor: BT.ink, content: Text('${_name.text.trim()} added.')));
       }

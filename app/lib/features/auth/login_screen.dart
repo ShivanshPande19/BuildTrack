@@ -29,7 +29,7 @@ class _LoginScreenState extends State<LoginScreen> {
       // lists. Signing them back out also stops a dead session lingering.
       final status = await fetchMyStatus();
       if (status == 'disabled') {
-        await sb.auth.signOut();
+        await signOutHere();
         if (!mounted) return;
         Haptic.tap();
         setState(() => _error = 'This account has been disabled. '

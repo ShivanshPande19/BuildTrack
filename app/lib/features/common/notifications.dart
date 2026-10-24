@@ -86,7 +86,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       // Clearing it straight after the write let the stale unread rows show
       // again for a beat (fade out, pop back, fade out).
       ref.invalidate(notificationsProvider);
-      await ref.read(notificationsProvider.future);
+      // The write landed; if the refetch hangs, stop waiting for it rather
+      // than leaving the button on "Marking…".
+      await ref.read(notificationsProvider.future)
+          .timeout(const Duration(seconds: 20), onTimeout: () => const []);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(friendlyError(e))));

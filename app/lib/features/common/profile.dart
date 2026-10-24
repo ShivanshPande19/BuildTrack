@@ -160,7 +160,7 @@ class ProfileScreen extends ConsumerWidget {
 
   Widget _logoutRow(BuildContext context) => GestureDetector(
     behavior: HitTestBehavior.opaque,
-    onTap: () => sb.auth.signOut().then((_) {
+    onTap: () => signOutHere().then((_) {
       if (context.mounted) context.go('/login');
     }),
     child: Row(children: [

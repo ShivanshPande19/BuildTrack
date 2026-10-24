@@ -304,7 +304,7 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
       _setRow(Icons.shield_outlined, 'What I can do here',
         () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const RolesReferenceScreen()))),
       const SizedBox(height: 20),
-      PressableScale(pressedScale: 0.98, haptic: true, onTap: () => sb.auth.signOut().then((_) { if (mounted) context.go('/login'); }),
+      PressableScale(pressedScale: 0.98, haptic: true, onTap: () => signOutHere().then((_) { if (mounted) context.go('/login'); }),
         child: Row(children: [
           Container(width: 40, height: 40, alignment: Alignment.center, decoration: BoxDecoration(color: const Color(0xFFFBE4E0), borderRadius: BorderRadius.circular(12)),
             child: const Icon(Icons.logout_rounded, size: 19, color: BT.coral)),
