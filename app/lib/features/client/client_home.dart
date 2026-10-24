@@ -28,9 +28,14 @@ class _ClientHomeState extends ConsumerState<ClientHome> {
   bool _reopening = false;
   static const _labels = ['My Trucks', 'Support', 'Profile'];
 
-  void _raise(List<Project> trucks) {
+  void _raise(List<Project> all) {
+    // A service request is for a truck already handed over (0036): one still
+    // being built is the PM's, and the server refuses a request on it.
+    final trucks = all.where((t) => t.status == 'delivered').toList();
     if (trucks.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(backgroundColor: BT.coral, content: Text('No truck to raise a request for.')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: BT.coral, content: Text(all.isEmpty
+        ? 'No truck to raise a request for.'
+        : 'You can raise a request once your truck is delivered. Until then, your project manager is your contact.')));
       return;
     }
     if (trucks.length == 1) {

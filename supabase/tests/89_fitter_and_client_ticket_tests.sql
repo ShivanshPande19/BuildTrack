@@ -1,6 +1,6 @@
 -- ============================================================================
--- Migration 0036 — the fitter records the part they fit; a client's request is
--- about their own truck; a visit is told in India time.
+-- Migration 0036 — the fitter records the part they fit; a service request is
+-- about a delivered truck (the client's own); a visit is told in India time.
 --
 -- Runs after 10_workflow_tests.sql (t_assert / t_expect_error, the users) and
 -- 20_service_tests.sql (the technician 50…02). Builds its own fixtures.
@@ -114,13 +114,35 @@ select t_expect_error($$
           '50000000-0000-0000-0000-000000000002')$$,
   'K4 …nor pick the technician themselves');
 
+-- Their second truck is still being built.
+reset role; set test.uid = '';
+insert into projects (id, code, name, client_account_id, status, target_delivery_date)
+values ('b4000000-0000-0000-0000-0000000000a3','AZ-WIP','Truck In Build',
+        '99999999-0000-0000-0000-000000000001','on_track', current_date + 30);
+set role authenticated;
+
+set test.uid = 'f0000000-0000-0000-0000-000000000001';        -- the client
+select t_expect_error($$
+  insert into tickets (project_id, category, description, status)
+  values ('b4000000-0000-0000-0000-0000000000a3','other','Not here yet','open')$$,
+  'K5 …nor on their own truck while it is still being built');
+
+set test.uid = 'a0000000-0000-0000-0000-000000000001';        -- admin, on the client's behalf
+select t_expect_error($$
+  select public.fn_create_ticket('b4000000-0000-0000-0000-0000000000a3', 'other', 'Not here yet')$$,
+  'K6 service cannot log one on a build in progress either');
+select t_assert(public.fn_create_ticket('b4000000-0000-0000-0000-0000000000a2', 'cosmetic',
+                  'Scratch on the door') is not null,
+                'K7 …and still can on a delivered truck');
+
 
 \echo ''
 \echo '=== 0036 · a visit is told in India time ========================='
 
 set test.uid = 'a0000000-0000-0000-0000-000000000001';        -- admin books it
 select public.fn_schedule_visit(
-  (select id from tickets where project_id = 'b4000000-0000-0000-0000-0000000000a2'),
+  (select id from tickets where project_id = 'b4000000-0000-0000-0000-0000000000a2'
+                          and category = 'electrical'),
   '50000000-0000-0000-0000-000000000002', '2026-10-26 05:30:00+00');
 
 reset role; set test.uid = '';

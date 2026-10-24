@@ -2,7 +2,8 @@
 -- Migration 0036 — three things the PO → store → install → service walk found
 --
 --   1. The worker who fits a part can record fitting it.
---   2. A client raises a request on their own truck, as a new request.
+--   2. A service request is about a delivered truck — the client's own, if
+--      the client raises it — and starts as a new request.
 --   3. A visit time is told in India time, not UTC.
 --   4. A delivered truck is not on the To Order list.
 --
@@ -90,13 +91,19 @@ end $$;
 
 
 -- ════════════════════════════════════════════════════════════════════════════
--- 2. A client's request is about their own truck, and starts as a request
+-- 2. A client's request is about their own delivered truck, and starts as a
+--    request
 --
 -- p_tickets_client_new (0002) checked only `raised_by = auth.uid()`. So a
 -- client could insert a ticket against any build id — another customer's
 -- truck — and every service member was notified about it (t_ticket_created).
 -- And since the row was theirs to write, they could also insert it already
 -- resolved, or already assigned to a technician of their choosing.
+--
+-- And a truck still being built is not in service yet: a problem with it goes
+-- to the PM building it, not the service queue. Service's own "New ticket"
+-- has only ever listed delivered trucks; a client could raise one on a build
+-- in progress. §5 holds service to the same rule.
 --
 -- The app's "Raise a request" sends project, category, description, priority
 -- and status 'open'; that is all a client may set. The ticket number, SLA and
@@ -108,7 +115,8 @@ create policy p_tickets_client_new on tickets for insert with check (
   raised_by = auth.uid()
   and exists (select 1 from projects p
                where p.id = tickets.project_id
-                 and p.client_account_id = public.my_client_account())
+                 and p.client_account_id = public.my_client_account()
+                 and p.status = 'delivered')
   and status = 'open'
   and assigned_to is null
   and linked_component_id is null
@@ -210,3 +218,39 @@ create or replace view public.v_order_due with (security_invoker = on) as
   where pr.status = 'pending'
     and p.status <> 'delivered'
   order by pr.order_by_date asc;
+
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- 5. fn_create_ticket — service raises one on a delivered truck too
+--
+-- The same rule as §2, for a request Service logs on a client's behalf. The
+-- app only offers delivered trucks there already; this makes it the rule.
+--
+-- Body is 0010's, with the delivered check added after the project check.
+-- ════════════════════════════════════════════════════════════════════════════
+
+create or replace function public.fn_create_ticket(
+  p_project uuid, p_category ticket_category, p_description text,
+  p_priority ticket_priority default 'medium', p_component uuid default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  if not public.has_role(array['admin', 'service']) then
+    raise exception 'Only the service team can raise a ticket on a client''s behalf.' using errcode = '42501';
+  end if;
+  if p_project is null then raise exception 'Pick the truck this request is about.'; end if;
+  if not exists (select 1 from projects where id = p_project and status = 'delivered') then
+    raise exception 'Service requests open once the truck is delivered — until then, this goes to the build''s PM.';
+  end if;
+  if nullif(btrim(coalesce(p_description, '')), '') is null then
+    raise exception 'Describe the issue before saving.';
+  end if;
+
+  insert into tickets (project_id, category, description, priority, linked_component_id,
+                       raised_by, status)
+  values (p_project, p_category, btrim(p_description), p_priority, p_component,
+          auth.uid(), 'open')
+  returning id into v_id;
+
+  return v_id;
+end $$;
