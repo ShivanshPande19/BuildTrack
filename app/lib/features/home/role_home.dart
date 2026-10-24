@@ -55,7 +55,7 @@ class RoleHome extends ConsumerWidget {
             onRetry: () => ref.invalidate(myRoleProvider)),
           const SizedBox(height: 16),
           SecondaryButton('Sign out', icon: Icons.logout_rounded,
-            onTap: () => sb.auth.signOut().then((_) {
+            onTap: () => signOutHere().then((_) {
               if (context.mounted) context.go('/login');
             })),
         ]),
@@ -88,7 +88,7 @@ class RoleHome extends ConsumerWidget {
                   const SizedBox(height: 2),
                   Text(title, style: display(29, w: FontWeight.w500)),
                 ]),
-                GestureDetector(onTap: () => sb.auth.signOut().then((_) {
+                GestureDetector(onTap: () => signOutHere().then((_) {
                     if (context.mounted) context.go('/login');
                   }),
                   child: CircleAvatar(radius: 21, backgroundColor: roleColor(role),
@@ -185,7 +185,7 @@ class _NoRoleScreen extends StatelessWidget {
           style: const TextStyle(color: BT.mut, fontSize: 12.5)),
         const SizedBox(height: 16),
         PrimaryButton('Sign out', icon: Icons.logout_rounded, bg: BT.card2,
-          onTap: () => sb.auth.signOut().then((_) {
+          onTap: () => signOutHere().then((_) {
             if (context.mounted) context.go('/login');
           })),
       ]),

@@ -139,8 +139,14 @@ class ClientTruckDetail extends ConsumerWidget {
           ],
 
           const SizedBox(height: 18),
-          PrimaryButton('Raise a request', icon: Icons.headset_mic_rounded, bg: BT.ink, fg: BT.card,
-            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RaiseRequest(projectId: project.id)))),
+          // Service requests open at delivery (0036); before that the build
+          // is the PM's.
+          if (project.status == 'delivered')
+            PrimaryButton('Raise a request', icon: Icons.headset_mic_rounded, bg: BT.ink, fg: BT.card,
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RaiseRequest(projectId: project.id))))
+          else
+            const Text('You can raise a service request once this truck is delivered.',
+              textAlign: TextAlign.center, style: TextStyle(fontSize: 12.5, color: BT.mut)),
         ]),
       )),
     );

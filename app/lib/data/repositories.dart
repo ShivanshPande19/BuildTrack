@@ -795,13 +795,15 @@ class ProcurementRepo {
     return (d as List).map((e) => StockRequest.fromMap(e as Map<String, dynamic>)).toList();
   }
 
-  /// Add a new vendor, with the tax identity a PO document needs.
-  Future<void> addVendor({required String name, String? category, int avgLead = 0,
+  /// Add a new vendor, with the tax identity a PO document needs. Returns its
+  /// id, so a PO being written can pick the vendor it just added.
+  Future<String> addVendor({required String name, String? category, int avgLead = 0,
       String? gstin, String? address, String? state, String? email}) async {
-    await sb.from('vendors').insert({
+    final d = await sb.from('vendors').insert({
       'name': name, 'category': category, 'avg_lead_time_days': avgLead, 'reliability_score': 100,
       'gstin': gstin, 'address': address, 'state': state, 'email': email,
-    });
+    }).select('id').single();
+    return d['id'] as String;
   }
 
   /// One vendor with full detail (for the PO document's supplier block).
@@ -1487,6 +1489,8 @@ class WorkshopRepo {
         projectCode: pr?['code'] as String? ?? '',
         projectName: pr?['name'] as String? ?? '',
         stageName: st?['name'] as String? ?? '',
+        projectId: st?['project_id'] as String? ?? '',
+        stageStatus: st?['status'] as String? ?? 'todo',
         isLocked: locked,
         blockedBy: locked ? taskBlockerFor(task, siblings)?.title : null,
       ));
@@ -2095,8 +2099,16 @@ class NotificationsRepo {
   }
 
   /// Mark every unread notification as read (RLS keeps this to the current user).
+  ///
+  /// Bounded, like [uploadToBuilds]: a request that never came back after the
+  /// network dropped left the button on "Marking…" until the app was killed.
   Future<void> markAllRead() async {
-    await sb.from('notifications').update({'read': true}).eq('read', false);
+    try {
+      await sb.from('notifications').update({'read': true}).eq('read', false)
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      throw Exception('Could not reach the server. Check your connection and try again.');
+    }
   }
 }
 

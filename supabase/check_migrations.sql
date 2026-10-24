@@ -106,7 +106,10 @@ with checks(migration, applied) as (values
      to_regclass('public.template_stage_tasks') is not null
      and exists (select 1 from pg_proc where proname = 'fn_save_template')),
   ('0035_a_pm_can_set_up_the_plan',
-     exists (select 1 from pg_proc where proname = 'fn_set_up_plan'))
+     exists (select 1 from pg_proc where proname = 'fn_set_up_plan')),
+  ('0036_the_fitter_fits_the_part',
+     exists (select 1 from pg_proc where proname = 'fn_install_component'
+               and prosrc like '%from stage_tasks%'))
 )
 select migration,
        case when applied then 'applied' else 'RUN THIS' end as status

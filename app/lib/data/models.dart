@@ -704,11 +704,15 @@ class StageTask {
 class MyStageTask {
   final StageTask task;
   final String projectCode, projectName, stageName;
+  /// The build and the stage's own status — what Scan to install needs to
+  /// offer the stage as somewhere this worker can fit a part (0036).
+  final String projectId, stageStatus;
   /// Something in an earlier sub-step of the same stage is still open.
   final bool isLocked;
   final String? blockedBy;
   MyStageTask({required this.task, required this.projectCode,
     required this.projectName, required this.stageName,
+    this.projectId = '', this.stageStatus = 'todo',
     this.isLocked = false, this.blockedBy});
 
   /// Worst first: what is already started, then what can be picked up, then

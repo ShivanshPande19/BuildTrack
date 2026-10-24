@@ -171,8 +171,21 @@ class _ScanInstallState extends ConsumerState<ScanInstall> {
     // the person had ever been assigned — including ones the PM had already
     // approved, which 0029 now refuses server-side, and ones sitting with the
     // PM, where adding a part changes the evidence after it was submitted.
-    final tasks = (ref.watch(myTasksProvider).valueOrNull ?? const <WorkshopTask>[])
+    final held = (ref.watch(myTasksProvider).valueOrNull ?? const <WorkshopTask>[])
         .where((t) => !t.isClosed && !t.awaitingApproval).toList();
+    // A worker holds work items, not the stage — their supervisor does. They
+    // are the one fitting the part, so a stage they have work on is somewhere
+    // they can install into (0036). Delivered builds are already left out.
+    final tasks = [
+      ...held,
+      for (final w in {
+        for (final m in ref.watch(myStageTasksProvider).valueOrNull ?? const <MyStageTask>[])
+          if (m.stageStatus != 'done') m.task.stageId: m,
+      }.values)
+        if (!held.any((t) => t.stageId == w.task.stageId))
+          WorkshopTask(stageId: w.task.stageId, stageName: w.stageName, status: w.stageStatus,
+            projectId: w.projectId, projectCode: w.projectCode, projectName: w.projectName),
+    ];
 
     return Scaffold(
       body: SafeArea(child: ListView(
