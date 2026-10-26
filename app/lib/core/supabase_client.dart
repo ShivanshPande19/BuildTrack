@@ -44,3 +44,18 @@ Future<String?> fetchMyStatus() async {
   final row = await sb.from('profiles').select('status').eq('id', uid).maybeSingle();
   return row?['status'] as String?;
 }
+
+/// Signs out on this device, and always completes.
+///
+/// gotrue drops the local session first and only then tells the server; with
+/// no network that second call throws, so a bare `sb.auth.signOut().then(...)`
+/// never reached its `.then` and Log out did nothing on screen, though the
+/// session was already gone. The server-side revoke is best-effort here — the
+/// refresh token it would revoke is no longer on the phone.
+Future<void> signOutHere() async {
+  try {
+    await sb.auth.signOut();
+  } on AuthException {
+    // Network or server failure after the local session was removed.
+  }
+}

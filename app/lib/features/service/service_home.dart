@@ -498,7 +498,7 @@ class _ProfileTab extends ConsumerWidget {
         () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const RolesReferenceScreen()))),
       const SizedBox(height: 20),
-      PressableScale(pressedScale: 0.98, haptic: true, onTap: () => sb.auth.signOut().then((_) {
+      PressableScale(pressedScale: 0.98, haptic: true, onTap: () => signOutHere().then((_) {
           if (context.mounted) context.go('/login');
         }),
         child: Row(children: [

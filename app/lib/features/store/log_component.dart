@@ -93,7 +93,9 @@ class _LogComponentState extends ConsumerState<LogComponent> {
     final providerItems = ref.watch(itemsProvider).valueOrNull ?? <OptRef>[];
     final items = {for (final o in [...providerItems, ..._extraItems]) o.id: o}.values.toList();
     final vendors = ref.watch(vendorsProvider).valueOrNull ?? [];
-    final projects = ref.watch(allProjectsProvider).valueOrNull ?? [];
+    // A part is not set aside for a truck that has already been handed over.
+    final projects = (ref.watch(allProjectsProvider).valueOrNull ?? [])
+        .where((p) => p.status != 'delivered').toList();
 
     return Scaffold(
       body: SafeArea(child: ListView(

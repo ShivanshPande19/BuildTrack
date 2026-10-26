@@ -18,6 +18,10 @@ import '../../data/models.dart';
 
 final _money = NumberFormat.currency(locale: 'en_IN', symbol: 'Rs ', decimalDigits: 2);
 final _date = DateFormat('d MMM yyyy');
+/// What an empty field prints as. A plain hyphen, not an em dash: the PDF's
+/// built-in Helvetica has no glyph for "—" and printed a crossed-out box in
+/// its place, the same reason amounts say "Rs" rather than the rupee sign.
+const _none = '-';
 
 const _ink = PdfColor.fromInt(0xFF1A1A17);
 const _mut = PdfColor.fromInt(0xFF6B6B60);
@@ -125,9 +129,9 @@ pw.Widget _parties(CompanySettings c, VendorRow? v, PurchaseOrder po) => pw.Row(
 
 pw.Widget _meta(PurchaseOrder po) {
   final cells = <pw.Widget>[
-    _metaCell('PO Date', po.orderDate == null ? '—' : _date.format(po.orderDate!)),
-    _metaCell('Expected delivery', po.deliveryDate == null ? '—' : _date.format(po.deliveryDate!)),
-    _metaCell('Payment terms', (po.paymentTerms ?? '').isEmpty ? '—' : po.paymentTerms!),
+    _metaCell('PO Date', po.orderDate == null ? _none : _date.format(po.orderDate!)),
+    _metaCell('Expected delivery', po.deliveryDate == null ? _none : _date.format(po.deliveryDate!)),
+    _metaCell('Payment terms', (po.paymentTerms ?? '').isEmpty ? _none : po.paymentTerms!),
   ];
   return pw.Container(
     decoration: const pw.BoxDecoration(color: _band, borderRadius: pw.BorderRadius.all(pw.Radius.circular(6))),
@@ -161,7 +165,7 @@ pw.Widget _itemsTable(List<PoLineItem> items) => pw.TableHelper.fromTextArray(
       [
         '${i + 1}',
         items[i].description?.isNotEmpty == true ? items[i].description! : items[i].name,
-        (items[i].hsnCode ?? '').isEmpty ? '—' : items[i].hsnCode!,
+        (items[i].hsnCode ?? '').isEmpty ? _none : items[i].hsnCode!,
         '${items[i].qty}',
         _money.format(items[i].unitPrice),
         poPct(items[i].taxRate),
@@ -360,7 +364,7 @@ pw.Widget _signatories(List<PoApprovalEvent> events, CompanySettings c) {
       pw.Container(height: 0.8, color: _line),
       pw.SizedBox(height: 4),
       pw.Text(role, style: pw.TextStyle(fontSize: 8, color: _mut, fontWeight: pw.FontWeight.bold, letterSpacing: 0.5)),
-      pw.Text(e?.actorName ?? '—', style: pw.TextStyle(fontSize: 10, color: _ink, fontWeight: pw.FontWeight.bold)),
+      pw.Text(e?.actorName ?? _none, style: pw.TextStyle(fontSize: 10, color: _ink, fontWeight: pw.FontWeight.bold)),
       if (e?.at != null) pw.Text(_date.format(e!.at!), style: const pw.TextStyle(fontSize: 8, color: _mut)),
     ],
   ));

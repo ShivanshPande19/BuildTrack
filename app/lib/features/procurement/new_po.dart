@@ -6,6 +6,7 @@ import '../../data/models.dart';
 import '../../data/repositories.dart';
 import '../../shared/animations.dart';
 import '../../shared/widgets.dart';
+import 'add_vendor.dart';
 
 /// Procurement — prepare a proper purchase order (pr4).
 ///
@@ -349,6 +350,17 @@ class _NewPoScreenState extends ConsumerState<NewPoScreen> {
           AppSelectField<String>(
             value: _vendorId, hint: 'Select vendor', title: 'Vendor',
             options: [for (final v in vendors) SelectOption(v.id, v.name)],
+            // A first PO to a new supplier used to mean leaving this form for
+            // the Vendors tab and starting it again — as Log component's
+            // "Add new item" already avoids.
+            addLabel: 'Add new vendor',
+            onAdd: () async {
+              final id = await Navigator.of(context).push<String>(
+                MaterialPageRoute(builder: (_) => const AddVendorScreen()));
+              if (id == null) return;
+              await ref.read(vendorsProvider.future);
+              if (mounted) setState(() => _vendorId = id);
+            },
             onChanged: (v) => setState(() => _vendorId = v),
           ),
 
